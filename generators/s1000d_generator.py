@@ -1,0 +1,328 @@
+"""
+S1000D XML generator.
+Creates ASD S1000D data module XML files.
+"""
+
+import os
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+from lxml import etree as ET
+
+
+class S1000DGenerator:
+    """Generator for S1000D data modules."""
+
+    def __init__(self, model_ident: str = "S5", system_diff: str = "A"):
+        """
+        Initialize generator with base parameters.
+
+        Args:
+            model_ident: Model identifier code
+            system_diff: System difference code
+        """
+        self.model_ident = model_ident
+        self.system_diff = system_diff
+
+    def _create_base_xml_structure(self) -> ET.Element:
+        """Create basic dmodule element with namespaces."""
+        # Create XML string with proper namespaces for external validation
+        xml_str = '''<dmodule xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                      xsi:noNamespaceSchemaLocation="http://www.s1000d.org/S1000D_4-1/xml_schema_flat/descript.xsd"
+                      xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                      xmlns:dc="http://www.purl.org/dc/elements/1.1/"
+                      xmlns:xlink="http://www.w3.org/1999/xlink">
+        </dmodule>'''
+
+        # Parse into element tree
+        dmodule = ET.fromstring(xml_str)
+
+        return dmodule
+
+    def _create_ident_and_status_section(self, dm_code_components: Dict, title_data: Dict) -> ET.Element:
+        """Create identAndStatusSection."""
+        section = ET.Element("identAndStatusSection")
+
+        dm_address = ET.SubElement(section, "dmAddress")
+        dm_ident = ET.SubElement(dm_address, "dmIdent")
+
+        # Build dmCode
+        dm_code = ET.SubElement(dm_ident, "dmCode",
+                               modelIdentCode=dm_code_components.get('modelIdentCode', self.model_ident),
+                               systemDiffCode=dm_code_components.get('systemDiffCode', self.system_diff),
+                               systemCode=dm_code_components.get('systemCode'),
+                               subSystemCode=dm_code_components.get('subSystemCode'),
+                               subSubSystemCode=dm_code_components.get('subSubSystemCode'),
+                               assyCode=dm_code_components.get('assyCode'),
+                               disassyCode=dm_code_components.get('disassyCode'),
+                               disassyCodeVariant=dm_code_components.get('disassyCodeVariant'),
+                               infoCode=dm_code_components.get('infoCode'),
+                               infoCodeVariant=dm_code_components.get('infoCodeVariant'),
+                               itemLocationCode=dm_code_components.get('itemLocationCode'))
+
+        # Language and issue
+        lang_elem = ET.SubElement(dm_ident, "language", languageIsoCode="ru", countryIsoCode="RU")
+        issue_elem = ET.SubElement(dm_ident, "issueInfo", issueNumber="001", inWork="00")
+
+        # Address items
+        dm_address_items = ET.SubElement(dm_address, "dmAddressItems")
+        issue_date = ET.SubElement(dm_address_items, "issueDate",
+                                  year=str(datetime.now().year),
+                                  month=str(datetime.now().month).zfill(2),
+                                  day=str(datetime.now().day).zfill(2))
+
+        # Title
+        dm_title = ET.SubElement(dm_address_items, "dmTitle")
+        tech_name = ET.SubElement(dm_title, "techName")
+        tech_name.text = title_data.get('techName', '')
+
+        info_name = ET.SubElement(dm_title, "infoName")
+        info_name.text = title_data.get('infoName', '')
+
+        # dmStatus
+        dm_status = ET.SubElement(section, "dmStatus", issueType="new")
+
+        security = ET.SubElement(dm_status, "security", securityClassification="01")
+
+        logo = ET.SubElement(dm_status, "logo")
+        symbol = ET.SubElement(logo, "symbol", infoEntityIdent="PUBLICATION_LOGO")
+
+        responsible_company = ET.SubElement(dm_status, "responsiblePartnerCompany", enterpriseCode="00000")
+        enterprise_name = ET.SubElement(responsible_company, "enterpriseName")
+        enterprise_name.text = title_data.get('enterpriseName', "Организация не задана")
+
+        originator = ET.SubElement(dm_status, "originator", enterpriseCode="00000")
+        originator_name = ET.SubElement(originator, "enterpriseName")
+        originator_name.text = title_data.get('originatorName', "Организация не задана")
+
+        applic = ET.SubElement(dm_status, "applic")
+        display_text = ET.SubElement(applic, "displayText")
+        simple_para = ET.SubElement(display_text, "simplePara")
+        simple_para.text = "Все"
+
+        tech_standard = ET.SubElement(dm_status, "techStandard")
+        tech_pub_base = ET.SubElement(tech_standard, "techPubBase")
+        tech_pub_base.text = "AECMA 1000D / AC 1.1.S1000DR-2007"
+
+        EA_exceptions = ET.SubElement(tech_standard, "authorityExceptions")
+        EA_notes = ET.SubElement(tech_standard, "authorityNotes")
+
+        # BREX reference
+        brex_dm_ref = ET.SubElement(dm_status, "brexDmRef")
+        dm_ref = ET.SubElement(brex_dm_ref, "dmRef")
+        dm_ref_ident = ET.SubElement(dm_ref, "dmRefIdent")
+        brex_dm_code = ET.SubElement(dm_ref_ident, "dmCode",
+                                    modelIdentCode=self.model_ident,
+                                    systemDiffCode=self.system_diff,
+                                    systemCode="00",
+                                    subSystemCode="0",
+                                    subSubSystemCode="0",
+                                    assyCode="00",
+                                    disassyCode="00",
+                                    disassyCodeVariant="A",
+                                    infoCode="022",
+                                    infoCodeVariant="A",
+                                    itemLocationCode="D")
+
+        quality_assurance = ET.SubElement(dm_status, "qualityAssurance")
+        unverified = ET.SubElement(quality_assurance, "unverified")
+
+        return section
+
+    def _create_content_section(self, content_data: Dict) -> ET.Element:
+        """Create content section."""
+        content = ET.Element("content")
+        description = ET.SubElement(content, "description")
+
+        # Add paragraphs
+        for para_text in content_data.get('paragraphs', []):
+            if para_text.strip():
+                para_elem = ET.SubElement(description, "para")
+                para_elem.text = para_text
+
+        # Add tables
+        for table_xml in content_data.get('tables', []):
+            if table_xml:
+                # Parse and add table element
+                table_elem = ET.fromstring(table_xml)
+                # Fix table entries to wrap text in <para>
+                for entry in table_elem.iter('entry'):
+                    if entry.text and entry.text.strip():
+                        para_elem = ET.SubElement(entry, "para")
+                        para_elem.text = entry.text
+                        entry.text = None
+                description.append(table_elem)
+
+        # Add lists
+        for list_xml in content_data.get('lists', []):
+            if list_xml:
+                # Lists can be wrapped in para according to schema
+                list_elem = ET.fromstring(list_xml)
+                para = ET.SubElement(description, "para")
+                para.append(list_elem)
+
+        return content
+
+    def generate_data_module(self, dm_config: Dict, output_path: str) -> str:
+        """
+        Generate complete S1000D data module XML.
+
+        Args:
+            dm_config: Configuration dict with 'dm_code', 'title', 'content'
+            output_path: Directory to save XML file
+
+        Returns:
+            Path to generated XML file
+        """
+        dmodule = self._create_base_xml_structure()
+
+        # Add DOCTYPE
+        doctype = '<!DOCTYPE dmodule [\n<!NOTATION jpg PUBLIC "+//ISBN 0-7923-9432-1::Graphic Notation//NOTATION Joint Photographic Experts Group Raster//EN">\n<!ENTITY PUBLICATION_LOGO SYSTEM "publication_logo.JPG" NDATA jpg>\n]>'
+
+        # Add sections
+        ident_section = self._create_ident_and_status_section(
+            dm_config['dm_code'],
+            dm_config['title']
+        )
+        dmodule.append(ident_section)
+
+        content_section = self._create_content_section(dm_config['content'])
+        dmodule.append(content_section)
+
+        # Generate filename
+        dm_code_parts = dm_config['dm_code']
+        filename = f"DMC-{dm_code_parts['modelIdentCode']}-{dm_code_parts['systemDiffCode']}-{dm_code_parts['systemCode']}-{dm_code_parts['subSystemCode']}-{dm_code_parts['subSubSystemCode']}-{dm_code_parts['assyCode']}-{dm_code_parts['disassyCode']}{dm_code_parts['disassyCodeVariant']}-{dm_code_parts['infoCode']}{dm_code_parts['infoCodeVariant']}-{dm_code_parts['itemLocationCode']}_001_ru-RU.xml"
+
+        filepath = os.path.join(output_path, filename)
+
+        # Format XML for better readability
+        from xml.dom import minidom
+        rough_string = ET.tostring(dmodule, encoding='unicode')
+        reparsed = minidom.parseString(rough_string.encode('utf-8'))
+        xml_content = reparsed.toprettyxml(indent='    ', newl='\n')
+        # Remove the XML declaration that minidom adds
+        xml_content = '\n'.join(xml_content.split('\n')[1:])
+        xml_content = xml_content.strip()
+
+        # Write XML with proper encoding and formatting
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write('<?xml version="1.0" encoding="utf-8"?>\n')
+            f.write(doctype + '\n')
+            f.write(xml_content)
+
+        # Validate generated XML against schema
+        is_valid, message = S1000DGenerator.validate_xml_against_schema(filepath)
+        if is_valid:
+            print(f"Validation PASSED for {filepath}")
+        else:
+            print(f"Validation FAILED for {filepath}: {message}")
+
+        return filepath
+
+    @staticmethod
+    def validate_xml_against_schema(xml_file: str, schema_file: str = "xsd/descript.xsd") -> Tuple[bool, str]:
+        """
+        Validate XML file against XSD schema.
+
+        Args:
+            xml_file: Path to XML file to validate
+            schema_file: Path to XSD schema file
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        try:
+            # Check if schema file exists
+            if not os.path.exists(schema_file):
+                return False, f"Schema file not found: {schema_file}"
+
+            # Parse schema directly (no targetNamespace)
+            with open(schema_file, 'r', encoding='utf-8') as f:
+                schema_doc = ET.parse(f)
+
+            schema = ET.XMLSchema(schema_doc)
+
+            # Parse XML
+            with open(xml_file, 'r', encoding='utf-8') as f:
+                xml_doc = ET.parse(f)
+
+            # Strip namespaces from XML to make it match schema without targetNamespace
+            def strip_namespaces(element):
+                ET.strip_elements(element, '{http://www.w3.org/2001/XMLSchema-instance}*', with_tail=False)
+                ET.strip_attributes(element, '{http://www.w3.org/2001/XMLSchema-instance}*')
+                ET.strip_attributes(element, '{http://www.s1000d.org/S1000D_4-1/xml_schema_flat/descript.xsd}*')
+                for child in element:
+                    strip_namespaces(child)
+                element.tag = element.tag.split('}', 1)[-1] if '}' in element.tag else element.tag
+
+            strip_namespaces(xml_doc.getroot())
+
+            # Now validate the namespace-free XML against namespace-free schema
+            is_valid = schema.validate(xml_doc)
+
+            if is_valid:
+                return True, "XML is valid according to schema"
+            else:
+                # Collect validation errors
+                errors = []
+                for error in schema.error_log:
+                    errors.append(f"Line {error.line}, Column {error.column}: {error.message}")
+                error_msg = "XML validation failed:\n" + "\n".join(errors)
+                return False, error_msg
+
+        except Exception as e:
+            return False, f"Validation error: {str(e)}"
+
+
+    @staticmethod
+    def validate_generated_modules(output_dir: str) -> Dict[str, Tuple[bool, str]]:
+        """
+        Validate all XML files in output directory against schema.
+
+        Args:
+            output_dir: Directory containing XML files
+
+        Returns:
+            Dict mapping filenames to (is_valid, error_message) tuples
+        """
+        validation_results = {}
+
+        # Find all XML files
+        xml_files = [f for f in os.listdir(output_dir) if f.endswith('.xml')]
+
+        for xml_file in xml_files:
+            filepath = os.path.join(output_dir, xml_file)
+            is_valid, message = S1000DGenerator.validate_xml_against_schema(filepath)
+            validation_results[xml_file] = (is_valid, message)
+            print(f"Validation for {xml_file}: {'PASS' if is_valid else 'FAIL'}")
+
+            if not is_valid:
+                print(f"  Errors: {message[:200]}..." if len(message) > 200 else f"  Errors: {message}")
+
+        return validation_results
+
+
+def create_data_module_config(title_ru: str, info_name_ru: str, dm_code: Dict, content: Dict, enterprise_name: str = "Организация не задана", originator_name: str = "Организация не задана") -> Dict:
+    """
+    Helper to create DM config dict.
+
+    Args:
+        title_ru: Russian title
+        info_name_ru: Russian info name
+        dm_code: DM code components
+        content: Content dict
+        enterprise_name: Name for responsible company
+        originator_name: Name for originator company
+
+    Returns:
+        Config dict for generator
+    """
+    return {
+        'dm_code': dm_code,
+        'title': {
+            'techName': title_ru,
+            'infoName': info_name_ru,
+            'enterpriseName': enterprise_name,
+            'originatorName': originator_name
+        },
+        'content': content
+    }

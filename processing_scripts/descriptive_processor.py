@@ -13,6 +13,7 @@ from parsers.text_parser import extract_text_by_headings, get_document_structure
 from parsers.table_parser import get_tables_by_reference
 from parsers.list_parser import extract_lists, convert_list_to_s1000d_randomlist
 from parsers.illustration_parser import extract_illustrations, find_image_references, map_figures_to_illustrations
+from parsers.content_analyzer import analyze_document_content, generate_content_analysis_log, get_content_for_info_name
 
 # Import generator
 from generators.s1000d_generator import S1000DGenerator, create_data_module_config
@@ -188,98 +189,167 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     document_title = extract_document_title(doc)
     print(f"Extracted document title: {document_title}")
 
-    # Parse document content
-    print("Parsing document content...")
-    headings = get_document_structure(doc)
+    # Analyze document content using the new content analyzer
+    print("Analyzing document content structure...")
+    analysis_results = analyze_document_content(doc)
+
+    # Generate content analysis log
+    log_path = generate_content_analysis_log(doc_path, analysis_results, output_dir)
+
+    # Parse additional content types
+    print("Parsing additional content...")
     text_sections = extract_text_by_headings(doc)
     tables = get_tables_by_reference(doc)
     lists_data = extract_lists(doc)
     illustrations = extract_illustrations(doc, output_dir)
 
-    print(f"Found {len(headings)} sections, {len(tables)} tables, {len(lists_data)} lists, {len(illustrations)} illustrations")
+    print(f"Found {len(analysis_results)} analyzed sections, {len(tables)} tables, {len(lists_data)} lists, {len(illustrations)} illustrations")
 
     # Initialize generator
     generator = S1000DGenerator()
 
-    # Process each section and create data modules
+    # Generate data modules based on content analysis
     generated_files = []
-    component_counter = 1
+    component_counter = 0
 
-    section_groups = group_sections_by_type(headings)
+    # Track mapping of sections to modules for logging
+    module_mapping = {}  # filename -> module_data
 
-    for group_type, section_indices in section_groups.items():
-        if group_type == "system_purpose":
-            # Module for purpose
-            purpose_sections = [headings[i] for i in section_indices]
-            content = assemble_content(purpose_sections, text_sections, tables, lists_data)
-            dm_code = map_heading_to_info_code(purpose_sections[0])
-            dm_config = create_data_module_config(
-                document_title,
-                "Назначение",
-                dm_code,
-                content,
-                enterprise_name=organization,
-                originator_name=organization
-            )
-            filepath = generator.generate_data_module(dm_config, output_dir)
-            generated_files.append(filepath)
+    # Group sections by their unique characteristics for module generation
+    section_groups = group_sections_for_modules(analysis_results)
 
-        elif group_type == "system_description":
-            # Module for composition and equipment
-            desc_sections = [headings[i] for i in section_indices]
-            content = assemble_content(desc_sections, text_sections, tables, lists_data)
-            dm_code = map_heading_to_info_code(desc_sections[0])
-            dm_config = create_data_module_config(
-                document_title,
-                "Описание",
-                dm_code,
-                content,
-                enterprise_name=organization,
-                originator_name=organization
-            )
-            filepath = generator.generate_data_module(dm_config, output_dir)
-            generated_files.append(filepath)
+    for group_key, group_info in section_groups.items():
+        sections_in_group = group_info['sections']
 
-        elif group_type == "system_operation":
-            # Module for operation
-            oper_sections = [headings[i] for i in section_indices]
-            content = assemble_content(oper_sections, text_sections, tables, lists_data)
-            dm_code = map_heading_to_info_code(oper_sections[0])
-            dm_config = create_data_module_config(
-                document_title,
-                "Описание работы",
-                dm_code,
-                content,
-                enterprise_name=organization,
-                originator_name=organization
-            )
-            filepath = generator.generate_data_module(dm_config, output_dir)
-            generated_files.append(filepath)
+        # Choose representative section for DM code generation (first one)
+        representative_section = sections_in_group[0]
 
-        elif group_type == "components":
-            # Individual module for each component
-            for i in section_indices:
-                heading = headings[i]
-                content = assemble_content([heading], text_sections, tables, lists_data)
-                dm_code = map_heading_to_info_code(heading, component_counter)
-                # Use component name as techName, keep the system name consistent
-                dm_config = create_data_module_config(
-                    document_title,
-                    heading,
-                    dm_code,
-                    content,
-                    enterprise_name=organization,
-                    originator_name=organization
-                )
-                filepath = generator.generate_data_module(dm_config, output_dir)
-                generated_files.append(filepath)
-                component_counter += 1
+        # Prepare combined content for this module
+        combined_content = {
+            "paragraphs": [],
+            "tables": [],
+            "lists": []
+        }
 
-    print(f"Generated {len(generated_files)} data module files:")
+        # Combine content from all sections in this group
+        for section in sections_in_group:
+            section_content = assemble_content_for_section(section, doc, tables, lists_data)
+            combined_content["paragraphs"].extend(section_content["paragraphs"])
+            combined_content["lists"].extend(section_content["lists"])
+
+        # Add all tables
+        for table_ref, table_data in tables.items():
+            from parsers.table_parser import convert_table_to_s1000d_format
+            table_xml = convert_table_to_s1000d_format(table_data)
+            combined_content["tables"].append(table_xml)
+
+        # Determine DM code based on section type
+        dm_code = get_dm_code_for_section(representative_section, component_counter)
+
+        # Map section type to appropriate module type
+        if representative_section.get('section_type') == 'purpose':
+            if representative_section.get('info_name') == 'Описание функций изделия':
+                dm_code.update({'infoCode': '012', 'infoCodeVariant': 'B'})  # Function description
+            else:
+                dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # General purpose
+        elif representative_section.get('section_type') == 'description':
+            dm_code.update({'infoCode': '012', 'infoCodeVariant': 'A'})  # Description
+        elif representative_section.get('section_type') == 'operation':
+            dm_code.update({'infoCode': '013', 'infoCodeVariant': 'A'})  # Operation
+        elif representative_section.get('section_type') == 'component':
+            dm_code.update({'infoCode': '017', 'infoCodeVariant': 'A'})  # Component description
+            component_counter += 1
+
+        # Create DM config
+        dm_config = create_data_module_config(
+            document_title,
+            representative_section.get('info_name', 'Неопределен'),
+            dm_code,
+            combined_content,
+            enterprise_name=organization,
+            originator_name=organization
+        )
+
+        # Generate XML file
+        filepath = generator.generate_data_module(dm_config, output_dir)
+        generated_files.append(filepath)
+
+        # Track mapping for logging
+        filename = os.path.basename(filepath)
+        module_mapping[filename] = {
+            'dm_code': dm_code_to_string(dm_code),
+            'info_name': representative_section.get('info_name', 'Unknown'),
+            'sections': sections_in_group
+        }
+
+        print(f"Generated module: {representative_section.get('info_name', 'Unknown')} -> {filename}")
+
+    # Generate module mapping log
+    from parsers.content_analyzer import generate_module_mapping_log
+    mapping_log_path = generate_module_mapping_log(doc_path, module_mapping, output_dir)
+
+    print(f"\nGenerated {len(generated_files)} data module files:")
     for filepath in generated_files:
         print(f"  - {os.path.basename(filepath)}")
 
+    print(f"Content analysis log: {os.path.basename(log_path)}")
+    print(f"Module mapping log: {os.path.basename(mapping_log_path)}")
+
     return generated_files
+
+
+def group_sections_for_modules(analysis_results: List[Dict]) -> Dict[str, Dict]:
+    """
+    Group sections that should be combined into the same module.
+
+    Args:
+        analysis_results: Results from analyze_document_content
+
+    Returns:
+        Dict mapping group keys to group info with sections
+    """
+    groups = {}
+
+    for section in analysis_results:
+        section_type = section.get('section_type', 'unknown')
+        info_name = section.get('info_name', 'unknown')
+
+        if section_type == 'component':
+            # Each component gets its own module
+            group_key = f"component_{section.get('start_para', 0)}"
+        elif info_name == 'Описание функций изделия':
+            # Function descriptions get their own module
+            group_key = "function_description"
+        elif section_type in ['purpose', 'description', 'operation']:
+            # Group sections of same type together (not ideal, but better than duplicates)
+            group_key = f"{section_type}_{info_name.replace(' ', '_')}"
+        else:
+            # Fallback grouping
+            group_key = f"misc_{section.get('start_para', 0)}"
+
+        if group_key not in groups:
+            groups[group_key] = {
+                'sections': [],
+                'info_name': info_name
+            }
+
+        groups[group_key]['sections'].append(section)
+
+    return groups
+
+
+def dm_code_to_string(dm_code: Dict) -> str:
+    """Convert DM code dict to string representation."""
+    return "DMC-S5-A-120-{system_sub}-{sub_sub}-{assy}-{disassy}{disassy_var}-{info}{info_var}-{location}_001".format(
+        system_sub=dm_code.get('subSystemCode', '1'),
+        sub_sub=dm_code.get('subSubSystemCode', '0'),
+        assy=dm_code.get('assyCode', '00'),
+        disassy=dm_code.get('disassyCode', '00'),
+        disassy_var=dm_code.get('disassyCodeVariant', 'A'),
+        info=dm_code.get('infoCode', '011'),
+        info_var=dm_code.get('infoCodeVariant', 'A'),
+        location=dm_code.get('itemLocationCode', 'A')
+    )
 
 
 def group_sections_by_type(headings: List[str]) -> Dict[str, List[int]]:
@@ -315,6 +385,86 @@ def group_sections_by_type(headings: List[str]) -> Dict[str, List[int]]:
                 groups["components"].append(idx)
 
     return groups
+
+
+def assemble_content_for_section(section: Dict, document: Document, tables: Dict[str, Dict], lists_data: List[Dict]) -> Dict:
+    """
+    Assemble content for a specific analyzed section.
+
+    Args:
+        section: Section dictionary from content analysis
+        document: Document object
+        tables: Dict of table references
+        lists_data: List of parsed lists
+
+    Returns:
+        Content dict with paragraphs, tables, lists
+    """
+    content = {
+        "paragraphs": [],
+        "tables": [],
+        "lists": []
+    }
+
+    # Extract content from the section's paragraph range
+    start_para = section.get('start_para', 0)
+    end_para = section.get('end_para', len(document.paragraphs) - 1)
+
+    for para_idx in range(start_para, min(end_para + 1, len(document.paragraphs))):
+        para = document.paragraphs[para_idx]
+        text = para.text.strip()
+        if text:
+            content["paragraphs"].append(text)
+
+    # Add relevant lists (simplified - add all for now)
+    for list_data in lists_data:
+        if list_data.get('items'):
+            list_xml = convert_list_to_s1000d_randomlist(list_data)
+            content["lists"].append(list_xml)
+
+    # Add relevant tables (simplified - add all for now)
+    from parsers.table_parser import convert_table_to_s1000d_format
+    for table_ref, table_data in tables.items():
+        table_xml = convert_table_to_s1000d_format(table_data)
+        content["tables"].append(table_xml)
+
+    return content
+
+
+def get_dm_code_for_section(section: Dict, component_counter: int) -> Dict:
+    """
+    Get DM code for a section based on its type and index.
+
+    Args:
+        section: Section dictionary from content analysis
+        component_counter: Counter for component numbering
+
+    Returns:
+        DM code dictionary
+    """
+    base_dm_code = {
+        'modelIdentCode': 'S5',
+        'systemDiffCode': 'A',
+        'systemCode': '120',
+        'subSystemCode': '1',
+        'subSubSystemCode': '0',
+        'assyCode': '00',
+        'disassyCode': '00',
+        'disassyCodeVariant': 'A',
+        'infoCode': '011',
+        'infoCodeVariant': 'A',
+        'itemLocationCode': 'A'
+    }
+
+    if section.get('is_component'):
+        # Component-specific coding
+        base_dm_code.update({
+            'subSubSystemCode': f'{component_counter}',
+            'infoCode': '017',
+            'infoCodeVariant': 'A'
+        })
+
+    return base_dm_code
 
 
 def assemble_content(sections: List[str], text_sections: Dict[str, str], tables: Dict[str, Dict], lists_data: List[Dict]) -> Dict:

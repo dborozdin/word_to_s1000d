@@ -14,7 +14,8 @@ from parsers.text_parser import extract_text_by_headings, get_document_structure
 from parsers.table_parser import get_tables_by_reference
 from parsers.list_parser import extract_lists, convert_list_to_s1000d_randomlist
 from parsers.illustration_parser import extract_illustrations, find_image_references, map_figures_to_illustrations
-from parsers.content_analyzer import analyze_document_content, generate_content_analysis_log, get_content_for_info_name
+from parsers.content_analyzer import analyze_document_content, generate_content_analysis_log, get_content_for_info_name, generate_module_mapping_log
+from parsers.elements_analyzer import analyze_document_elements, generate_elements_log
 
 # Import generators
 from generators.s1000d_generator import S1000DGenerator, create_data_module_config
@@ -201,8 +202,17 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     print("Analyzing document content structure...")
     analysis_results = analyze_document_content(doc)
 
-    # Generate content analysis log
-    log_path = generate_content_analysis_log(doc_path, analysis_results, output_dir)
+    # Generate content analysis log (only if splitting into modules)
+    log_path = None
+    if split_into_modules:
+        log_path = generate_content_analysis_log(doc_path, analysis_results, output_dir)
+
+    # Analyze document elements for logging
+    print("Analyzing document elements...")
+    elements = analyze_document_elements(doc)
+
+    # Generate elements log (always)
+    elements_log_path = generate_elements_log(doc_path, elements, output_dir)
 
     # Parse additional content types
     print("Parsing additional content...")
@@ -302,11 +312,8 @@ def process_descriptive_document(doc_path: str, output_dir: str):
 
         print(f"Generated module: {representative_section.get('info_name', 'Unknown')} -> {filename}")
 
-    # Generate module mapping log
-    from parsers.content_analyzer import generate_module_mapping_log
-    mapping_log_path = generate_module_mapping_log(doc_path, module_mapping, output_dir)
-
     # Generate Publication Module (PMC)
+    pm_filepath = None
     if dm_refs:
         # Use fixed modelIdentCode from first DM or extract short code
         first_dm = dm_refs[0] if dm_refs else None
@@ -321,11 +328,63 @@ def process_descriptive_document(doc_path: str, output_dir: str):
         generated_files.append(pm_filepath)
         print(f"Generated publication module: {os.path.basename(pm_filepath)}")
 
+    # Generate module mapping log
+    if split_into_modules:
+        from parsers.content_analyzer import generate_module_mapping_log
+        mapping_log_path = generate_module_mapping_log(doc_path, module_mapping, output_dir)
+    else:
+        # For combined mode, generate general module mapping all log
+        log_filename = "module_mapping_all.log"
+        mapping_log_path = os.path.join(output_dir, log_filename)
+
+        with open(mapping_log_path, 'w', encoding='utf-8') as f:
+            import datetime
+            f.write("Общее соответствие модулей\n")
+            f.write(f"Сгенерировано: {datetime.datetime.now()}\n")
+            f.write(f"Исходный документ: {doc_path}\n")
+            f.write("=" * 80 + "\n\n")
+
+            # Map source document to generated files
+            f.write("Соответствие исходного документа сгенерированным файлам:\n")
+            f.write(f"Исходный документ: {os.path.basename(doc_path)}\n\n")
+
+            f.write("Сгенерированные файлы:\n")
+            for filename in generated_files:
+                basename = os.path.basename(filename)
+                if basename.endswith('.xml'):
+                    if 'PMC' in basename:
+                        f.write(f"  - {basename} (модуль публикации)\n")
+                    else:
+                        f.write(f"  - {basename} (модуль данных)\n")
+
+            # List graphics files
+            graphics_dir = os.path.join(output_dir, "graphics")
+            if os.path.exists(graphics_dir):
+                graphics_files = [f for f in os.listdir(graphics_dir) if f.endswith('.jpg')]
+                for gf in graphics_files:
+                    f.write(f"  - {gf} (файл иллюстрации)\n")
+
+            f.write("\n")
+
+            # Detailed module mappings
+            for filename, module_data in module_mapping.items():
+                dm_code = module_data['dm_code']
+                sections = module_data['sections']
+
+                f.write(f"Детали модуля: {filename}\n")
+                f.write(f"  Код DM: {dm_code}\n")
+                f.write(f"  info_name: {module_data.get('info_name', 'Unknown')}\n")
+                f.write("\n")
+
+        print(f"Общий лог соответствия модулей сохранен в: {mapping_log_path}")
+
     print(f"\nGenerated {len(generated_files)} files:")
     for filepath in generated_files:
         print(f"  - {os.path.basename(filepath)}")
 
-    print(f"Content analysis log: {os.path.basename(log_path)}")
+    if log_path:
+        print(f"Content analysis log: {os.path.basename(log_path)}")
+    print(f"Elements log: {os.path.basename(elements_log_path)}")
     print(f"Module mapping log: {os.path.basename(mapping_log_path)}")
 
     return generated_files

@@ -29,16 +29,19 @@ def extract_lists(doc: Document) -> List[Dict[str, str]]:
         is_bullet = False
         is_numbered = False
 
-        # Get paragraph formatting
-        run = paragraph.runs[0] if paragraph.runs else None
-        if run:
-            # Check for bullet markers (simplified)
-            text = run.text
-            if text.startswith('•') or text.startswith('◦') or text.startswith('-'):
+        # Check if paragraph is formatted as a list in Word
+        if hasattr(paragraph.paragraph_format, 'numPr') and paragraph.paragraph_format.numPr is not None:
+            is_bullet = True
+        else:
+            # Get paragraph formatting
+            text = paragraph.text.strip()
+            # Check for bullet markers (simplified, including various dash characters)
+            if (text.startswith('•') or text.startswith('◦') or text.startswith('-') or
+                text.startswith('–') or text.startswith('—') or text.startswith('·')):
                 is_bullet = True
             elif any(text.startswith(str(i) + '.') for i in range(1, 10)):
                 is_numbered = True
-            elif text.strip() and paragraph.paragraph_format.left_indent and paragraph.paragraph_format.left_indent > Inches(0):
+            elif text and paragraph.paragraph_format.left_indent and paragraph.paragraph_format.left_indent > Inches(0):
                 # Simple heuristic for list items with indentation
                 is_bullet = True
 
@@ -55,7 +58,7 @@ def extract_lists(doc: Document) -> List[Dict[str, str]]:
                 list_items = []
 
             # Clean text and add to current list
-            clean_text = run.text.lstrip('•◦-123456789.').strip() if run else paragraph.text.strip()
+            clean_text = text.lstrip('•◦-–—·123456789.').strip()
             if clean_text and clean_text not in list_items:
                 list_items.append(clean_text)
         else:

@@ -89,7 +89,10 @@ def convert_table_to_s1000d_format(table_data: Dict[str, List[List[str]]]) -> st
     for row in rows:
         row_entries = []
         for col_idx, cell in enumerate(row):
-            row_entries.append(f"<entry>{cell}</entry>")
+            if cell.strip():
+                row_entries.append(f"<entry><para>{cell}</para></entry>")
+            else:
+                row_entries.append("<entry></entry>")
         # Pad missing columns if needed
         while len(row_entries) < num_cols:
             row_entries.append("<entry></entry>")

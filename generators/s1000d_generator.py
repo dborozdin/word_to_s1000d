@@ -133,32 +133,44 @@ class S1000DGenerator:
         content = ET.Element("content")
         description = ET.SubElement(content, "description")
 
-        # Add paragraphs
-        for para_text in content_data.get('paragraphs', []):
-            if para_text.strip():
-                para_elem = ET.SubElement(description, "para")
-                para_elem.text = para_text
+        # If xml_parts are provided, use them directly
+        if 'xml_parts' in content_data:
+            for xml_part in content_data['xml_parts']:
+                if xml_part.strip():
+                    # Parse the XML part and add it
+                    try:
+                        part_elem = ET.fromstring(xml_part)
+                        description.append(part_elem)
+                    except ET.ParseError:
+                        # If parsing fails, add as text in para
+                        para_elem = ET.SubElement(description, "para")
+                        para_elem.text = xml_part
+        else:
+            # Legacy mode: Add paragraphs
+            for para_text in content_data.get('paragraphs', []):
+                if para_text.strip():
+                    para_elem = ET.SubElement(description, "para")
+                    para_elem.text = para_text
 
-        # Add tables
-        for table_xml in content_data.get('tables', []):
-            if table_xml:
-                # Parse and add table element
-                table_elem = ET.fromstring(table_xml)
-                # Fix table entries to wrap text in <para>
-                for entry in table_elem.iter('entry'):
-                    if entry.text and entry.text.strip():
-                        para_elem = ET.SubElement(entry, "para")
-                        para_elem.text = entry.text
-                        entry.text = None
-                description.append(table_elem)
+            # Add tables
+            for table_xml in content_data.get('tables', []):
+                if table_xml:
+                    # Parse and add table element
+                    table_elem = ET.fromstring(table_xml)
+                    # Fix table entries to wrap text in <para>
+                    for entry in table_elem.iter('entry'):
+                        if entry.text and entry.text.strip():
+                            para_elem = ET.SubElement(entry, "para")
+                            para_elem.text = entry.text
+                            entry.text = None
+                    description.append(table_elem)
 
-        # Add lists
-        for list_xml in content_data.get('lists', []):
-            if list_xml:
-                # Lists can be wrapped in para according to schema
-                list_elem = ET.fromstring(list_xml)
-                para = ET.SubElement(description, "para")
-                para.append(list_elem)
+            # Add lists
+            for list_xml in content_data.get('lists', []):
+                if list_xml:
+                    # Lists are direct children of description
+                    list_elem = ET.fromstring(list_xml)
+                    description.append(list_elem)
 
         return content
 

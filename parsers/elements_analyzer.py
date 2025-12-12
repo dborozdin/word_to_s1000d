@@ -221,26 +221,30 @@ def _is_table_start(paragraph) -> bool:
 
 def _get_list_type(paragraph) -> str:
     """Get list type for paragraph."""
-    text = paragraph.text
-    run = paragraph.runs[0] if paragraph.runs else None
-    if not run:
-        return ''
+    # Check if paragraph is formatted as a list in Word
+    if hasattr(paragraph.paragraph_format, 'numPr') and paragraph.paragraph_format.numPr is not None:
+        return 'unnumbered_list'
 
-    run_text = run.text
+    text = paragraph.text.strip()
 
-    # Check for bullet markers
-    if run_text.startswith('•') or run_text.startswith('◦') or run_text.startswith('-'):
+    # Check for bullet markers at the start of the paragraph text (more robust)
+    if (text.startswith('•') or text.startswith('◦') or text.startswith('-') or
+        text.startswith('–') or text.startswith('—') or text.startswith('·')):
         return 'unnumbered_list'
 
     # Check for numbered markers
-    if any(run_text.startswith(str(i) + '.') for i in range(1, 10)):
+    if any(text.startswith(str(i) + '.') for i in range(1, 10)):
         return 'numbered_list'
 
     # Check for indentation (heuristic)
     if paragraph.paragraph_format.left_indent and paragraph.paragraph_format.left_indent > Inches(0):
         # Additional check for list-like content
-        if run_text.strip() and len(run_text.strip()) < 100:  # Shorter lines likely lists
+        if text and len(text) < 100:  # Shorter lines likely lists
             return 'unnumbered_list'
+
+    # Heuristic for list items ending with semicolon (common in Russian documents)
+    if text.strip().endswith(';') and len(text.strip()) < 200:
+        return 'unnumbered_list'
 
     return ''
 
@@ -249,7 +253,7 @@ def _clean_list_item_text(paragraph, list_type: str) -> str:
     """Clean list item text by removing markers."""
     text = paragraph.text
     if list_type == 'unnumbered_list':
-        text = re.sub(r'^[•◦\-]\s*', '', text)
+        text = re.sub(r'^[•◦\-\–—·]\s*', '', text)
     elif list_type == 'numbered_list':
         text = re.sub(r'^\d+\.\s*', '', text)
     return text.strip()

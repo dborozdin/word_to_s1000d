@@ -207,7 +207,7 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     if split_into_modules:
         log_path = generate_content_analysis_log(doc_path, analysis_results, output_dir)
 
-    # Analyze document elements for logging
+    # Analyze document elements for logging and XML generation
     print("Analyzing document elements...")
     elements = analyze_document_elements(doc)
 
@@ -246,22 +246,13 @@ def process_descriptive_document(doc_path: str, output_dir: str):
 
         # Prepare combined content for this module
         combined_content = {
-            "paragraphs": [],
-            "tables": [],
-            "lists": []
+            "xml_parts": []
         }
 
         # Combine content from all sections in this group
         for section in sections_in_group:
-            section_content = assemble_content_for_section(section, doc, tables, lists_data)
-            combined_content["paragraphs"].extend(section_content["paragraphs"])
-            combined_content["lists"].extend(section_content["lists"])
-
-        # Add all tables
-        for table_ref, table_data in tables.items():
-            from parsers.table_parser import convert_table_to_s1000d_format
-            table_xml = convert_table_to_s1000d_format(table_data)
-            combined_content["tables"].append(table_xml)
+            section_content = assemble_content_for_section(section, doc, tables, lists_data, elements)
+            combined_content["xml_parts"].extend(section_content["xml_parts"])
 
         # Determine DM code based on section type
         dm_code = get_dm_code_for_section(representative_section, component_counter)
@@ -492,48 +483,92 @@ def group_sections_by_type(headings: List[str]) -> Dict[str, List[int]]:
     return groups
 
 
-def assemble_content_for_section(section: Dict, document: Document, tables: Dict[str, Dict], lists_data: List[Dict]) -> Dict:
+def assemble_content_for_section(section: Dict, document: Document, tables: Dict[str, Dict], lists_data: List[Dict], elements: List[Dict]) -> Dict:
     """
-    Assemble content for a specific analyzed section.
+    Assemble content for a specific analyzed section using element analysis.
 
     Args:
         section: Section dictionary from content analysis
         document: Document object
         tables: Dict of table references
         lists_data: List of parsed lists
+        elements: List of analyzed elements
 
     Returns:
-        Content dict with paragraphs, tables, lists
+        Content dict with xml_parts
     """
-    content = {
-        "paragraphs": [],
-        "tables": [],
-        "lists": []
-    }
+    xml_parts = []
 
     # Extract content from the section's paragraph range
     start_para = section.get('start_para', 0)
     end_para = section.get('end_para', len(document.paragraphs) - 1)
 
-    for para_idx in range(start_para, min(end_para + 1, len(document.paragraphs))):
-        para = document.paragraphs[para_idx]
-        text = para.text.strip()
-        if text:
-            content["paragraphs"].append(text)
+    # Get elements in this section
+    section_elements = [elem for elem in elements if start_para <= elem.get('start_para', 0) <= end_para]
 
-    # Add relevant lists (simplified - add all for now)
-    for list_data in lists_data:
-        if list_data.get('items'):
-            list_xml = convert_list_to_s1000d_randomlist(list_data)
-            content["lists"].append(list_xml)
+    # Group consecutive list items
+    current_list_items = []
+    current_list_type = None
 
-    # Add relevant tables (simplified - add all for now)
+    def flush_current_list():
+        nonlocal current_list_items, current_list_type, xml_parts
+        if current_list_items:
+            # Generate randomList XML wrapped in para to conform to schema
+            items_xml = ''.join([f"<listItem><para>{item}</para></listItem>" for item in current_list_items])
+            prefix = 'pf02' if current_list_type == 'unnumbered_list' else 'nfp01'
+            list_xml = f'<randomList listItemPrefix="{prefix}">{items_xml}</randomList>'
+            xml_parts.append(f'<para>{list_xml}</para>')
+            current_list_items = []
+            current_list_type = None
+
+    for elem in section_elements:
+        elem_type = elem.get('type', 'paragraph')
+        content = elem.get('content', '')
+
+        if elem_type == 'header':
+            # Flush any pending list before adding header
+            flush_current_list()
+            # Generate levelledPara for headers
+            level = 1  # Default level
+            if 'level' in elem.get('details', ''):
+                import re
+                match = re.search(r'Уровень (\d+)', elem.get('details', ''))
+                if match:
+                    level = int(match.group(1))
+            xml_parts.append(f'<levelledPara><title>{content}</title></levelledPara>')
+        elif elem_type in ['numbered_list', 'unnumbered_list']:
+            # Check if this continues the current list
+            if elem_type == current_list_type:
+                current_list_items.append(content)
+            else:
+                # Flush previous list and start new one
+                flush_current_list()
+                current_list_type = elem_type
+                current_list_items = [content]
+        else:
+            # Flush any pending list before adding other elements
+            flush_current_list()
+            if elem_type == 'table':
+                # Tables - but tables are handled separately
+                pass
+            elif elem_type == 'illustration':
+                xml_parts.append('<figure><title>Название иллюстрации</title><graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC0"/></figure>')
+            elif elem_type == 'warning':
+                xml_parts.append(f'<warning><para>{content}</para></warning>')
+            else:
+                # Default paragraph
+                xml_parts.append(f'<para>{content}</para>')
+
+    # Flush any remaining list
+    flush_current_list()
+
+    # Add tables (simplified - add all for now)
     from parsers.table_parser import convert_table_to_s1000d_format
     for table_ref, table_data in tables.items():
         table_xml = convert_table_to_s1000d_format(table_data)
-        content["tables"].append(table_xml)
+        xml_parts.append(table_xml)
 
-    return content
+    return {"xml_parts": xml_parts}
 
 
 def get_dm_code_for_section(section: Dict, component_counter: int) -> Dict:

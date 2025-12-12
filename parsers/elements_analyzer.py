@@ -238,9 +238,15 @@ def _get_list_type(paragraph) -> str:
 
     # Check for indentation (heuristic)
     if paragraph.paragraph_format.left_indent and paragraph.paragraph_format.left_indent > Inches(0):
-        # Additional check for list-like content
-        if text and len(text) < 100:  # Shorter lines likely lists
+        # Indented paragraphs are likely lists
+        # Special case for long paragraphs ending with '.' (common in Russian documents)
+        if len(text) >= 100 and text.strip().endswith('.'):
             return 'unnumbered_list'
+        return 'unnumbered_list'
+
+    # Special case for long paragraphs ending with '.' even if not indented
+    if len(text) >= 100 and text.strip().endswith('.'):
+        return 'unnumbered_list'
 
     # Heuristic for list items ending with semicolon (common in Russian documents)
     if text.strip().endswith(';') and len(text.strip()) < 200:

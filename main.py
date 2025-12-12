@@ -6,6 +6,7 @@ Determines module type and delegates to appropriate processing script.
 from typing import Dict, Optional
 import sys
 import os
+import configparser
 
 
 def determine_module_type(doc_path: str) -> str:
@@ -57,12 +58,16 @@ def route_to_processor(module_type: str, doc_path: str, output_dir: str):
 
 def main():
     """Main entry point."""
-    if len(sys.argv) != 3:
-        print("Usage: python main.py <docx_file> <output_directory>")
+    if len(sys.argv) != 2:
+        print("Usage: python main.py <docx_file>")
         sys.exit(1)
 
     doc_path = sys.argv[1]
-    output_dir = sys.argv[2]
+
+    # Read configuration
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    output_dir = config.get('processing', 'output_dir', fallback='./tg_web/publications')
 
     if not os.path.exists(doc_path):
         print(f"Error: Document file not found: {doc_path}")

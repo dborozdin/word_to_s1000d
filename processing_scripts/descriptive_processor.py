@@ -1,10 +1,11 @@
 """
 Descriptive module processor.
-Orchestrates parsing, maps sections to infoCodes, and generates multiple XML files.
+Orchestrate parsing, maps sections to infoCodes, and generates multiple XML files.
 """
 
 import os
 import re
+import configparser
 from typing import Dict, List
 from docx import Document
 
@@ -178,6 +179,12 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     """
     print(f"Processing descriptive document: {doc_path}")
 
+    # Read configuration
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    split_into_modules = config.getboolean('processing', 'split_into_modules', fallback=False)
+    print(f"Split into modules: {split_into_modules}")
+
     # Load document
     doc = Document(doc_path)
 
@@ -216,7 +223,7 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     module_mapping = {}  # filename -> module_data
 
     # Group sections by their unique characteristics for module generation
-    section_groups = group_sections_for_modules(analysis_results)
+    section_groups = group_sections_for_modules(analysis_results, split_into_modules)
 
     for group_key, group_info in section_groups.items():
         sections_in_group = group_info['sections']
@@ -298,16 +305,29 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     return generated_files
 
 
-def group_sections_for_modules(analysis_results: List[Dict]) -> Dict[str, Dict]:
+def group_sections_for_modules(analysis_results: List[Dict], split_into_modules: bool) -> Dict[str, Dict]:
     """
     Group sections that should be combined into the same module.
 
     Args:
         analysis_results: Results from analyze_document_content
+        split_into_modules: Whether to split into multiple modules or combine into one
 
     Returns:
         Dict mapping group keys to group info with sections
     """
+    if not split_into_modules:
+        # Combine all sections into a single module
+        all_info_names = [section.get('info_name', 'unknown') for section in analysis_results]
+        combined_info_name = ', '.join(set(all_info_names)) if all_info_names else 'Combined document'
+        return {
+            'combined': {
+                'sections': analysis_results,
+                'info_name': combined_info_name
+            }
+        }
+
+    # Original logic: split into multiple modules
     groups = {}
 
     for section in analysis_results:

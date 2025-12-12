@@ -13,7 +13,7 @@ from docx.document import Document as DocxDocument
 from docx.oxml.shape import CT_Picture
 
 
-def extract_illustrations(doc: Document, output_dir: str = "output") -> Dict[str, str]:
+def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publications") -> Dict[str, str]:
     """
     Extract embedded images from document and save to output/graphics directory with S1000D naming.
 

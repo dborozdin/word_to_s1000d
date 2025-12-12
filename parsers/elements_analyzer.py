@@ -79,6 +79,61 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
             level_match = re.search(r'Heading\s*(\d+)', style_name, re.IGNORECASE)
             level = int(level_match.group(1)) if level_match else 1
 
+            # If text has multiple lines, treat first line as title, rest as separate paragraph
+            if '\n' in text:
+                lines = text.split('\n', 1)
+                title = lines[0].strip()
+                body = lines[1].strip()
+                # Add header
+                element_info = {
+                    'type': 'header',
+                    'start_line': para_start_line,
+                    'start_char': para_start_char,
+                    'end_line': para_start_line,  # Header ends at first line
+                    'end_char': para_start_char + len(lines[0]),
+                    'start_para': para_idx,
+                    'end_para': para_idx,
+                    'content': title,
+                    'xml_example': f'<levelledPara><title>{title}</title></levelledPara>',
+                    'details': f'Уровень {level}'
+                }
+                elements.append(element_info)
+                # Add paragraph for the rest
+                if body:
+                    para_start_line_body = para_start_line + 1
+                    para_start_char_body = 0  # Assume new line
+                    element_info_para = {
+                        'type': 'paragraph',
+                        'start_line': para_start_line_body,
+                        'start_char': para_start_char_body,
+                        'end_line': para_end_line,
+                        'end_char': para_end_char,
+                        'start_para': para_idx,
+                        'end_para': para_idx,
+                        'content': body,
+                        'xml_example': f'<para>{body}</para>',
+                        'details': 'Параграф'
+                    }
+                    elements.append(element_info_para)
+                continue
+            else:
+                element_info = {
+                    'type': 'header',
+                    'start_line': para_start_line,
+                    'start_char': para_start_char,
+                    'end_line': para_end_line,
+                    'end_char': para_end_char,
+                    'start_para': para_idx,
+                    'end_para': para_idx,
+                    'content': text,
+                    'xml_example': f'<levelledPara><title>{text}</title></levelledPara>',
+                    'details': f'Уровень {level}'
+                }
+                elements.append(element_info)
+                continue
+
+        # Detect main section headers (like 1., 2., etc.)
+        if _is_main_section_header(text):
             element_info = {
                 'type': 'header',
                 'start_line': para_start_line,
@@ -89,7 +144,7 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
                 'end_para': para_idx,
                 'content': text,
                 'xml_example': f'<levelledPara><title>{text}</title></levelledPara>',
-                'details': f'Уровень {level}'
+                'details': 'Уровень 1'
             }
             elements.append(element_info)
             continue
@@ -190,6 +245,17 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
             elements.append(element_info)
 
         # Default: paragraph
+        # If text has multiple lines, treat first line as title, rest as content
+        if '\n' in text:
+            lines = text.split('\n', 1)
+            title = lines[0].strip()
+            body = lines[1].strip()
+            content = f'<title>{title}</title>{body}'
+            xml_example = f'<para><title>{title}</title>{body}</para>'
+        else:
+            content = text
+            xml_example = f'<para>{text}</para>'
+
         element_info = {
             'type': 'paragraph',
             'start_line': para_start_line,
@@ -198,8 +264,8 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
             'end_char': para_end_char,
             'start_para': para_idx,
             'end_para': para_idx,
-            'content': text,
-            'xml_example': f'<para>{text}</para>',
+            'content': content,
+            'xml_example': xml_example,
             'details': 'Параграф'
         }
         elements.append(element_info)
@@ -219,13 +285,23 @@ def _is_table_start(paragraph) -> bool:
     return False
 
 
+def _is_main_section_header(text: str) -> bool:
+    """Check if text is a main section header (1., 2., 3., etc.)."""
+    pattern = r'^\s*\d+\.?\s+'
+    return bool(re.match(pattern, text))
+
+
 def _get_list_type(paragraph) -> str:
     """Get list type for paragraph."""
+    text = paragraph.text.strip()
+
+    # Skip section headers
+    if _is_main_section_header(text):
+        return ''
+
     # Check if paragraph is formatted as a list in Word
     if hasattr(paragraph.paragraph_format, 'numPr') and paragraph.paragraph_format.numPr is not None:
         return 'unnumbered_list'
-
-    text = paragraph.text.strip()
 
     # Check for bullet markers at the start of the paragraph text (more robust)
     if (text.startswith('•') or text.startswith('◦') or text.startswith('-') or

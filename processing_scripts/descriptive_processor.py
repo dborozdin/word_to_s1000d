@@ -521,7 +521,48 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             current_list_items = []
             current_list_type = None
 
-    for elem in section_elements:
+    # Pre-process elements to clean up table references in paragraphs
+    processed_elements = []
+    for i, elem in enumerate(section_elements):
+        elem_type = elem.get('type', 'paragraph')
+        content = elem.get('content', '')
+
+        # Check if this is a paragraph that contains a table reference and is followed by a table
+        if elem_type == 'paragraph' and i < len(section_elements) - 1:
+            next_elem = section_elements[i + 1]
+            if next_elem.get('type') == 'table':
+                table_title = next_elem.get('content', '')
+                if table_title:
+                    # Remove table references from paragraph content
+                    import re
+                    # Remove patterns like "(Таблица 1)", "Таблица 1", "ТАБЛИЦА 1", etc.
+                    patterns = [
+                        r'\s*\([Тт]аблица\s*\d+\)\s*',
+                        r'\s*[Тт]аблица\s*\d+\s*',
+                        r'\s*[Тт]аб\.\s*\d+\s*',
+                        r'\s*[Тт]абл\.\s*\d+\s*'
+                    ]
+                    for pattern in patterns:
+                        content = re.sub(pattern, '', content, flags=re.IGNORECASE)
+
+                    # Clean up extra whitespace and trailing punctuation
+                    content = content.strip()
+                    if content.endswith('.,'):
+                        content = content[:-2]
+                    elif content.endswith(','):
+                        content = content[:-1]
+                    elif content.endswith('.'):
+                        pass  # Keep the period
+                    else:
+                        pass
+
+                    # Update the element content
+                    elem = elem.copy()
+                    elem['content'] = content
+
+        processed_elements.append(elem)
+
+    for elem in processed_elements:
         elem_type = elem.get('type', 'paragraph')
         content = elem.get('content', '')
 
@@ -549,8 +590,10 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             # Flush any pending list before adding other elements
             flush_current_list()
             if elem_type == 'table':
-                # Tables - but tables are handled separately
-                pass
+                # Use the enhanced table XML from element analysis
+                table_xml = elem.get('xml_example', '')
+                if table_xml:
+                    xml_parts.append(table_xml)
             elif elem_type == 'illustration':
                 xml_parts.append('<figure><title>Название иллюстрации</title><graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC0"/></figure>')
             elif elem_type == 'warning':
@@ -561,12 +604,6 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
 
     # Flush any remaining list
     flush_current_list()
-
-    # Add tables (simplified - add all for now)
-    from parsers.table_parser import convert_table_to_s1000d_format
-    for table_ref, table_data in tables.items():
-        table_xml = convert_table_to_s1000d_format(table_data)
-        xml_parts.append(table_xml)
 
     return {"xml_parts": xml_parts}
 

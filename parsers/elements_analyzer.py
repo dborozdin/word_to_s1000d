@@ -31,48 +31,95 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
     line_number = 1
     char_position = 0
 
-    # Process paragraphs
-    for para_idx, paragraph in enumerate(doc.paragraphs):
-        text = paragraph.text.strip()
-        style_name = paragraph.style.name
+    # Process both paragraphs and tables in document order
+    # Get all document elements (paragraphs and tables) in order
+    doc_elements = []
+    para_idx = 0
+    table_idx = 0
 
-        # Update position tracking
-        para_start_line = line_number
-        para_start_char = char_position
+    for element in doc.element.body:
+        if element.tag.endswith('p'):  # Paragraph
+            if para_idx < len(doc.paragraphs):
+                doc_elements.append(('paragraph', para_idx))
+                para_idx += 1
+        elif element.tag.endswith('tbl'):  # Table
+            if table_idx < len(doc.tables):
+                doc_elements.append(('table', table_idx))
+                table_idx += 1
 
-        # Add paragraph text to cumulative text (including original formatting for position tracking)
-        original_text = paragraph.text
+    # Extract enhanced table data with titles
+    from parsers.table_parser import extract_enhanced_tables_with_titles
+    enhanced_tables = extract_enhanced_tables_with_titles(doc)
 
-        # Count newlines and characters
-        newline_count = original_text.count('\n')
-        line_number += newline_count
-        if newline_count > 0:
-            char_position = len(original_text.split('\n')[-1])
-        else:
-            char_position += len(original_text)
+    # Process elements in document order
+    current_table_idx = 0
+    for i, (element_type, element_idx) in enumerate(doc_elements):
+        if element_type == 'table':
+            # Handle table element with enhanced data
+            table_data = enhanced_tables[current_table_idx] if current_table_idx < len(enhanced_tables) else None
+            current_table_idx += 1
 
-        para_end_line = line_number
-        para_end_char = char_position
+            # Update position tracking for table
+            table_start_line = line_number
+            table_start_char = char_position
 
-        if not text:
-            continue
+            # Approximate table size (simplified - assume 1 line per row)
+            table_rows = len(table_data['rows']) if table_data else 1
+            line_number += table_rows
+            char_position = 0  # Reset to start of line
 
-        # Detect table paragraphs (tables appear as special paragraphs)
-        if _is_table_start(paragraph):
+            table_end_line = line_number
+            table_end_char = char_position
+
+            # Create enhanced table XML
+            if table_data:
+                from parsers.table_parser import convert_enhanced_table_to_s1000d_format
+                table_xml = convert_enhanced_table_to_s1000d_format(table_data)
+            else:
+                table_xml = '<table><tgroup cols="2"><tbody><row><entry>Ячейка 1</entry><entry>Ячейка 2</entry></row></tbody></tgroup></table>'
+
+            # Create table element
             element_info = {
                 'type': 'table',
-                'start_line': para_start_line,
-                'start_char': para_start_char,
-                'end_line': para_end_line,
-                'end_char': para_end_char,
-                'start_para': para_idx,
-                'end_para': para_idx,  # Tables might span multiple paras, but for simplicity
-                'content': 'Таблица',
-                'xml_example': '<table><tgroup cols="2"><tbody><row><entry>Ячейка 1</entry><entry>Ячейка 2</entry></row></tbody></tgroup></table>',
-                'details': 'Таблица'
+                'start_line': table_start_line,
+                'start_char': table_start_char,
+                'end_line': table_end_line,
+                'end_char': table_end_char,
+                'start_para': para_idx,  # Use current para_idx as approximation
+                'end_para': para_idx,
+                'content': table_data.get('title', f'Таблица {element_idx + 1}') if table_data else f'Таблица {element_idx + 1}',
+                'xml_example': table_xml,
+                'details': f'Таблица {element_idx + 1}'
             }
             elements.append(element_info)
             continue
+        else:
+            # Handle paragraph element
+            paragraph = doc.paragraphs[element_idx]
+            para_idx = element_idx
+            text = paragraph.text.strip()
+            style_name = paragraph.style.name
+
+            # Update position tracking
+            para_start_line = line_number
+            para_start_char = char_position
+
+            # Add paragraph text to cumulative text (including original formatting for position tracking)
+            original_text = paragraph.text
+
+            # Count newlines and characters
+            newline_count = original_text.count('\n')
+            line_number += newline_count
+            if newline_count > 0:
+                char_position = len(original_text.split('\n')[-1])
+            else:
+                char_position += len(original_text)
+
+            para_end_line = line_number
+            para_end_char = char_position
+
+            if not text:
+                continue
 
         # Detect headers/headings
         if style_name.startswith('Heading'):
@@ -274,7 +321,48 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
     if current_list:
         _update_list_end_para(elements, len(doc.paragraphs) - 1)
 
-    return elements
+    # Post-process elements to clean up table references in paragraphs that precede tables
+    processed_elements = []
+    for i, elem in enumerate(elements):
+        elem_type = elem.get('type', 'paragraph')
+        content = elem.get('content', '')
+
+        # Check if this is a paragraph that contains a table reference and is followed by a table
+        if elem_type == 'paragraph' and i < len(elements) - 1:
+            next_elem = elements[i + 1]
+            if next_elem.get('type') == 'table':
+                table_title = next_elem.get('content', '')
+                if table_title:
+                    # Remove table references from paragraph content
+                    # Remove patterns like "(Таблица 1)", "Таблица 1", "ТАБЛИЦА 1", etc.
+                    patterns = [
+                        r'\s*\([Тт]аблица\s*\d+\)\s*',
+                        r'\s*[Тт]аблица\s*\d+\s*',
+                        r'\s*[Тт]аб\.\s*\d+\s*',
+                        r'\s*[Тт]абл\.\s*\d+\s*'
+                    ]
+                    for pattern in patterns:
+                        content = re.sub(pattern, '', content, flags=re.IGNORECASE)
+
+                    # Clean up extra whitespace and trailing punctuation
+                    content = content.strip()
+                    if content.endswith('.,'):
+                        content = content[:-2]
+                    elif content.endswith(','):
+                        content = content[:-1]
+                    elif content.endswith('.'):
+                        pass  # Keep the period
+                    else:
+                        pass
+
+                    # Update the element content and XML example
+                    elem = elem.copy()
+                    elem['content'] = content
+                    elem['xml_example'] = f'<para>{content}</para>'
+
+        processed_elements.append(elem)
+
+    return processed_elements
 
 
 def _is_table_start(paragraph) -> bool:

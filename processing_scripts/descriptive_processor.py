@@ -16,8 +16,9 @@ from parsers.list_parser import extract_lists, convert_list_to_s1000d_randomlist
 from parsers.illustration_parser import extract_illustrations, find_image_references, map_figures_to_illustrations
 from parsers.content_analyzer import analyze_document_content, generate_content_analysis_log, get_content_for_info_name
 
-# Import generator
+# Import generators
 from generators.s1000d_generator import S1000DGenerator, create_data_module_config
+from generators.pm_generator import PMGenerator, create_pm_config, create_dm_ref_data
 
 
 def extract_document_title(document: Document) -> str:
@@ -214,9 +215,11 @@ def process_descriptive_document(doc_path: str, output_dir: str):
 
     # Initialize generator
     generator = S1000DGenerator()
+    pm_generator = PMGenerator()
 
     # Generate data modules based on content analysis
     generated_files = []
+    dm_refs = []  # List to collect DM references for PM
     component_counter = 0
 
     # Track mapping of sections to modules for logging
@@ -281,6 +284,14 @@ def process_descriptive_document(doc_path: str, output_dir: str):
         filepath = generator.generate_data_module(dm_config, output_dir)
         generated_files.append(filepath)
 
+        # Collect DM ref for PM generation
+        dm_ref = create_dm_ref_data(
+            dm_code,
+            document_title,  # techName
+            representative_section.get('info_name', 'Неопределен')  # infoName
+        )
+        dm_refs.append(dm_ref)
+
         # Track mapping for logging
         filename = os.path.basename(filepath)
         module_mapping[filename] = {
@@ -295,7 +306,22 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     from parsers.content_analyzer import generate_module_mapping_log
     mapping_log_path = generate_module_mapping_log(doc_path, module_mapping, output_dir)
 
-    print(f"\nGenerated {len(generated_files)} data module files:")
+    # Generate Publication Module (PMC)
+    if dm_refs:
+        # Use fixed modelIdentCode from first DM or extract short code
+        first_dm = dm_refs[0] if dm_refs else None
+        model_code = first_dm['dm_code'].get('modelIdentCode', 'S5') if first_dm else 'S5'
+        pm_config = create_pm_config(
+            model_ident_code=model_code,
+            pm_title=document_title,
+            enterprise_name=organization,
+            originator_name=organization
+        )
+        pm_filepath = pm_generator.generate_publication_module(pm_config, dm_refs, output_dir)
+        generated_files.append(pm_filepath)
+        print(f"Generated publication module: {os.path.basename(pm_filepath)}")
+
+    print(f"\nGenerated {len(generated_files)} files:")
     for filepath in generated_files:
         print(f"  - {os.path.basename(filepath)}")
 

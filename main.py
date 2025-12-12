@@ -58,16 +58,21 @@ def route_to_processor(module_type: str, doc_path: str, output_dir: str):
 
 def main():
     """Main entry point."""
-    if len(sys.argv) != 2:
-        print("Usage: python main.py <docx_file>")
-        sys.exit(1)
-
-    doc_path = sys.argv[1]
-
     # Read configuration
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read('config.ini', encoding='utf-8')
     output_dir = config.get('processing', 'output_dir', fallback='./tg_web/publications')
+    input_dir = config.get('processing', 'input_dir', fallback='./docs')
+
+    if len(sys.argv) == 2:
+        doc_path = sys.argv[1]
+    elif len(sys.argv) == 1:
+        docx_file = config.get('processing', 'docx_file')
+        doc_path = os.path.join(input_dir, docx_file)
+    else:
+        print("Usage: python main.py [<docx_file>]")
+        print("If no argument provided, docx_file will be read from config.ini")
+        sys.exit(1)
 
     if not os.path.exists(doc_path):
         print(f"Error: Document file not found: {doc_path}")

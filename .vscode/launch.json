@@ -4,12 +4,22 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-    
+
         {
-            "name": "Python Debugger: Module",
+            "name": "Python Debugger: main.py",
             "type": "debugpy",
             "request": "launch",
-            "module": "docx_to_s1000d_convertor"
+            "program": "main.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Word to S1000D Converter",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "args": ["docs/РСУ_адаптированная.docx"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

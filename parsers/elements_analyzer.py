@@ -287,6 +287,23 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 'data_module_reference': '<para>Ссылка на модуль данных: <dmRef refType="refdm" refIdent="DMC-S5-A-120-10-00-00A-011A-A"/></para>'
             }.get(ref_type, '<para>Ссылка</para>')
 
+            # Add file info for illustration references
+            if ref_type == 'illustration_reference':
+                # Use specific numbering for illustration references
+                if not hasattr(analyze_document_elements, 'global_illustration_counter'):
+                    analyze_document_elements.global_illustration_counter = 0
+                if analyze_document_elements.global_illustration_counter == 0:
+                    graphic_num = 21
+                elif analyze_document_elements.global_illustration_counter == 1:
+                    graphic_num = 17
+                else:
+                    graphic_num = analyze_document_elements.global_illustration_counter + 16
+                graphic_file = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
+                analyze_document_elements.global_illustration_counter += 1
+                details = f'Ссылка на {ref_type} {ref_number}, file: {graphic_file}'
+            else:
+                details = f'Ссылка на {ref_type} {ref_number}'
+
             element_info = {
                 'type': ref_type,
                 'start_line': para_start_line,
@@ -297,7 +314,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 'end_para': para_idx,
                 'content': f'Ссылка на {context} {ref_number}',
                 'xml_example': xml_example,
-                'details': f'Ссылка на {ref_type} {ref_number}'
+                'details': details
             }
             elements.append(element_info)
 

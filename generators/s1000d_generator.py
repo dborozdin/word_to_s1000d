@@ -128,10 +128,14 @@ class S1000DGenerator:
 
         return section
 
-    def _create_content_section(self, content_data: Dict) -> ET.Element:
+    def _create_content_section(self, content_data: Dict, figure_info: List = None) -> ET.Element:
         """Create content section."""
         content = ET.Element("content")
         description = ET.SubElement(content, "description")
+
+        # Track unique IDs for figures and graphics
+        figure_id_counter = 1
+        graphic_id_counter = 1
 
         # If xml_parts are provided, process them according to S1000D structure
         if 'xml_parts' in content_data:
@@ -162,13 +166,21 @@ class S1000DGenerator:
                                     entry.text = None
                             description.append(part_elem)
                             current_levelled_para = None  # Reset after table
-                        elif part_elem.tag in ['randomList', 'definitionList']:
+                        elif part_elem.tag == 'randomList':
                             # Lists are direct children of description
                             description.append(part_elem)
                             current_levelled_para = None  # Reset after list
                         elif part_elem.tag == 'figure':
+                            # Fix figure and graphic IDs to be unique
+                            figure_elem = part_elem
+                            figure_elem.set('id', f'fig{figure_id_counter}')
+                            for graphic in figure_elem:
+                                if graphic.tag == 'graphic':
+                                    graphic.set('id', f'gra{figure_id_counter}')
+                                    figure_id_counter += 1
+                                    break
                             # Figures are direct children of description
-                            description.append(part_elem)
+                            description.append(figure_elem)
                             current_levelled_para = None  # Reset after figure
                         elif part_elem.tag == 'warning':
                             # Convert any <para> inside warning to <warningAndCautionPara>
@@ -221,21 +233,50 @@ class S1000DGenerator:
 
         return content
 
-    def generate_data_module(self, dm_config: Dict, output_path: str) -> str:
+    def generate_data_module(self, dm_config: Dict, output_path: str, illustrations: Dict[str, str] = None, figure_info: List = None) -> str:
         """
         Generate complete S1000D data module XML.
 
         Args:
             dm_config: Configuration dict with 'dm_code', 'title', 'content'
             output_path: Directory to save XML file
+            illustrations: Dict of illustration infoEntityIdent to file paths
 
         Returns:
             Path to generated XML file
         """
         dmodule = self._create_base_xml_structure()
 
-        # Add DOCTYPE
-        doctype = '<!DOCTYPE dmodule [\n<!NOTATION jpg PUBLIC "+//ISBN 0-7923-9432-1::Graphic Notation//NOTATION Joint Photographic Experts Group Raster//EN">\n<!ENTITY PUBLICATION_LOGO SYSTEM "publication_logo.JPG" NDATA jpg>\n]>'
+        # Add DOCTYPE with illustrations
+        doctype_lines = [
+            '<!DOCTYPE dmodule [',
+            '<!NOTATION jpg PUBLIC "+//ISBN 0-7923-9432-1::Graphic Notation//NOTATION Joint Photographic Experts Group Raster//EN">',
+            '<!ENTITY PUBLICATION_LOGO SYSTEM "publication_logo.JPG" NDATA jpg>'
+        ]
+
+        # Collect all entity declarations to avoid duplicates
+        entity_declarations = set()
+
+        # Add ENTITY declarations for all illustrations
+        if illustrations:
+            for info_entity_ident, file_path in illustrations.items():
+                filename = os.path.basename(file_path)
+                # Use full filename as entity name
+                entity_declarations.add(f'<!ENTITY {info_entity_ident} SYSTEM "{filename}" NDATA jpg>')
+
+        # Add ENTITY declarations for figure_info
+        if figure_info:
+            for fig in figure_info:
+                file_path = fig['file']
+                filename = os.path.basename(file_path)
+                entity_name = filename.replace('.jpg', '')  # Remove extension for entity name
+                entity_declarations.add(f'<!ENTITY {entity_name} SYSTEM "{filename}" NDATA jpg>')
+
+        # Add unique entity declarations
+        doctype_lines.extend(sorted(entity_declarations))
+
+        doctype_lines.append(']>')
+        doctype = '\n'.join(doctype_lines)
 
         # Add sections
         ident_section = self._create_ident_and_status_section(
@@ -244,7 +285,7 @@ class S1000DGenerator:
         )
         dmodule.append(ident_section)
 
-        content_section = self._create_content_section(dm_config['content'])
+        content_section = self._create_content_section(dm_config['content'], figure_info)
         dmodule.append(content_section)
 
         # Generate filename

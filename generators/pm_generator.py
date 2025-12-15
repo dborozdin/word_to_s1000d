@@ -289,6 +289,7 @@ class PMGenerator:
         if illustrations:
             for info_entity_ident, file_path in illustrations.items():
                 filename = os.path.basename(file_path)
+                # Use full filename as entity name
                 doctype_lines.append(f'<!ENTITY {info_entity_ident} SYSTEM "{filename}" NDATA jpg>')
 
         doctype_lines.append(']>')

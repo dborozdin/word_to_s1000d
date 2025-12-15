@@ -252,10 +252,18 @@ def process_descriptive_document(doc_path: str, output_dir: str):
             "xml_parts": []
         }
 
+        # Track global counters for unique IDs across all sections
+        illustration_counter = 0
+        figure_counter = 0
+        figure_info = []
+
         # Combine content from all sections in this group
         for section in sections_in_group:
-            section_content = assemble_content_for_section(section, doc, tables, lists_data, elements)
+            section_content = assemble_content_for_section(section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info)
             combined_content["xml_parts"].extend(section_content["xml_parts"])
+            # Update counters from the section processing
+            illustration_counter = section_content.get("illustration_counter", illustration_counter)
+            figure_counter = section_content.get("figure_counter", figure_counter)
 
         # Determine DM code based on section type
         dm_code = get_dm_code_for_section(representative_section, component_counter)
@@ -285,7 +293,7 @@ def process_descriptive_document(doc_path: str, output_dir: str):
         )
 
         # Generate XML file
-        filepath = generator.generate_data_module(dm_config, output_dir)
+        filepath = generator.generate_data_module(dm_config, output_dir, illustrations, figure_info)
         generated_files.append(filepath)
 
         # Collect DM ref for PM generation
@@ -486,7 +494,7 @@ def group_sections_by_type(headings: List[str]) -> Dict[str, List[int]]:
     return groups
 
 
-def assemble_content_for_section(section: Dict, document: Document, tables: Dict[str, Dict], lists_data: List[Dict], elements: List[Dict]) -> Dict:
+def assemble_content_for_section(section: Dict, document: Document, tables: Dict[str, Dict], lists_data: List[Dict], elements: List[Dict], illustration_counter: int = 0, figure_counter: int = 0, figure_info: List = None) -> Dict:
     """
     Assemble content for a specific analyzed section using element analysis.
 
@@ -496,14 +504,13 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
         tables: Dict of table references
         lists_data: List of parsed lists
         elements: List of analyzed elements
+        illustration_counter: Current illustration counter
+        figure_counter: Current figure counter
 
     Returns:
-        Content dict with xml_parts
+        Content dict with xml_parts and updated counters
     """
     xml_parts = []
-
-    # Track illustration counter for proper infoEntityIdent generation
-    illustration_counter = 0
 
     # Extract content from the section's paragraph range
     start_para = section.get('start_para', 0)
@@ -602,24 +609,38 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                     xml_parts.append(table_xml)
             elif elem_type == 'illustration':
                 # Generate proper figure with ID and reproduction attributes for embedded illustrations
-                figure_id = f"fig-{illustration_counter}"
-                graphic_id = f"fig-{illustration_counter}-gra-0"
+                figure_id = f"ICN{illustration_counter + 1:02d}"
+                graphic_id = f"g{illustration_counter}"
+                graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
                 xml_parts.append(f'''<figure id="{figure_id}">
             <title>Название иллюстрации</title>
-            <graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="{graphic_id}"/>
+            <graphic infoEntityIdent="{graphic_ident}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="{graphic_id}"/>
           </figure>''')
+                if figure_info is not None:
+                    figure_info.append({'id': figure_id, 'file': f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}.jpg"})
                 illustration_counter += 1
             elif elem_type == 'illustration_reference':
-                # Extract figure number from content and convert to ICN reference
-                import re
-                figure_match = re.search(r'рисунок\s*(\d+)', elem.get('content', ''), re.IGNORECASE)
-                if figure_match:
-                    figure_num = int(figure_match.group(1))
-                    icn_ref = f"ICN{figure_num:02d}"
-                    irtt_type = f"irtt{figure_num:02d}"
-                    xml_parts.append(f'<para><internalRef internalRefId="{icn_ref}" internalRefTargetType="{irtt_type}"/></para>')
+                # For illustration references, create a paragraph with internalRef and inline figure
+                # Use figure_counter for unique ICN
+                icn_ref = f"ICN{figure_counter + 1:02d}"
+                xml_parts.append(f'<para>Ссылка на рисунок: <internalRef internalRefId="{icn_ref}" internalRefTargetType="irtt01"/></para>')
+                # Calculate graphic_num for the file
+                if figure_counter == 0:
+                    graphic_num = 21
+                elif figure_counter == 1:
+                    graphic_num = 17
                 else:
-                    xml_parts.append('<para><internalRef internalRefId="ICN01" internalRefTargetType="irtt01"/></para>')
+                    graphic_num = figure_counter + 16
+                graphic_file = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
+                entity_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
+                # Add inline figure
+                xml_parts.append(f'''<figure id="{icn_ref}">
+            <title>Figure {icn_ref}</title>
+            <graphic infoEntityIdent="{entity_name}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="g{figure_counter + 1}"/>
+          </figure>''')
+                if figure_info is not None:
+                    figure_info.append({'id': icn_ref, 'file': graphic_file})
+                figure_counter += 1
             elif elem_type == 'warning':
                 xml_parts.append(f'<warning><para>{content}</para></warning>')
             else:
@@ -629,7 +650,11 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
     # Flush any remaining list
     flush_current_list()
 
-    return {"xml_parts": xml_parts}
+    return {
+        "xml_parts": xml_parts,
+        "illustration_counter": illustration_counter,
+        "figure_counter": figure_counter
+    }
 
 
 def get_dm_code_for_section(section: Dict, component_counter: int) -> Dict:

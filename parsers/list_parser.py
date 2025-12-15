@@ -129,11 +129,11 @@ def _get_list_type_heuristic(doc: Document, para_idx: int) -> Optional[str]:
     paragraph = doc.paragraphs[para_idx]
 
     text = paragraph.text#.strip()
-    print(f"DEBUG: Heuristic checking para {para_idx}, text: {repr(text)}")
+    #print(f"DEBUG: Heuristic checking para {para_idx}, text: {repr(text)}")
     if any(text.startswith(marker) for marker in unnumbered_markers):
-        print(f"DEBUG: Found marker in text")
+        #print(f"DEBUG: Found marker in text")
         return 'unnumbered_list'
-    print(f"DEBUG: No marker found")
+    #print(f"DEBUG: No marker found")
 
     # Additional heuristic: if text ends with ';' or '.', consider it a list item
     text_stripped = text.strip()

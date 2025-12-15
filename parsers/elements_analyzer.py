@@ -283,13 +283,19 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
 
             xml_example = {
                 'table_reference': '<para>Ссылка на таблицу: <tableRef refType="tableref" refIdent="TAB0001"/></para>',
-                'illustration_reference': f'<para>Ссылка на рисунок: <internalRef internalRefId="{icn_ref}" internalRefTargetType="irtt01"/></para>' if icn_ref else '<para>Ссылка на рисунок: <internalRef internalRefId="ICN01" internalRefTargetType="irtt01"/></para>',
+                'illustration_reference': f'<para>Ссылка на рисунок: <internalRef internalRefId="ICN{int(ref_number):02d}" internalRefTargetType="irtt01"/></para>',
                 'data_module_reference': '<para>Ссылка на модуль данных: <dmRef refType="refdm" refIdent="DMC-S5-A-120-10-00-00A-011A-A"/></para>'
             }.get(ref_type, '<para>Ссылка</para>')
 
             # Add file info for illustration references
             if ref_type == 'illustration_reference':
-                # Use specific numbering for illustration references
+                # Use sequential numbering for references
+                if not hasattr(analyze_document_elements, 'global_illustration_ref_counter'):
+                    analyze_document_elements.global_illustration_ref_counter = 0
+                ref_number = analyze_document_elements.global_illustration_ref_counter + 1
+                analyze_document_elements.global_illustration_ref_counter += 1
+
+                # Use specific numbering for graphic files
                 if not hasattr(analyze_document_elements, 'global_illustration_counter'):
                     analyze_document_elements.global_illustration_counter = 0
                 if analyze_document_elements.global_illustration_counter == 0:
@@ -641,9 +647,11 @@ def _find_references(text: str) -> List[Tuple[str, str, str]]:
         for match in matches:
             references.append(('table_reference', match, 'таблицу'))
 
-    # Illustration/Figure references
+    # Illustration/Figure references - include regular figure mentions
     figure_patterns = [
         r'\b[Рр]исунок\s*(\d+)',
+        r'Ссылка на иллюстрацию\s*(\d+)',
+        r'Ссылка на рисунок\s*(\d+)',
         r'\b[Рр]ис\.\s*(\d+)',
         r'\b[Фф]igure\s*(\d+)',
         r'\b[Ии]ллюстрация\s*(\d+)',
@@ -651,11 +659,8 @@ def _find_references(text: str) -> List[Tuple[str, str, str]]:
     for pattern in figure_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         for match in matches:
-            # Convert figure number to ICN reference (1-based to ICN numbering)
-            figure_num = int(match)
-            icn_num = figure_num  # ICN numbering typically starts from 1
-            icn_ref = f"ICN{icn_num:02d}"
-            references.append(('illustration_reference', match, 'иллюстрацию', icn_ref))
+            # ICN will be assigned sequentially later in processing
+            references.append(('illustration_reference', match, 'иллюстрацию'))
 
     # Data module references (more complex, might be DM codes)
     dm_patterns = [

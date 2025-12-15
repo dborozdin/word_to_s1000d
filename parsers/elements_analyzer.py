@@ -141,7 +141,7 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
                     'start_para': para_idx,
                     'end_para': para_idx,
                     'content': title,
-                    'xml_example': f'<levelledPara><title>{title}</title></levelledPara>',
+                    'xml_example': f'<levelledPara><para>{title}</para></levelledPara>',
                     'details': f'Уровень {level}'
                 }
                 elements.append(element_info)
@@ -173,7 +173,7 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
                     'start_para': para_idx,
                     'end_para': para_idx,
                     'content': text,
-                    'xml_example': f'<levelledPara><title>{text}</title></levelledPara>',
+                    'xml_example': f'<levelledPara><para>{text}</para></levelledPara>',
                     'details': f'Уровень {level}'
                 }
                 elements.append(element_info)
@@ -190,14 +190,14 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
                 'start_para': para_idx,
                 'end_para': para_idx,
                 'content': text,
-                'xml_example': f'<levelledPara><title>{text}</title></levelledPara>',
+                'xml_example': f'<levelledPara><para>{text}</para></levelledPara>',
                 'details': 'Уровень 1'
             }
             elements.append(element_info)
             continue
 
         # Detect lists
-        list_type = _get_list_type(paragraph)
+        list_type = _get_list_type(paragraph, para_idx)
         if list_type:
             if current_list != list_type:
                 # End previous list if any
@@ -245,7 +245,7 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
                 'start_para': para_idx,
                 'end_para': para_idx,
                 'content': 'Иллюстрация',
-                'xml_example': '<figure><title>Название иллюстрации</title><graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC0"/></figure>',
+                'xml_example': '<figure><graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC0"/></figure>',
                 'details': 'Встраиваемая иллюстрация'
             }
             elements.append(element_info)
@@ -262,7 +262,7 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
                 'start_para': para_idx,
                 'end_para': para_idx,
                 'content': text,
-                'xml_example': '<warning><para>Предупреждающий текст</para></warning>',
+                'xml_example': '<warning><warningAndCautionPara>Предупреждающий текст</warningAndCautionPara></warning>',
                 'details': 'Предупреждение/Предупреждение'
             }
             elements.append(element_info)
@@ -297,8 +297,8 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
             lines = text.split('\n', 1)
             title = lines[0].strip()
             body = lines[1].strip()
-            content = f'<title>{title}</title>{body}'
-            xml_example = f'<para><title>{title}</title>{body}</para>'
+            content = f'{title} {body}'
+            xml_example = f'<para>{title} {body}</para>'
         else:
             content = text
             xml_example = f'<para>{text}</para>'
@@ -379,53 +379,196 @@ def _is_main_section_header(text: str) -> bool:
     return bool(re.match(pattern, text))
 
 
-def _get_list_type(paragraph) -> str:
-    """Get list type for paragraph."""
+def _get_list_type(paragraph, para_idx: int = None) -> str:
+    """Get list type for paragraph based on OOXML formatting and enhanced heuristics."""
     text = paragraph.text.strip()
 
     # Skip section headers
     if _is_main_section_header(text):
         return ''
 
-    # Check if paragraph is formatted as a list in Word
+    # First try OOXML formatting (preferred method)
     if hasattr(paragraph.paragraph_format, 'numPr') and paragraph.paragraph_format.numPr is not None:
-        return 'unnumbered_list'
-
-    # Check for bullet markers at the start of the paragraph text (more robust)
-    if (text.startswith('•') or text.startswith('◦') or text.startswith('-') or
-        text.startswith('–') or text.startswith('—') or text.startswith('·')):
-        return 'unnumbered_list'
-
-    # Check for numbered markers
-    if any(text.startswith(str(i) + '.') for i in range(1, 10)):
-        return 'numbered_list'
-
-    # Check for indentation (heuristic)
-    if paragraph.paragraph_format.left_indent and paragraph.paragraph_format.left_indent > Inches(0):
-        # Indented paragraphs are likely lists
-        # Special case for long paragraphs ending with '.' (common in Russian documents)
-        if len(text) >= 100 and text.strip().endswith('.'):
+        # Get numId to determine list type
+        num_id = paragraph.paragraph_format.numPr.numId
+        if num_id is not None:
+            # Access document numbering to determine if numbered or bulleted
+            doc = paragraph.part.document
+            numbering_part = doc.numbering_part
+            if numbering_part is not None:
+                try:
+                    num = numbering_part.nums[num_id.val]
+                    abstract_num = numbering_part.abstract_nums[num.abstract_num_id.val]
+                    # Check lvl0 lvlText to determine list type - if contains % it's numbered
+                    lvl0 = abstract_num.lvl0
+                    if lvl0 is not None and hasattr(lvl0, 'lvlText') and lvl0.lvlText is not None:
+                        lvl_text = lvl0.lvlText.val
+                        if '%' in lvl_text:
+                            return 'numbered_list'
+                        else:
+                            return 'unnumbered_list'
+                    else:
+                        # Fallback to numFmt if lvlText not available
+                        if hasattr(abstract_num, 'num_style_link') and abstract_num.num_style_link is not None:
+                            # If linked to a style, check if it's a numbered style
+                            style_name = abstract_num.num_style_link.val.lower()
+                            if 'number' in style_name or 'decimal' in style_name:
+                                return 'numbered_list'
+                            else:
+                                return 'unnumbered_list'
+                        else:
+                            # Check lvl0 numFmt directly
+                            lvl0 = abstract_num.lvl0
+                            if lvl0 is not None and hasattr(lvl0, 'numFmt') and lvl0.numFmt is not None:
+                                num_fmt = lvl0.numFmt.val.lower()
+                                if num_fmt in ['decimal', 'lowerroman', 'upperroman', 'lowerletter', 'upperletter']:
+                                    return 'numbered_list'
+                                else:
+                                    return 'unnumbered_list'
+                            else:
+                                return 'unnumbered_list'
+                except (KeyError, AttributeError):
+                    return 'unnumbered_list'
+            else:
+                return 'unnumbered_list'
+        else:
             return 'unnumbered_list'
-        return 'unnumbered_list'
 
-    # Special case for long paragraphs ending with '.' even if not indented
-    if len(text) >= 100 and text.strip().endswith('.'):
+    # Fallback to enhanced heuristics if no OOXML formatting found
+    doc = paragraph.part.document
+    
+    # If para_idx not provided, find it
+    if para_idx is None:
+        for idx, p in enumerate(doc.paragraphs):
+            if p == paragraph:
+                para_idx = idx
+                break
+    
+    if para_idx is None:
+        return ''
+    
+    # Check for list markers in text
+    unnumbered_markers = ['•', '◦', '▪', '▫', '⁃', '·', '-', '–', '—', '*', '†', '‡', '§']
+    if any(text.startswith(marker) for marker in unnumbered_markers):
         return 'unnumbered_list'
-
-    # Heuristic for list items ending with semicolon (common in Russian documents)
-    if text.strip().endswith(';') and len(text.strip()) < 200:
-        return 'unnumbered_list'
+    
+    # Check if text ends with ';' (typical for list items)
+    if text.endswith(';'):
+        # Verify it's after an intro paragraph ending with ':'
+        if _is_after_colon_intro(doc, para_idx):
+            return 'unnumbered_list'
+    
+    # Check colon-intro pattern
+    list_type = _detect_colon_intro_list(doc, para_idx)
+    if list_type:
+        return list_type
 
     return ''
 
 
+def _is_after_colon_intro(doc, para_idx: int) -> bool:
+    """Check if paragraph is after an introductory paragraph ending with ':'."""
+    paragraphs = doc.paragraphs
+    
+    # Search backward for introductory paragraph ending with ":"
+    for idx in range(para_idx - 1, -1, -1):
+        para = paragraphs[idx]
+        text = para.text.strip()
+        if not text:
+            # Empty line - check if it breaks the list
+            continue
+        if text.endswith(':'):
+            return True
+        # If we hit a paragraph that doesn't end with ':', ';' or is empty, stop
+        if not text.endswith(';') and not text.endswith(':'):
+            break
+    
+    return False
+
+
+def _detect_colon_intro_list(doc, para_idx: int) -> str:
+    """
+    Detect if paragraph is part of a list that starts after a colon-ending intro.
+    """
+    paragraphs = doc.paragraphs
+    text = paragraphs[para_idx].text.strip()
+    
+    # Search backward for introductory paragraph ending with ":"
+    intro_idx = None
+    for idx in range(para_idx - 1, -1, -1):
+        para = paragraphs[idx]
+        para_text = para.text.strip()
+        if not para_text:
+            # Empty line means we've passed the list boundary
+            break
+        if para_text.endswith(':'):
+            intro_idx = idx
+            break
+    
+    if intro_idx is None:
+        return ''
+    
+    # Check if current paragraph is within the list items after intro
+    # List ends at empty line or at another line ending with ':'
+    current_idx = intro_idx + 1
+    list_items_indices = []
+    
+    while current_idx < len(paragraphs):
+        para = paragraphs[current_idx]
+        para_text = para.text.strip()
+        
+        # Empty line ends the list
+        if not para_text:
+            break
+        
+        # Another introductory line ends this list
+        if para_text.endswith(':'):
+            break
+        
+        list_items_indices.append(current_idx)
+        current_idx += 1
+    
+    # If current paragraph is in the list items, return unnumbered_list
+    if para_idx in list_items_indices and len(list_items_indices) >= 1:
+        return 'unnumbered_list'
+    
+    return ''
+
+
 def _clean_list_item_text(paragraph, list_type: str) -> str:
-    """Clean list item text by removing markers."""
-    text = paragraph.text
+    """Clean list item text by removing markers and formatting."""
+    text = paragraph.text.strip()
+
     if list_type == 'unnumbered_list':
-        text = re.sub(r'^[•◦\-\–—·]\s*', '', text)
+        # Remove common unnumbered list markers
+        unnumbered_markers = [
+            '•', '◦', '▪', '▫', '⁃', '·', '·', '•', '-', '–', '—', '*', '†', '‡', '§'
+        ]
+        for marker in unnumbered_markers:
+            if text.startswith(marker):
+                text = text[len(marker):].strip()
+                break
     elif list_type == 'numbered_list':
-        text = re.sub(r'^\d+\.\s*', '', text)
+        # Remove numbered list markers using regex
+        import re
+        numbered_patterns = [
+            r'^\d+\.\s*',  # 1., 2., 10.
+            r'^\d+\)\s*',  # 1), 2), 10)
+            r'^\(\d+\)\s*',  # (1), (2), (10)
+            r'^\d+\s*[.)]\s*',  # 1 , 1), 2 , etc.
+            r'^[a-zA-Z]\.\s*',  # a., b., A., B.
+            r'^[a-zA-Z]\)\s*',  # a), b), A), B)
+            r'^\([a-zA-Z]\)\s*',  # (a), (b), (A), (B)
+            r'^[IVXLCDM]+\.\s*',  # I., II., III. (Roman numerals)
+            r'^[ivxlcdm]+\.\s*',  # i., ii., iii. (Roman numerals)
+            r'^[IVXLCDM]+\)\s*',  # I), II), III)
+            r'^[ivxlcdm]+\)\s*',  # i), ii), iii)
+        ]
+        for pattern in numbered_patterns:
+            text = re.sub(pattern, '', text, count=1)
+            if text != paragraph.text.strip():  # If something was removed
+                break
+
     return text.strip()
 
 

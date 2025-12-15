@@ -133,23 +133,70 @@ class S1000DGenerator:
         content = ET.Element("content")
         description = ET.SubElement(content, "description")
 
-        # If xml_parts are provided, use them directly
+        # If xml_parts are provided, process them according to S1000D structure
         if 'xml_parts' in content_data:
+            current_levelled_para = None
+
             for xml_part in content_data['xml_parts']:
                 if xml_part.strip():
-                    # Parse the XML part and add it
                     try:
                         part_elem = ET.fromstring(xml_part)
-                        description.append(part_elem)
+
+                        # Handle different element types according to S1000D schema
+                        if part_elem.tag == 'levelledPara':
+                            # levelledPara can be direct child of description
+                            description.append(part_elem)
+                            current_levelled_para = part_elem
+                        elif part_elem.tag == 'para':
+                            # para elements should be wrapped in levelledPara if not already in one
+                            if current_levelled_para is None:
+                                current_levelled_para = ET.SubElement(description, "levelledPara")
+                            current_levelled_para.append(part_elem)
+                        elif part_elem.tag == 'table':
+                            # Tables are direct children of description
+                            # Fix table entries to wrap text in <para>
+                            for entry in part_elem.iter('entry'):
+                                if entry.text and entry.text.strip():
+                                    para_elem = ET.SubElement(entry, "para")
+                                    para_elem.text = entry.text
+                                    entry.text = None
+                            description.append(part_elem)
+                            current_levelled_para = None  # Reset after table
+                        elif part_elem.tag in ['randomList', 'definitionList']:
+                            # Lists are direct children of description
+                            description.append(part_elem)
+                            current_levelled_para = None  # Reset after list
+                        elif part_elem.tag == 'figure':
+                            # Figures are direct children of description
+                            description.append(part_elem)
+                            current_levelled_para = None  # Reset after figure
+                        elif part_elem.tag == 'warning':
+                            # Convert any <para> inside warning to <warningAndCautionPara>
+                            for para in part_elem.xpath('.//para'):
+                                para.tag = 'warningAndCautionPara'
+                            # Warnings can be direct children of description
+                            description.append(part_elem)
+                            current_levelled_para = None  # Reset after warning
+                        else:
+                            # For other elements, try to add them appropriately
+                            if current_levelled_para is None:
+                                current_levelled_para = ET.SubElement(description, "levelledPara")
+                            current_levelled_para.append(part_elem)
+
                     except ET.ParseError:
-                        # If parsing fails, add as text in para
-                        para_elem = ET.SubElement(description, "para")
+                        # If parsing fails, add as text in para within levelledPara
+                        if current_levelled_para is None:
+                            current_levelled_para = ET.SubElement(description, "levelledPara")
+                        para_elem = ET.SubElement(current_levelled_para, "para")
                         para_elem.text = xml_part
         else:
-            # Legacy mode: Add paragraphs
+            # Legacy mode: wrap everything in levelledPara
+            levelled_para = ET.SubElement(description, "levelledPara")
+
+            # Add paragraphs
             for para_text in content_data.get('paragraphs', []):
                 if para_text.strip():
-                    para_elem = ET.SubElement(description, "para")
+                    para_elem = ET.SubElement(levelled_para, "para")
                     para_elem.text = para_text
 
             # Add tables
@@ -163,14 +210,14 @@ class S1000DGenerator:
                             para_elem = ET.SubElement(entry, "para")
                             para_elem.text = entry.text
                             entry.text = None
-                    description.append(table_elem)
+                    description.append(table_elem)  # Tables go directly to description
 
             # Add lists
             for list_xml in content_data.get('lists', []):
                 if list_xml:
                     # Lists are direct children of description
                     list_elem = ET.fromstring(list_xml)
-                    description.append(list_elem)
+                    description.append(list_elem)  # Lists go directly to description
 
         return content
 

@@ -11,7 +11,7 @@ from docx.shared import Inches
 import datetime
 
 
-def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
+def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = None) -> List[Dict[str, Any]]:
     """
     Analyze document and extract all elements with their start/end positions.
 
@@ -53,6 +53,7 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
 
     # Process elements in document order
     current_table_idx = 0
+    illustration_counter = 0  # Track illustration numbering for infoEntityIdent
     for i, (element_type, element_idx) in enumerate(doc_elements):
         if element_type == 'table':
             # Handle table element with enhanced data
@@ -236,6 +237,8 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
 
         # Detect illustrations (embedded images in paragraphs)
         if _has_embedded_image(paragraph):
+            # Use the correct GRAPHIC identifier based on counter
+            graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
             element_info = {
                 'type': 'illustration',
                 'start_line': para_start_line,
@@ -245,10 +248,11 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
                 'start_para': para_idx,
                 'end_para': para_idx,
                 'content': 'Иллюстрация',
-                'xml_example': '<figure><graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC0"/></figure>',
+                'xml_example': f'<figure><title>Название иллюстрации</title><graphic infoEntityIdent="{graphic_ident}"/></figure>',
                 'details': 'Встраиваемая иллюстрация'
             }
             elements.append(element_info)
+            illustration_counter += 1
             continue
 
         # Detect warnings/cautions
@@ -270,10 +274,16 @@ def analyze_document_elements(doc: Document) -> List[Dict[str, Any]]:
 
         # Detect references
         references = _find_references(text)
-        for ref_type, ref_number, context in references:
+        for ref_data in references:
+            if len(ref_data) == 4:  # illustration_reference with icn_ref
+                ref_type, ref_number, context, icn_ref = ref_data
+            else:  # other references
+                ref_type, ref_number, context = ref_data
+                icn_ref = None
+
             xml_example = {
                 'table_reference': '<para>Ссылка на таблицу: <tableRef refType="tableref" refIdent="TAB0001"/></para>',
-                'illustration_reference': '<para>Ссылка на рисунок: <icn icnType="irtt" refIdent="ICN0001"/></para>',
+                'illustration_reference': f'<para>Ссылка на рисунок: <internalRef internalRefId="{icn_ref}" internalRefTargetType="irtt01"/></para>' if icn_ref else '<para>Ссылка на рисунок: <internalRef internalRefId="ICN01" internalRefTargetType="irtt01"/></para>',
                 'data_module_reference': '<para>Ссылка на модуль данных: <dmRef refType="refdm" refIdent="DMC-S5-A-120-10-00-00A-011A-A"/></para>'
             }.get(ref_type, '<para>Ссылка</para>')
 
@@ -624,7 +634,11 @@ def _find_references(text: str) -> List[Tuple[str, str, str]]:
     for pattern in figure_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         for match in matches:
-            references.append(('illustration_reference', match, 'иллюстрацию'))
+            # Convert figure number to ICN reference (1-based to ICN numbering)
+            figure_num = int(match)
+            icn_num = figure_num  # ICN numbering typically starts from 1
+            icn_ref = f"ICN{icn_num:02d}"
+            references.append(('illustration_reference', match, 'иллюстрацию', icn_ref))
 
     # Data module references (more complex, might be DM codes)
     dm_patterns = [

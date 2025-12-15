@@ -264,7 +264,7 @@ class PMGenerator:
         info_name = ET.SubElement(dm_title, "infoName")
         info_name.text = "Applicability common information repository"
 
-    def generate_publication_module(self, pm_config: Dict, dm_refs: List[Dict], output_path: str) -> str:
+    def generate_publication_module(self, pm_config: Dict, dm_refs: List[Dict], output_path: str, illustrations: Dict[str, str] = None) -> str:
         """
         Generate complete S1000D publication module XML.
 
@@ -278,8 +278,21 @@ class PMGenerator:
         """
         pm = self._create_base_pm_structure()
 
-        # Add DOCTYPE
-        doctype = '<!DOCTYPE pm [\n<!NOTATION jpg PUBLIC "+//ISBN 0-7923-9432-1::Graphic Notation//NOTATION Joint Photographic Experts Group Raster//EN">\n<!ENTITY PUBLICATION_LOGO SYSTEM "publication_logo.JPG" NDATA jpg>\n]>'
+        # Add DOCTYPE with illustrations
+        doctype_lines = [
+            '<!DOCTYPE pm [',
+            '<!NOTATION jpg PUBLIC "+//ISBN 0-7923-9432-1::Graphic Notation//NOTATION Joint Photographic Experts Group Raster//EN">',
+            '<!ENTITY PUBLICATION_LOGO SYSTEM "publication_logo.JPG" NDATA jpg>'
+        ]
+
+        # Add ENTITY declarations for all illustrations
+        if illustrations:
+            for info_entity_ident, file_path in illustrations.items():
+                filename = os.path.basename(file_path)
+                doctype_lines.append(f'<!ENTITY {info_entity_ident} SYSTEM "{filename}" NDATA jpg>')
+
+        doctype_lines.append(']>')
+        doctype = '\n'.join(doctype_lines)
 
         # Current date
         current_date = datetime.now()

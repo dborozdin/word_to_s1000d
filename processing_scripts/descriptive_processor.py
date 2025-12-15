@@ -198,6 +198,10 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     document_title = extract_document_title(doc)
     print(f"Extracted document title: {document_title}")
 
+    # Parse illustrations first to get correct infoEntityIdent mappings
+    print("Extracting illustrations...")
+    illustrations = extract_illustrations(doc, output_dir)
+
     # Analyze document content using the new content analyzer
     print("Analyzing document content structure...")
     analysis_results = analyze_document_content(doc)
@@ -209,7 +213,7 @@ def process_descriptive_document(doc_path: str, output_dir: str):
 
     # Analyze document elements for logging and XML generation
     print("Analyzing document elements...")
-    elements = analyze_document_elements(doc)
+    elements = analyze_document_elements(doc, illustrations)
 
     # Generate elements log (always)
     elements_log_path = generate_elements_log(doc_path, elements, output_dir)
@@ -219,7 +223,6 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     text_sections = extract_text_by_headings(doc)
     tables = get_tables_by_reference(doc)
     lists_data = extract_lists(doc)
-    illustrations = extract_illustrations(doc, output_dir)
 
     print(f"Found {len(analysis_results)} analyzed sections, {len(tables)} tables, {len(lists_data)} lists, {len(illustrations)} illustrations")
 
@@ -315,7 +318,7 @@ def process_descriptive_document(doc_path: str, output_dir: str):
             enterprise_name=organization,
             originator_name=organization
         )
-        pm_filepath = pm_generator.generate_publication_module(pm_config, dm_refs, output_dir)
+        pm_filepath = pm_generator.generate_publication_module(pm_config, dm_refs, output_dir, illustrations)
         generated_files.append(pm_filepath)
         print(f"Generated publication module: {os.path.basename(pm_filepath)}")
 
@@ -499,6 +502,9 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
     """
     xml_parts = []
 
+    # Track illustration counter for proper infoEntityIdent generation
+    illustration_counter = 0
+
     # Extract content from the section's paragraph range
     start_para = section.get('start_para', 0)
     end_para = section.get('end_para', len(document.paragraphs) - 1)
@@ -595,7 +601,25 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 if table_xml:
                     xml_parts.append(table_xml)
             elif elem_type == 'illustration':
-                xml_parts.append('<figure><title>Название иллюстрации</title><graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC0"/></figure>')
+                # Generate proper figure with ID and reproduction attributes for embedded illustrations
+                figure_id = f"fig-{illustration_counter}"
+                graphic_id = f"fig-{illustration_counter}-gra-0"
+                xml_parts.append(f'''<figure id="{figure_id}">
+            <title>Название иллюстрации</title>
+            <graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="{graphic_id}"/>
+          </figure>''')
+                illustration_counter += 1
+            elif elem_type == 'illustration_reference':
+                # Extract figure number from content and convert to ICN reference
+                import re
+                figure_match = re.search(r'рисунок\s*(\d+)', elem.get('content', ''), re.IGNORECASE)
+                if figure_match:
+                    figure_num = int(figure_match.group(1))
+                    icn_ref = f"ICN{figure_num:02d}"
+                    irtt_type = f"irtt{figure_num:02d}"
+                    xml_parts.append(f'<para><internalRef internalRefId="{icn_ref}" internalRefTargetType="{irtt_type}"/></para>')
+                else:
+                    xml_parts.append('<para><internalRef internalRefId="ICN01" internalRefTargetType="irtt01"/></para>')
             elif elem_type == 'warning':
                 xml_parts.append(f'<warning><para>{content}</para></warning>')
             else:

@@ -11,7 +11,7 @@ from docx.shared import Inches
 import datetime
 
 
-def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = None) -> List[Dict[str, Any]]:
+def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = None, illustration_positions: Dict[str, Dict] = None) -> List[Dict[str, Any]]:
     """
     Analyze document and extract all elements with their start/end positions.
 
@@ -295,17 +295,9 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 ref_number = analyze_document_elements.global_illustration_ref_counter + 1
                 analyze_document_elements.global_illustration_ref_counter += 1
 
-                # Use specific numbering for graphic files
-                if not hasattr(analyze_document_elements, 'global_illustration_counter'):
-                    analyze_document_elements.global_illustration_counter = 0
-                if analyze_document_elements.global_illustration_counter == 0:
-                    graphic_num = 21
-                elif analyze_document_elements.global_illustration_counter == 1:
-                    graphic_num = 17
-                else:
-                    graphic_num = analyze_document_elements.global_illustration_counter + 16
+                # Use sequential numbering for graphic files (will be updated in post-processing)
+                graphic_num = int(ref_number) - 1  # Will be corrected in post-processing
                 graphic_file = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
-                analyze_document_elements.global_illustration_counter += 1
                 details = f'Ссылка на {ref_type} {ref_number}, file: {graphic_file}'
             else:
                 details = f'Ссылка на {ref_type} {ref_number}'
@@ -355,19 +347,64 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
         _update_list_end_para(elements, len(doc.paragraphs) - 1)
 
     # Post-process elements to clean up table references in paragraphs that precede tables
+    # and combine illustration references with figure name paragraphs
     processed_elements = []
-    for i, elem in enumerate(elements):
+    i = 0
+    while i < len(elements):
+        # Check for illustration_reference followed by figure name paragraph
+        if (i < len(elements) - 1 and
+            elements[i].get('type') == 'illustration_reference' and
+            elements[i + 1].get('type') == 'paragraph'):
+            figure_content = elements[i + 1].get('content', '').strip()
+            figure_name_pattern = r'^[Рр]исунок\s*\d+\s*[–-]\s*.+'
+            if re.match(figure_name_pattern, figure_content):
+                # Extract ICN number from illustration_reference details
+                details = elements[i].get('details', '')
+                icn_match = re.search(r'illustration_reference (\d+)', details)
+                icn_num = icn_match.group(1) if icn_match else '01'
+                icn_ref = f"ICN{int(icn_num):02d}"
+
+                # Use sequential graphic numbering starting from 0
+                # This matches what extract_illustrations would save
+                if not hasattr(analyze_document_elements, 'graphic_counter'):
+                    analyze_document_elements.graphic_counter = 0
+                graphic_num = analyze_document_elements.graphic_counter
+                analyze_document_elements.graphic_counter += 1
+
+                graphic_file = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
+
+                # Create combined illustration element
+                # Use position information from illustration_positions if available
+                ref_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
+                pos_info = illustration_positions.get(ref_name, {}) if illustration_positions else {}
+                combined_elem = {
+                    'type': 'illustration',
+                    'start_line': pos_info.get('start_line', elements[i].get('start_line', 0)),
+                    'start_char': pos_info.get('start_char', elements[i].get('start_char', 0)),
+                    'end_line': pos_info.get('end_line', elements[i + 1].get('end_line', elements[i].get('end_line', 0))),
+                    'end_char': pos_info.get('end_char', elements[i + 1].get('end_char', elements[i].get('end_char', 0))),
+                    'start_para': pos_info.get('start_para', elements[i].get('start_para', 0)),
+                    'end_para': pos_info.get('end_para', elements[i + 1].get('end_para', elements[i].get('end_para', 0))),
+                    'content': figure_content,
+                    'xml_example': f'<figure id="{icn_ref}"><title>{figure_content}</title><graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="g{int(icn_num)}"/></figure>',
+                    'details': f'Иллюстрация {icn_num}, file: {graphic_file}',
+                    'context_text': pos_info.get('context_text', '')
+                }
+                processed_elements.append(combined_elem)
+                i += 2  # Skip both elements
+                continue
+
+        # Check for table references in paragraphs
+        elem = elements[i]
         elem_type = elem.get('type', 'paragraph')
         content = elem.get('content', '')
 
-        # Check if this is a paragraph that contains a table reference and is followed by a table
         if elem_type == 'paragraph' and i < len(elements) - 1:
             next_elem = elements[i + 1]
             if next_elem.get('type') == 'table':
                 table_title = next_elem.get('content', '')
                 if table_title:
                     # Remove table references from paragraph content
-                    # Remove patterns like "(Таблица 1)", "Таблица 1", "ТАБЛИЦА 1", etc.
                     patterns = [
                         r'\s*\([Тт]аблица\s*\d+\)\s*',
                         r'\s*[Тт]аблица\s*\d+\s*',
@@ -394,6 +431,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                     elem['xml_example'] = f'<para>{content}</para>'
 
         processed_elements.append(elem)
+        i += 1
 
     return processed_elements
 

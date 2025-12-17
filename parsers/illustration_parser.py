@@ -13,16 +13,19 @@ from docx.document import Document as DocxDocument
 from docx.oxml.shape import CT_Picture
 
 
-def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publications") -> Dict[str, str]:
+def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publications") -> Tuple[Dict[str, str], Dict[str, Dict]]:
     """
     Extract embedded images from document and save to output/graphics directory with S1000D naming.
+    Images are numbered based on the order of illustration references in the text.
 
     Args:
         doc: Docx document object
         output_dir: Output directory (parent of graphics subfolder)
 
     Returns:
-        Dictionary mapping reference names to image file paths
+        Tuple of:
+        - Dictionary mapping reference names to image file paths
+        - Dictionary mapping reference names to position info for elements log
     """
     # Create graphics subdirectory in output
     graphics_dir = os.path.join(output_dir, "graphics")
@@ -30,31 +33,158 @@ def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publication
         os.makedirs(graphics_dir)
 
     illustrations = {}
-    image_counter = 0  # Start from 0 for GRAPHIC0
+    illustration_positions = {}
 
-    # Extract images from document body
-    for rel in doc.part.rels.values():
-        if "image" in rel.target_ref:
-            # Get the image relationship
-            try:
-                img = rel.target_part.blob
-                # Use S1000D naming convention: GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{N}.jpg
-                img_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{image_counter}.jpg"
-                img_path = os.path.join(graphics_dir, img_name)
+    # Step 1: Scan text to find illustration references in order of appearance
+    reference_order = _get_illustration_reference_order(doc)
 
-                # Save image
-                with open(img_path, 'wb') as f:
-                    f.write(img)
+    # Step 2: Create mapping from reference number to sequential GRAPHIC number
+    reference_to_graphic = {}
+    for idx, ref_num in enumerate(reference_order):
+        reference_to_graphic[ref_num] = idx
 
-                # Map to reference number
-                ref_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{image_counter}"
-                illustrations[ref_name] = img_path
-                image_counter += 1
+    # Step 3: Extract embedded images in document order and rename according to reference mapping
+    embedded_images = []
+    image_counter = 0
 
-            except Exception as e:
-                print(f"Error extracting image: {e}")
+    # Track cumulative text for position calculation
+    line_number = 1
+    char_position = 0
 
-    return illustrations
+    # Process document elements to find embedded images
+    for i, (element_type, element_idx) in enumerate(_get_doc_elements(doc)):
+        if element_type == 'paragraph':
+            paragraph = doc.paragraphs[element_idx]
+
+            # Update position tracking
+            para_start_line = line_number
+            para_start_char = char_position
+
+            # Add paragraph text to cumulative text
+            original_text = paragraph.text
+            newline_count = original_text.count('\n')
+            line_number += newline_count
+            if newline_count > 0:
+                char_position = len(original_text.split('\n')[-1])
+            else:
+                char_position += len(original_text)
+
+            para_end_line = line_number
+            para_end_char = char_position
+
+            # Check if paragraph contains embedded image
+            if _has_embedded_image(paragraph):
+                try:
+                    # Find the image relationship
+                    for rel in doc.part.rels.values():
+                        if "image" in rel.target_ref and rel.target_part == paragraph.part:
+                            img = rel.target_part.blob
+                            embedded_images.append({
+                                'blob': img,
+                                'start_line': para_start_line,
+                                'start_char': para_start_char,
+                                'end_line': para_end_line,
+                                'end_char': para_end_char,
+                                'start_para': element_idx,
+                                'end_para': element_idx,
+                                'context_text': original_text.strip()[:100] + ('...' if len(original_text.strip()) > 100 else '')
+                            })
+                            break
+
+                except Exception as e:
+                    print(f"Error extracting image: {e}")
+
+    # Step 4: Save images with correct GRAPHIC numbering based on reference order
+    for idx, img_info in enumerate(embedded_images):
+        # Find which reference number this image corresponds to
+        # Assume embedded images appear in document order and correspond to references in reference_order
+        if idx < len(reference_order):
+            ref_num = reference_order[idx]
+            graphic_num = reference_to_graphic[ref_num]
+
+            img_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
+            img_path = os.path.join(graphics_dir, img_name)
+
+            # Save image
+            with open(img_path, 'wb') as f:
+                f.write(img_info['blob'])
+
+            # Map to reference name
+            ref_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
+            illustrations[ref_name] = img_path
+
+            # Store position information
+            illustration_positions[ref_name] = {
+                'start_line': img_info['start_line'],
+                'start_char': img_info['start_char'],
+                'end_line': img_info['end_line'],
+                'end_char': img_info['end_char'],
+                'start_para': img_info['start_para'],
+                'end_para': img_info['end_para'],
+                'context_text': img_info['context_text']
+            }
+
+    return illustrations, illustration_positions
+
+
+def _get_illustration_reference_order(doc: Document) -> List[int]:
+    """
+    Scan document text to find illustration references in order of appearance.
+
+    Returns:
+        List of unique reference numbers in order of first appearance
+    """
+    seen_refs = set()
+    reference_order = []
+
+    for paragraph in doc.paragraphs:
+        text = paragraph.text
+        # Find illustration references
+        patterns = [
+            r'\b[Рр]исунок\s*(\d+)',
+            r'Ссылка на иллюстрацию\s*(\d+)',
+            r'Ссылка на рисунок\s*(\d+)',
+            r'\b[Рр]ис\.\s*(\d+)',
+            r'\b[Фф]igure\s*(\d+)',
+            r'\b[Ии]ллюстрация\s*(\d+)',
+        ]
+
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                ref_num = int(match)
+                if ref_num not in seen_refs:
+                    seen_refs.add(ref_num)
+                    reference_order.append(ref_num)
+
+    return reference_order
+
+
+def _get_doc_elements(doc: Document) -> List[Tuple[str, int]]:
+    """Get all document elements (paragraphs and tables) in order."""
+    elements = []
+    para_idx = 0
+    table_idx = 0
+
+    for element in doc.element.body:
+        if element.tag.endswith('p'):  # Paragraph
+            if para_idx < len(doc.paragraphs):
+                elements.append(('paragraph', para_idx))
+                para_idx += 1
+        elif element.tag.endswith('tbl'):  # Table
+            if table_idx < len(doc.tables):
+                elements.append(('table', table_idx))
+                table_idx += 1
+
+    return elements
+
+
+def _has_embedded_image(paragraph) -> bool:
+    """Check if paragraph contains embedded image."""
+    for run in paragraph.runs:
+        if run.element.xpath('.//a:blip'):
+            return True
+    return False
 
 
 def find_image_references(text: str) -> List[Tuple[str, str]]:

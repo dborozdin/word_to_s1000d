@@ -200,7 +200,7 @@ def process_descriptive_document(doc_path: str, output_dir: str):
 
     # Parse illustrations first to get correct infoEntityIdent mappings
     print("Extracting illustrations...")
-    illustrations = extract_illustrations(doc, output_dir)
+    illustrations, illustration_positions = extract_illustrations(doc, output_dir)
 
     # Analyze document content using the new content analyzer
     print("Analyzing document content structure...")
@@ -213,7 +213,7 @@ def process_descriptive_document(doc_path: str, output_dir: str):
 
     # Analyze document elements for logging and XML generation
     print("Analyzing document elements...")
-    elements = analyze_document_elements(doc, illustrations)
+    elements = analyze_document_elements(doc, illustrations, illustration_positions)
 
     # Generate elements log (always)
     elements_log_path = generate_elements_log(doc_path, elements, output_dir)
@@ -534,7 +534,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             current_list_items = []
             current_list_type = None
 
-    # Pre-process elements to clean up table references in paragraphs
+    # Pre-process elements to clean up table references in paragraphs and handle figure references
     processed_elements = []
     for i, elem in enumerate(section_elements):
         elem_type = elem.get('type', 'paragraph')
@@ -547,7 +547,6 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 table_title = next_elem.get('content', '')
                 if table_title:
                     # Remove table references from paragraph content
-                    import re
                     # Remove patterns like "(Таблица 1)", "Таблица 1", "ТАБЛИЦА 1", etc.
                     patterns = [
                         r'\s*\([Тт]аблица\s*\d+\)\s*',
@@ -573,6 +572,22 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                     elem = elem.copy()
                     elem['content'] = content
 
+            # Check if this paragraph contains a figure reference and is followed by illustration_reference
+            elif next_elem.get('type') == 'illustration_reference':
+                # Check if content matches figure name pattern
+                figure_name_pattern = r'^[Рр]исунок\s*\d+\s*[–-]\s*.+'
+                if re.match(figure_name_pattern, content.strip()):
+                    # Mark this element to be skipped (will be used for figure title)
+                    elem = elem.copy()
+                    elem['skip_output'] = True
+                    elem['figure_title'] = content.strip()
+                    # Mark the next element with the figure title
+                    next_elem_copy = next_elem.copy()
+                    next_elem_copy['figure_title'] = content.strip()
+                    # Replace the next element in processed_elements
+                    processed_elements.append(next_elem_copy)
+                    continue  # Skip adding the current elem since it's marked for skip
+
         processed_elements.append(elem)
 
     for elem in processed_elements:
@@ -585,7 +600,6 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             # Generate levelledPara for headers
             level = 1  # Default level
             if 'level' in elem.get('details', ''):
-                import re
                 match = re.search(r'Уровень (\d+)', elem.get('details', ''))
                 if match:
                     level = int(match.group(1))
@@ -620,22 +634,23 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                     figure_info.append({'id': figure_id, 'file': f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}.jpg"})
                 illustration_counter += 1
             elif elem_type == 'illustration_reference':
-                # For illustration references, create a paragraph with internalRef and inline figure
-                # Use figure_counter for unique ICN
+                # For illustration references, create embedded figure with title from figure name
+                # Use sequential numbering starting from 0
+                if not hasattr(assemble_content_for_section, 'graphic_counter'):
+                    assemble_content_for_section.graphic_counter = 0
+                graphic_num = assemble_content_for_section.graphic_counter
+                assemble_content_for_section.graphic_counter += 1
+
                 icn_ref = f"ICN{figure_counter + 1:02d}"
-                xml_parts.append(f'<para>Ссылка на рисунок: <internalRef internalRefId="{icn_ref}" internalRefTargetType="irtt01"/></para>')
-                # Calculate graphic_num for the file
-                if figure_counter == 0:
-                    graphic_num = 21
-                elif figure_counter == 1:
-                    graphic_num = 17
-                else:
-                    graphic_num = figure_counter + 16
                 graphic_file = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
                 entity_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
-                # Add inline figure
+
+                # Use figure title from the element if available, otherwise use default
+                figure_title = elem.get('figure_title', f"Figure {icn_ref}")
+
+                # Add embedded figure
                 xml_parts.append(f'''<figure id="{icn_ref}">
-            <title>Figure {icn_ref}</title>
+            <title>{figure_title}</title>
             <graphic infoEntityIdent="{entity_name}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="g{figure_counter + 1}"/>
           </figure>''')
                 if figure_info is not None:
@@ -644,8 +659,9 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             elif elem_type == 'warning':
                 xml_parts.append(f'<warning><para>{content}</para></warning>')
             else:
-                # Default paragraph
-                xml_parts.append(f'<para>{content}</para>')
+                # Default paragraph - skip if marked for skipping
+                if not elem.get('skip_output', False):
+                    xml_parts.append(f'<para>{content}</para>')
 
     # Flush any remaining list
     flush_current_list()

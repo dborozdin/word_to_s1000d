@@ -20,3 +20,31 @@
 пустой строке, заголовке, новом абзаце с ":"
 
 в tests/text_extract_lists.py находится простая реализация алгоритма выделения списков в случае, если не получилось выделить их с помощью ooxml (_get_list_type_ooXML) или по эвристикам _get_list_type_heuristic. Интегрируй код (можно внести его в один из существующих файлов py) и проверь сколько списков получается в логе
+
+Вместо параграфа со ссылкой и иллюстрации в отдельных тегах генерируй встроенную иллюстарцию, в которой в title записано наименование рисунка, например вместо: "
+<levelledPara>
+    <para>Рисунок 1 – Размещение РСУО на самолете и оборудования, работающего с РСУО (лист 1)</para>
+    <para>
+        Ссылка на рисунок: 
+        <internalRef internalRefId="ICN02" internalRefTargetType="irtt01"/>
+    </para>
+</levelledPara>
+<figure id="fig2">
+    
+
+    <title>Figure ICN02</title>
+    
+
+    <graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC17" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="gra2"/>
+    
+
+</figure>" генерируй: "<figure id="fig2">
+                
+            
+                <title>Рисунок 1 – Размещение РСУО на самолете и оборудования, работающего с РСУО (лист 1)</title>
+                
+            
+                <graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC17" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="gra2"/>
+                
+          
+            </figure>" 

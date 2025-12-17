@@ -626,8 +626,10 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 figure_id = f"ICN{illustration_counter + 1:02d}"
                 graphic_id = f"g{illustration_counter}"
                 graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
+                # Use the actual content from the element instead of hardcoded text
+                figure_title = elem.get('content', 'Название иллюстрации')
                 xml_parts.append(f'''<figure id="{figure_id}">
-            <title>Название иллюстрации</title>
+            <title>{figure_title}</title>
             <graphic infoEntityIdent="{graphic_ident}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="{graphic_id}"/>
           </figure>''')
                 if figure_info is not None:

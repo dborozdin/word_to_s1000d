@@ -43,15 +43,14 @@ def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publication
     for idx, ref_num in enumerate(reference_order):
         reference_to_graphic[ref_num] = idx
 
-    # Step 3: Extract embedded images in document order and rename according to reference mapping
+    # Step 3: Extract embedded images in document order
     embedded_images = []
-    image_counter = 0
 
     # Track cumulative text for position calculation
     line_number = 1
     char_position = 0
 
-    # Process document elements to find embedded images
+    # Process document elements to find embedded images in order of appearance
     for i, (element_type, element_idx) in enumerate(_get_doc_elements(doc)):
         if element_type == 'paragraph':
             paragraph = doc.paragraphs[element_idx]
@@ -75,12 +74,15 @@ def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publication
             # Check if paragraph contains embedded image
             if _has_embedded_image(paragraph):
                 try:
-                    # Find the image relationship
-                    for rel in doc.part.rels.values():
-                        if "image" in rel.target_ref and rel.target_part == paragraph.part:
-                            img = rel.target_part.blob
+                    # Get the specific rId for this image
+                    rId = _get_image_rid_from_paragraph(paragraph)
+                    if rId:
+                        # Find the corresponding relationship and extract image
+                        rel = doc.part.rels.get(rId)
+                        if rel and "image" in rel.target_ref:
+                            img_blob = rel.target_part.blob
                             embedded_images.append({
-                                'blob': img,
+                                'blob': img_blob,
                                 'start_line': para_start_line,
                                 'start_char': para_start_char,
                                 'end_line': para_end_line,
@@ -89,40 +91,102 @@ def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publication
                                 'end_para': element_idx,
                                 'context_text': original_text.strip()[:100] + ('...' if len(original_text.strip()) > 100 else '')
                             })
-                            break
 
                 except Exception as e:
                     print(f"Error extracting image: {e}")
 
-    # Step 4: Save images with correct GRAPHIC numbering based on reference order
+        elif element_type == 'table':
+            table = doc.tables[element_idx]
+
+            # Update position tracking for table
+            table_start_line = line_number
+            table_start_char = char_position
+
+            # Process each cell in the table
+            for row in table.rows:
+                for cell in row.cells:
+                    for para_idx, paragraph in enumerate(cell.paragraphs):
+                        # Update position for each paragraph in cell
+                        cell_para_start_line = line_number
+                        cell_para_start_char = char_position
+
+                        # Add paragraph text to cumulative text
+                        original_text = paragraph.text
+                        newline_count = original_text.count('\n')
+                        line_number += newline_count
+                        if newline_count > 0:
+                            char_position = len(original_text.split('\n')[-1])
+                        else:
+                            char_position += len(original_text)
+
+                        cell_para_end_line = line_number
+                        cell_para_end_char = char_position
+
+                        # Check if paragraph in table cell contains embedded image
+                        if _has_embedded_image(paragraph):
+                            try:
+                                # Get the specific rId for this image
+                                rId = _get_image_rid_from_paragraph(paragraph)
+                                if rId:
+                                    # Find the corresponding relationship and extract image
+                                    rel = doc.part.rels.get(rId)
+                                    if rel and "image" in rel.target_ref:
+                                        img_blob = rel.target_part.blob
+                                        embedded_images.append({
+                                            'blob': img_blob,
+                                            'start_line': cell_para_start_line,
+                                            'start_char': cell_para_start_char,
+                                            'end_line': cell_para_end_line,
+                                            'end_char': cell_para_end_char,
+                                            'start_para': element_idx,  # table index
+                                            'end_para': element_idx,
+                                            'context_text': original_text.strip()[:100] + ('...' if len(original_text.strip()) > 100 else '')
+                                        })
+
+                            except Exception as e:
+                                print(f"Error extracting image from table: {e}")
+
+            table_end_line = line_number
+            table_end_char = char_position
+
+    # Create log file for illustration extraction
+    log_path = os.path.join(output_dir, "illustration_extraction.log")
+    with open(log_path, 'w', encoding='utf-8') as log_file:
+        log_file.write("Лог извлечения иллюстраций\n")
+        log_file.write("=" * 50 + "\n")
+        log_file.write("Индекс | Имя файла | Строка | Символ\n")
+        log_file.write("-" * 50 + "\n")
+
+    # Step 4: Save images with sequential GRAPHIC numbering in document order
     for idx, img_info in enumerate(embedded_images):
-        # Find which reference number this image corresponds to
-        # Assume embedded images appear in document order and correspond to references in reference_order
-        if idx < len(reference_order):
-            ref_num = reference_order[idx]
-            graphic_num = reference_to_graphic[ref_num]
+        # Use sequential numbering starting from 0 for all extracted images
+        graphic_num = idx
 
-            img_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
-            img_path = os.path.join(graphics_dir, img_name)
+        img_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
+        img_path = os.path.join(graphics_dir, img_name)
 
-            # Save image
-            with open(img_path, 'wb') as f:
-                f.write(img_info['blob'])
+        # Save image
+        with open(img_path, 'wb') as f:
+            f.write(img_info['blob'])
 
-            # Map to reference name
-            ref_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
-            illustrations[ref_name] = img_path
+        # Map to reference name
+        ref_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
+        illustrations[ref_name] = img_path
 
-            # Store position information
-            illustration_positions[ref_name] = {
-                'start_line': img_info['start_line'],
-                'start_char': img_info['start_char'],
-                'end_line': img_info['end_line'],
-                'end_char': img_info['end_char'],
-                'start_para': img_info['start_para'],
-                'end_para': img_info['end_para'],
-                'context_text': img_info['context_text']
-            }
+        # Store position information
+        illustration_positions[ref_name] = {
+            'start_line': img_info['start_line'],
+            'start_char': img_info['start_char'],
+            'end_line': img_info['end_line'],
+            'end_char': img_info['end_char'],
+            'start_para': img_info['start_para'],
+            'end_para': img_info['end_para'],
+            'context_text': img_info['context_text']
+        }
+
+        # Write to log file
+        with open(log_path, 'a', encoding='utf-8') as log_file:
+            log_file.write(f"{graphic_num} | {img_name} | {img_info['start_line']} | {img_info['start_char']}\n")
 
     return illustrations, illustration_positions
 
@@ -185,6 +249,19 @@ def _has_embedded_image(paragraph) -> bool:
         if run.element.xpath('.//a:blip'):
             return True
     return False
+
+
+def _get_image_rid_from_paragraph(paragraph) -> str:
+    """Extract relationship ID (rId) from embedded image in paragraph."""
+    for run in paragraph.runs:
+        blip_elements = run.element.xpath('.//a:blip')
+        if blip_elements:
+            blip = blip_elements[0]
+            # Get embed attribute which contains rId
+            embed_attr = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+            if embed_attr:
+                return embed_attr
+    return None
 
 
 def find_image_references(text: str) -> List[Tuple[str, str]]:

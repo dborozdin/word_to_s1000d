@@ -598,40 +598,38 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
         elem_type = elem.get('type', 'paragraph')
         content = elem.get('content', '')
 
-        # Check if this is a paragraph that contains a table reference and is followed by a table
+        # Always remove table references from paragraph content
+        if elem_type == 'paragraph':
+            # Remove table references from paragraph content
+            # Remove patterns like "(Таблица 1)", "Таблица 1", "ТАБЛИЦА 1", etc.
+            patterns = [
+                r'\s*\([Тт]аблица\s*\d+\)\s*',
+                r'\s*[Тт]аблица\s*\d+\s*',
+                r'\s*[Тт]аб\.\s*\d+\s*',
+                r'\s*[Тт]абл\.\s*\d+\s*'
+            ]
+            for pattern in patterns:
+                content = re.sub(pattern, '', content, flags=re.IGNORECASE)
+
+            # Clean up extra whitespace and trailing punctuation
+            content = content.strip()
+            if content.endswith('.,'):
+                content = content[:-2]
+            elif content.endswith(','):
+                content = content[:-1]
+            elif content.endswith('.'):
+                pass  # Keep the period
+            else:
+                pass
+
+            # Update the element content
+            elem = elem.copy()
+            elem['content'] = content
+
+        # Check if this paragraph contains a figure reference and is followed by illustration_reference
         if elem_type == 'paragraph' and i < len(section_elements) - 1:
             next_elem = section_elements[i + 1]
-            if next_elem.get('type') == 'table':
-                table_title = next_elem.get('content', '')
-                if table_title:
-                    # Remove table references from paragraph content
-                    # Remove patterns like "(Таблица 1)", "Таблица 1", "ТАБЛИЦА 1", etc.
-                    patterns = [
-                        r'\s*\([Тт]аблица\s*\d+\)\s*',
-                        r'\s*[Тт]аблица\s*\d+\s*',
-                        r'\s*[Тт]аб\.\s*\d+\s*',
-                        r'\s*[Тт]абл\.\s*\d+\s*'
-                    ]
-                    for pattern in patterns:
-                        content = re.sub(pattern, '', content, flags=re.IGNORECASE)
-
-                    # Clean up extra whitespace and trailing punctuation
-                    content = content.strip()
-                    if content.endswith('.,'):
-                        content = content[:-2]
-                    elif content.endswith(','):
-                        content = content[:-1]
-                    elif content.endswith('.'):
-                        pass  # Keep the period
-                    else:
-                        pass
-
-                    # Update the element content
-                    elem = elem.copy()
-                    elem['content'] = content
-
-            # Check if this paragraph contains a figure reference and is followed by illustration_reference
-            elif next_elem.get('type') == 'illustration_reference':
+            if next_elem.get('type') == 'illustration_reference':
                 # Check if content matches figure name pattern
                 figure_name_pattern = r'^[Рр]исунок\s*\d+\s*[–-]\s*.+'
                 if re.match(figure_name_pattern, content.strip()):
@@ -689,7 +687,10 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             # Flush any pending list and levelledPara before adding header
             flush_current_list()
             if current_levelled_para:
-                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                if len(current_levelled_para) == 1:
+                    xml_parts.extend(current_levelled_para)
+                else:
+                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
                 current_levelled_para = []
                 in_levelled_para = False
 
@@ -701,7 +702,10 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             # Close any pending levelledPara and flush any pending list first
             flush_current_list()
             if current_levelled_para:
-                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                if len(current_levelled_para) == 1:
+                    xml_parts.extend(current_levelled_para)
+                else:
+                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
                 current_levelled_para = []
                 in_levelled_para = False
 
@@ -739,7 +743,10 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
         else:
             # Flush any pending levelledPara and list before adding other elements
             if current_levelled_para:
-                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                if len(current_levelled_para) == 1:
+                    xml_parts.extend(current_levelled_para)
+                else:
+                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
                 current_levelled_para = []
                 in_levelled_para = False
 
@@ -787,6 +794,9 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 else:
                     # Fallback
                     xml_parts.append(f'<para>{content}</para>')
+            elif elem_type == 'table_reference':
+                # Skip outputting table references as they are redundant when table is present
+                pass
             elif elem_type == 'warning':
                 xml_parts.append(f'<warning><para>{content}</para></warning>')
             else:
@@ -796,7 +806,10 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
 
     # Flush any remaining content
     if current_levelled_para:
-        xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+        if len(current_levelled_para) == 1:
+            xml_parts.extend(current_levelled_para)
+        else:
+            xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
     flush_current_list()
 
     return {

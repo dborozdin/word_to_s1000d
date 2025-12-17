@@ -300,7 +300,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
             is_real_header = (
                 len(text) < 100 and  # Short text
                 not text.endswith(':') and  # Not ending with colon (descriptive)
-                not any(word in text.lower() for word in ['представляет', 'обеспечивает', 'осуществляет', 'является'])  # Not descriptive sentences
+                not any(word in text.lower() for word in ['представляет', 'обеспечивает', 'осуществляет', 'является', 'таблица', 'рисунок', 'указан'])  # Not descriptive sentences or references
             )
 
             if not is_real_header:

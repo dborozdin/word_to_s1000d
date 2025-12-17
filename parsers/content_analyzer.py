@@ -88,6 +88,17 @@ def analyze_document_content(document: Document) -> List[Dict]:
                         'description': 'Список функций, которые обеспечивает изделие',
                         'header': 'Список функций изделия'
                     }
+        else:
+            # No current section - create a default section for orphaned content
+            current_section = {
+                'start_para': para_idx,
+                'end_para': para_idx,
+                'content': [text],
+                'section_type': 'description',
+                'info_name': 'Описание системы',
+                'description': 'Описание системы',
+                'header': 'Описание системы'
+            }
 
     # Close final section
     if current_section:

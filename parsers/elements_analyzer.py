@@ -122,13 +122,23 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
             if not text:
                 continue
 
-        # Detect headers/headings
+        # Detect headers/headings - only treat as header if it looks like a proper section header
         if style_name.startswith('Heading'):
             level_match = re.search(r'Heading\s*(\d+)', style_name, re.IGNORECASE)
             level = int(level_match.group(1)) if level_match else 1
 
-            # If text has multiple lines, treat first line as title, rest as separate paragraph
-            if '\n' in text:
+            # Check if this looks like a real section header (short, title-like text)
+            # If it's long or contains sentence structure, treat as regular paragraph
+            is_real_header = (
+                len(text) < 100 and  # Short text
+                not text.endswith(':') and  # Not ending with colon (descriptive)
+                not any(word in text.lower() for word in ['представляет', 'обеспечивает', 'осуществляет', 'является'])  # Not descriptive sentences
+            )
+
+            if not is_real_header:
+                # Treat as regular paragraph instead
+                pass  # Fall through to paragraph processing
+            elif '\n' in text:
                 lines = text.split('\n', 1)
                 title = lines[0].strip()
                 body = lines[1].strip()
@@ -142,7 +152,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                     'start_para': para_idx,
                     'end_para': para_idx,
                     'content': title,
-                    'xml_example': f'<levelledPara><para>{title}</para></levelledPara>',
+                    'xml_example': f'<levelledPara><title>{title}</title></levelledPara>',
                     'details': f'Уровень {level}'
                 }
                 elements.append(element_info)
@@ -174,7 +184,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                     'start_para': para_idx,
                     'end_para': para_idx,
                     'content': text,
-                    'xml_example': f'<levelledPara><para>{text}</para></levelledPara>',
+                    'xml_example': f'<levelledPara><title>{text}</title></levelledPara>',
                     'details': f'Уровень {level}'
                 }
                 elements.append(element_info)

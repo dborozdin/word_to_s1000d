@@ -67,7 +67,7 @@ def main():
     if len(sys.argv) == 2:
         doc_path = sys.argv[1]
     elif len(sys.argv) == 1:
-        docx_file = config.get('processing', 'docx_file')
+        docx_file = config.get('processing', 'docx_file', fallback='РСУ_адаптированная.docx')
         doc_path = os.path.join(input_dir, docx_file)
     else:
         print("Usage: python main.py [<docx_file>]")

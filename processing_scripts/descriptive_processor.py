@@ -127,8 +127,8 @@ def map_heading_to_info_code(heading: str, component_index: int = 0) -> Dict:
     if 'общие сведения' in heading_lower:
         base_dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # Purpose
         return base_dm_code
-    elif 'состав рсуо' in heading_lower or 'оборудовани' in heading_lower:
-        base_dm_code.update({'infoCode': '012', 'infoCodeVariant': 'A'})  # Description
+    elif 'состав' in heading_lower or 'описание' in heading_lower:
+        base_dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # Description
         return base_dm_code
     elif 'структурно представляет' in heading_lower:
         base_dm_code.update({'infoCode': '013', 'infoCodeVariant': 'A'})  # Operation structure
@@ -257,13 +257,23 @@ def process_descriptive_document(doc_path: str, output_dir: str):
         figure_counter = 0
         figure_info = []
 
-        # Combine content from all sections in this group
-        for section in sections_in_group:
-            section_content = assemble_content_for_section(section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info)
+        if not split_into_modules:
+            # For combined case, create one big section covering all paragraphs
+            big_section = {
+                'start_para': 0,
+                'end_para': len(doc.paragraphs) - 1,
+                'info_name': group_info['info_name']
+            }
+            section_content = assemble_content_for_section(big_section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info)
             combined_content["xml_parts"].extend(section_content["xml_parts"])
-            # Update counters from the section processing
-            illustration_counter = section_content.get("illustration_counter", illustration_counter)
-            figure_counter = section_content.get("figure_counter", figure_counter)
+        else:
+            # Combine content from all sections in this group
+            for section in sections_in_group:
+                section_content = assemble_content_for_section(section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info)
+                combined_content["xml_parts"].extend(section_content["xml_parts"])
+                # Update counters from the section processing
+                illustration_counter = section_content.get("illustration_counter", illustration_counter)
+                figure_counter = section_content.get("figure_counter", figure_counter)
 
         # Determine DM code based on section type
         dm_code = get_dm_code_for_section(representative_section, component_counter)
@@ -275,7 +285,7 @@ def process_descriptive_document(doc_path: str, output_dir: str):
             else:
                 dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # General purpose
         elif representative_section.get('section_type') == 'description':
-            dm_code.update({'infoCode': '012', 'infoCodeVariant': 'A'})  # Description
+            dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # Description
         elif representative_section.get('section_type') == 'operation':
             dm_code.update({'infoCode': '013', 'infoCodeVariant': 'A'})  # Operation
         elif representative_section.get('section_type') == 'component':
@@ -380,6 +390,9 @@ def process_descriptive_document(doc_path: str, output_dir: str):
 
         print(f"Общий лог соответствия модулей сохранен в: {mapping_log_path}")
 
+    # Validate that all original content is included in generated XML
+    validation_errors = validate_content_inclusion(doc_path, generated_files, illustrations, output_dir)
+
     print(f"\nGenerated {len(generated_files)} files:")
     for filepath in generated_files:
         print(f"  - {os.path.basename(filepath)}")
@@ -388,6 +401,12 @@ def process_descriptive_document(doc_path: str, output_dir: str):
         print(f"Content analysis log: {os.path.basename(log_path)}")
     print(f"Elements log: {os.path.basename(elements_log_path)}")
     print(f"Module mapping log: {os.path.basename(mapping_log_path)}")
+
+    if validation_errors:
+        print(f"Content validation errors found: {len(validation_errors)}")
+        print("See errors.log for details")
+    else:
+        print("All content successfully validated")
 
     return generated_files
 
@@ -750,3 +769,239 @@ def assemble_content(sections: List[str], text_sections: Dict[str, str], tables:
         content["tables"].append(table_xml)
 
     return content
+
+
+def validate_content_inclusion(doc_path: str, generated_files: List[str], illustrations: Dict[str, str], output_dir: str) -> List[str]:
+    """
+    Validate that all original document content is included in generated XML files.
+
+    Args:
+        doc_path: Path to original document
+        generated_files: List of generated XML file paths
+        illustrations: Dict of illustrations from original document
+        output_dir: Output directory
+
+    Returns:
+        List of validation error messages
+    """
+    errors = []
+    error_log_path = os.path.join(output_dir, "errors.log")
+
+    # Load original document
+    try:
+        doc = Document(doc_path)
+    except Exception as e:
+        error_msg = f"Failed to load original document {doc_path}: {e}"
+        errors.append(error_msg)
+        _write_error_log(error_log_path, [error_msg])
+        return errors
+
+    # Extract all text content from original document
+    original_texts = []
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if text:
+            original_texts.append(text)
+
+    # Extract all table content
+    original_tables = []
+    for i, table in enumerate(doc.tables):
+        table_content = []
+        for row in table.rows:
+            row_content = []
+            for cell in row.cells:
+                cell_text = cell.text.strip()
+                if cell_text:
+                    row_content.append(cell_text)
+            if row_content:
+                table_content.append(row_content)
+        if table_content:
+            original_tables.append({
+                'index': i,
+                'content': table_content
+            })
+
+    # Extract illustration references from document text
+    original_illustration_refs = []
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        # Find figure references
+        figure_matches = re.findall(r'[Рр]исунок\s*\d+', text, re.IGNORECASE)
+        original_illustration_refs.extend(figure_matches)
+
+    # Remove duplicates
+    original_illustration_refs = list(set(original_illustration_refs))
+
+    # Check generated XML files for content inclusion
+    found_texts = set()
+    found_tables = set()
+    found_illustrations = set()
+
+    for xml_file in generated_files:
+        if not xml_file.endswith('.xml'):
+            continue
+
+        try:
+            with open(xml_file, 'r', encoding='utf-8') as f:
+                xml_content = f.read()
+
+            # Extract text content from XML (from <para> tags)
+            para_texts = re.findall(r'<para[^>]*>(.*?)</para>', xml_content, re.DOTALL)
+            for para_text in para_texts:
+                # Clean XML tags from text
+                clean_text = re.sub(r'<[^>]+>', '', para_text).strip()
+                if clean_text:
+                    found_texts.add(clean_text)
+
+            # Extract table content from XML
+            table_matches = re.findall(r'<table[^>]*>.*?</table>', xml_content, re.DOTALL)
+            for table_xml in table_matches:
+                found_tables.add(table_xml.strip())
+
+            # Extract illustration references from XML
+            figure_titles = re.findall(r'<title>(.*?)</title>', xml_content)
+            for title in figure_titles:
+                if 'рисунок' in title.lower() or 'иллюстрация' in title.lower():
+                    found_illustrations.add(title.strip())
+
+        except Exception as e:
+            error_msg = f"Failed to read generated XML file {xml_file}: {e}"
+            errors.append(error_msg)
+            continue
+
+    # Validate text content inclusion
+    missing_texts = []
+    for original_text in original_texts:
+        # Check if this text (or significant portion) is found in generated XML
+        text_found = False
+        for found_text in found_texts:
+            # Use fuzzy matching - check if original text is contained in found text
+            # or if found text is contained in original text (for partial matches)
+            if (original_text in found_text or
+                found_text in original_text or
+                _similar_text(original_text, found_text, threshold=0.8)):
+                text_found = True
+                break
+
+        if not text_found and len(original_text) > 10:  # Only report missing texts longer than 10 chars
+            missing_texts.append(original_text)
+
+    # Validate table inclusion
+    missing_tables = []
+    for table_info in original_tables:
+        table_found = False
+        table_content_str = str(table_info['content'])
+
+        for found_table in found_tables:
+            if table_content_str in found_table:
+                table_found = True
+                break
+
+        if not table_found:
+            missing_tables.append(f"Table {table_info['index'] + 1}: {table_content_str[:200]}...")
+
+    # Validate illustration inclusion
+    missing_illustrations = []
+    for ill_ref in original_illustration_refs:
+        ill_found = False
+        for found_ill in found_illustrations:
+            if ill_ref.lower() in found_ill.lower():
+                ill_found = True
+                break
+
+        if not ill_found:
+            missing_illustrations.append(ill_ref)
+
+    # Validate illustrations dict
+    missing_illustration_files = []
+    graphics_dir = os.path.join(output_dir, "graphics")
+    if os.path.exists(graphics_dir):
+        existing_graphics = set(f for f in os.listdir(graphics_dir) if f.endswith('.jpg'))
+        for ill_key, ill_file in illustrations.items():
+            if ill_file not in existing_graphics:
+                missing_illustration_files.append(ill_file)
+
+    # Compile all errors
+    if missing_texts:
+        errors.append(f"Missing text content ({len(missing_texts)} items)")
+        for i, text in enumerate(missing_texts[:10]):  # Limit to first 10
+            errors.append(f"  Missing text {i+1}: {text[:100]}{'...' if len(text) > 100 else ''}")
+        if len(missing_texts) > 10:
+            errors.append(f"  ... and {len(missing_texts) - 10} more missing texts")
+
+    if missing_tables:
+        errors.append(f"Missing tables ({len(missing_tables)} items)")
+        for table in missing_tables[:5]:  # Limit to first 5
+            errors.append(f"  {table}")
+
+    if missing_illustrations:
+        errors.append(f"Missing illustration references ({len(missing_illustrations)} items)")
+        for ill in missing_illustrations:
+            errors.append(f"  {ill}")
+
+    if missing_illustration_files:
+        errors.append(f"Missing illustration files ({len(missing_illustration_files)} items)")
+        for ill_file in missing_illustration_files:
+            errors.append(f"  {ill_file}")
+
+    # Write detailed error log
+    _write_error_log(error_log_path, errors)
+
+    return errors
+
+
+def _similar_text(text1: str, text2: str, threshold: float = 0.8) -> bool:
+    """
+    Check if two texts are similar based on word overlap.
+
+    Args:
+        text1: First text
+        text2: Second text
+        threshold: Similarity threshold (0.0 to 1.0)
+
+    Returns:
+        True if texts are similar
+    """
+    words1 = set(text1.lower().split())
+    words2 = set(text2.lower().split())
+
+    if not words1 or not words2:
+        return False
+
+    intersection = words1.intersection(words2)
+    union = words1.union(words2)
+
+    similarity = len(intersection) / len(union)
+    return similarity >= threshold
+
+
+def _write_error_log(log_path: str, errors: List[str]):
+    """
+    Write validation errors to log file.
+
+    Args:
+        log_path: Path to error log file
+        errors: List of error messages
+    """
+    try:
+        with open(log_path, 'w', encoding='utf-8') as f:
+            f.write("Content Validation Errors\n")
+            f.write("=" * 50 + "\n")
+            f.write(f"Generated: {os.path.basename(__file__)} at {os.path.getctime(__file__)}\n\n")
+
+            if not errors:
+                f.write("No validation errors found. All content appears to be included.\n")
+            else:
+                f.write(f"Found {len(errors)} validation errors:\n\n")
+                for i, error in enumerate(errors, 1):
+                    f.write(f"{i}. {error}\n")
+
+                f.write("\n" + "=" * 50 + "\n")
+                f.write("Detailed Analysis:\n")
+                f.write("- Text content: Checked all paragraphs from original document\n")
+                f.write("- Tables: Checked table structures and content\n")
+                f.write("- Illustrations: Checked figure titles and references\n")
+                f.write("- Files: Checked existence of illustration files\n")
+
+    except Exception as e:
+        print(f"Failed to write error log: {e}")

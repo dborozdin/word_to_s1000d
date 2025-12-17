@@ -27,6 +27,11 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
     current_list = None
     list_start_para = 0
 
+    # Track numbering state for numbered paragraph headers
+    # This tracks the actual numbering sequence as it appears in the document
+    numbering_counters = {}  # numId -> {ilvl -> counter}
+    global_numbering_counter = 1  # Simple sequential counter for basic cases
+
     # Track cumulative text for position calculation
     line_number = 1
     char_position = 0
@@ -101,6 +106,52 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
             text = paragraph.text.strip()
             style_name = paragraph.style.name
 
+            # Check for numbering properties
+            numPr = None
+            if hasattr(paragraph.paragraph_format, 'numPr') and paragraph.paragraph_format.numPr is not None:
+                numPr = paragraph.paragraph_format.numPr
+            else:
+                # Fallback: check raw OOXML for numPr when python-docx fails to detect it
+                # This happens with some DOCX files where numPr is present but not detected by python-docx
+                try:
+                    pPr_elem = paragraph._element.find('.//w:pPr', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'})
+                    if pPr_elem is not None:
+                        numPr_elem = pPr_elem.find('.//w:numPr', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'})
+                        if numPr_elem is not None:
+                            # Create a simple object to mimic numPr
+                            class MockNumPr:
+                                def __init__(self, numId_val, ilvl_val):
+                                    self.numId_val = numId_val
+                                    self.ilvl_val = ilvl_val
+
+                                @property
+                                def numId(self):
+                                    class MockNumId:
+                                        def __init__(self, val):
+                                            self.val = val
+                                    return MockNumId(self.numId_val)
+
+                                @property
+                                def ilvl(self):
+                                    class MockIlvl:
+                                        def __init__(self, val):
+                                            self.val = val
+                                    return MockIlvl(self.ilvl_val)
+
+                            # Extract values from raw XML
+                            ilvl_elem = numPr_elem.find('.//w:ilvl', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'})
+                            numId_elem = numPr_elem.find('.//w:numId', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'})
+
+                            ilvl_val = int(ilvl_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', '0')) if ilvl_elem is not None else 0
+                            numId_val = int(numId_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', '0')) if numId_elem is not None else 0
+
+                            if numId_val > 0:  # Only consider it valid if numId is present
+                                numPr = MockNumPr(numId_val, ilvl_val)
+                except Exception as e:
+                    # If anything fails, just continue without numPr
+                    # print(f"FALLBACK FAILED for para {para_idx}: {e}")
+                    pass
+
             # Update position tracking
             para_start_line = line_number
             para_start_char = char_position
@@ -122,7 +173,124 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
             if not text:
                 continue
 
-        # Detect headers/headings - only treat as header if it looks like a proper section header
+        # Detect numbered paragraph headers first
+        # (paragraphs with numbering properties that appear as numbered headings)
+        is_numbered_header = False
+        level = 1
+
+        if numPr is not None:
+            # Check if this has numbering and looks like a header
+            # Either has Heading style, or has specific header-like content, or just has numbering
+            if (style_name.startswith('Heading') or
+                style_name in ['1', '2', '3', '4', '5', '6', '7', '8', '9'] or  # Numeric style names like "2"
+                # More inclusive check: short text without sentence-ending punctuation
+                (len(text.strip()) < 200 and not text.endswith(('.', '!', '?')) and
+                 not any(word in text.lower() for word in ['представляет', 'обеспечивает', 'осуществляет', 'является', 'который', 'которая', 'которое', 'которые'])) or
+                # Or if it starts with typical header words
+                any(text.strip().startswith(word) for word in ['ОБЩИЕ', 'СОСТАВ', 'ОПИСАНИЕ', 'Пульт', 'Блок', 'Рама', 'Таблица', 'Рисунок'])):
+                is_numbered_header = True
+
+                # Extract level from style name if possible
+                if style_name.startswith('Heading'):
+                    level_match = re.search(r'Heading\s*(\d+)', style_name, re.IGNORECASE)
+                    level = int(level_match.group(1)) if level_match else 1
+                elif style_name.isdigit():
+                    level = int(style_name)
+
+        if is_numbered_header:
+            # Extract the header part and any remaining content
+            header_text = ""
+            remaining_content = ""
+
+            # Try to split on newlines first
+            if '\n' in text:
+                lines = text.split('\n', 1)
+                header_text = lines[0].strip()
+                remaining_content = lines[1].strip() if len(lines) > 1 else ""
+            else:
+                # No newlines, try to identify header patterns
+                # Look for common header patterns followed by content
+                header_patterns = [
+                    (r'^([ОБЩИЕ СВЕДЕНИЯ]+)\s+(.+)', 'ОБЩИЕ СВЕДЕНИЯ'),
+                    (r'^([СОСТАВ РСУО]+)\s+(.+)', 'СОСТАВ РСУО'),
+                    (r'^([АВТОМАТИЧЕСКИЙ РЕЖИМ РАБОТЫ РСУО]+)\s+(.+)', 'АВТОМАТИЧЕСКИЙ РЕЖИМ РАБОТЫ РСУО'),
+                    (r'^([АВТОНОМНЫЙ РЕЖИМ РАБОТЫ РСУО]+)\s+(.+)', 'АВТОНОМНЫЙ РЕЖИМ РАБОТЫ РСУО'),
+                    (r'^([АВАРИЙНЫЙ РЕЖИМ РАБОТЫ РСУО]+)\s+(.+)', 'АВАРИЙНЫЙ РЕЖИМ РАБОТЫ РСУО'),
+                    (r'^([УЧЕБНО-ТРЕНИРОВОЧНЫЙ РЕЖИМ РАБОТЫ РСУО]+)\s+(.+)', 'УЧЕБНО-ТРЕНИРОВОЧНЫЙ РЕЖИМ РАБОТЫ РСУО'),
+                    (r'^([РЕЖИМ УПРАВЛЕНИЯ СТВОРКАМИ ГРУЗОВЫХ ОТСЕКОВ]+)\s+(.+)', 'РЕЖИМ УПРАВЛЕНИЯ СТВОРКАМИ ГРУЗОВЫХ ОТСЕКОВ'),
+                ]
+
+                for pattern, expected_header in header_patterns:
+                    match = re.match(pattern, text, re.IGNORECASE)
+                    if match and match.group(1).strip().upper() == expected_header.upper():
+                        header_text = match.group(1).strip()
+                        remaining_content = match.group(2).strip()
+                        break
+
+                # If no pattern matched, assume the whole text is header (fallback)
+                if not header_text:
+                    header_text = text.strip()
+
+            # Get numbering values
+            ilvl_val = 0
+            numId_val = 0
+            if hasattr(numPr, 'ilvl') and hasattr(numPr, 'numId'):
+                ilvl_val = numPr.ilvl.val if hasattr(numPr.ilvl, 'val') else numPr.ilvl
+                numId_val = numPr.numId.val if hasattr(numPr.numId, 'val') else numPr.numId
+
+            # Track numbering state and get the correct number
+            if numId_val not in numbering_counters:
+                numbering_counters[numId_val] = {}
+            if ilvl_val not in numbering_counters[numId_val]:
+                numbering_counters[numId_val][ilvl_val] = 0
+
+            # Increment counter for this level
+            numbering_counters[numId_val][ilvl_val] += 1
+            current_number = numbering_counters[numId_val][ilvl_val]
+
+            # Create numbering prefix based on level
+            numbering_prefix = f"{current_number}."
+
+            # Combine numbering with header text
+            numbered_title = f"{numbering_prefix} {header_text}".strip()
+
+            # Add the numbered paragraph header
+            element_info = {
+                'type': 'numbered_paragraph_header',
+                'start_line': para_start_line,
+                'start_char': para_start_char,
+                'end_line': para_end_line if not remaining_content else para_start_line,  # Adjust end line if content follows
+                'end_char': para_end_char if not remaining_content else para_start_char + len(header_text),
+                'start_para': para_idx,
+                'end_para': para_idx,
+                'content': numbered_title,  # Include numbering in content
+                'xml_example': f'<levelledPara><title>{numbered_title}</title></levelledPara>',
+                'details': f'Нумерованный заголовок параграфа (уровень {level})'
+            }
+            elements.append(element_info)
+
+            # If there's remaining content, add it as a separate paragraph
+            if remaining_content:
+                para_content_start_line = para_start_line  # Same line
+                para_content_start_char = para_start_char + len(header_text) + 1  # After header + space
+
+                element_info_content = {
+                    'type': 'paragraph',
+                    'start_line': para_content_start_line,
+                    'start_char': para_content_start_char,
+                    'end_line': para_end_line,
+                    'end_char': para_end_char,
+                    'start_para': para_idx,
+                    'end_para': para_idx,
+                    'content': remaining_content,
+                    'xml_example': f'<para>{remaining_content}</para>',
+                    'details': 'Параграф'
+                }
+                elements.append(element_info_content)
+
+            continue
+
+        # Detect regular headers/headings - only treat as header if it looks like a proper section header
         if style_name.startswith('Heading'):
             level_match = re.search(r'Heading\s*(\d+)', style_name, re.IGNORECASE)
             level = int(level_match.group(1)) if level_match else 1
@@ -190,10 +358,10 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 elements.append(element_info)
                 continue
 
-        # Detect main section headers (like 1., 2., etc.)
+        # Detect main section headers (like 1., 2., etc.) - treat as numbered paragraph headers
         if _is_main_section_header(text):
             element_info = {
-                'type': 'header',
+                'type': 'numbered_paragraph_header',
                 'start_line': para_start_line,
                 'start_char': para_start_char,
                 'end_line': para_end_line,
@@ -201,8 +369,8 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 'start_para': para_idx,
                 'end_para': para_idx,
                 'content': text,
-                'xml_example': f'<levelledPara><para>{text}</para></levelledPara>',
-                'details': 'Уровень 1'
+                'xml_example': f'<levelledPara><title>{text}</title></levelledPara>',
+                'details': 'Нумерованный заголовок параграфа'
             }
             elements.append(element_info)
             continue
@@ -738,6 +906,7 @@ def generate_elements_log(document_path: str, elements: List[Dict[str, Any]], ou
 
     element_type_names = {
         'header': 'Заголовок',
+        'numbered_paragraph_header': 'Нумерованный заголовок параграфа',
         'paragraph': 'Параграф',
         'numbered_list': 'Нумерованный список',
         'unnumbered_list': 'Ненумерованный список',

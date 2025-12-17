@@ -157,7 +157,7 @@ def map_heading_to_info_code(heading: str, component_index: int = 0) -> Dict:
         'assyCode': '00',
         'disassyCode': '00',
         'disassyCodeVariant': 'A',
-        'infoCode': '011',
+        'infoCode': '012',
         'infoCodeVariant': 'A',
         'itemLocationCode': 'A'
     }
@@ -167,7 +167,7 @@ def map_heading_to_info_code(heading: str, component_index: int = 0) -> Dict:
         base_dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # Purpose
         return base_dm_code
     elif 'состав' in heading_lower or 'описание' in heading_lower:
-        base_dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # Description
+        base_dm_code.update({'infoCode': '012', 'infoCodeVariant': 'A'})  # Description
         return base_dm_code
     elif 'структурно представляет' in heading_lower:
         base_dm_code.update({'infoCode': '013', 'infoCodeVariant': 'A'})  # Operation structure
@@ -324,7 +324,7 @@ def process_descriptive_document(doc_path: str, output_dir: str):
             else:
                 dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # General purpose
         elif representative_section.get('section_type') == 'description':
-            dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # Description
+            dm_code.update({'infoCode': '012', 'infoCodeVariant': 'A'})  # Description
         elif representative_section.get('section_type') == 'operation':
             dm_code.update({'infoCode': '013', 'infoCodeVariant': 'A'})  # Operation
         elif representative_section.get('section_type') == 'component':
@@ -511,7 +511,7 @@ def dm_code_to_string(dm_code: Dict) -> str:
         assy=dm_code.get('assyCode', '00'),
         disassy=dm_code.get('disassyCode', '00'),
         disassy_var=dm_code.get('disassyCodeVariant', 'A'),
-        info=dm_code.get('infoCode', '011'),
+        info=dm_code.get('infoCode', '012'),
         info_var=dm_code.get('infoCodeVariant', 'A'),
         location=dm_code.get('itemLocationCode', 'A')
     )
@@ -648,13 +648,22 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
 
         processed_elements.append(elem)
 
+    # Track if we're building a levelledPara with multiple elements
+    current_levelled_para = []
+    in_levelled_para = False
+
     for elem in processed_elements:
         elem_type = elem.get('type', 'paragraph')
         content = elem.get('content', '')
 
         if elem_type == 'header':
-            # Flush any pending list before adding header
+            # Flush any pending list and levelledPara before adding header
             flush_current_list()
+            if current_levelled_para:
+                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                current_levelled_para = []
+                in_levelled_para = False
+
             # Generate levelledPara for headers
             level = 1  # Default level
             if 'level' in elem.get('details', ''):
@@ -662,7 +671,26 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 if match:
                     level = int(match.group(1))
             xml_parts.append(f'<levelledPara><title>{content}</title></levelledPara>')
+
+        elif elem_type == 'numbered_paragraph_header':
+            # Start or continue a levelledPara with the title
+            if not in_levelled_para:
+                # If we have pending content, add it first
+                if current_levelled_para:
+                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                current_levelled_para = []
+                in_levelled_para = True
+
+            # Add the numbered header as a regular para element (but it will be visually distinct in the XML structure)
+            current_levelled_para.append(f'<para>{content}</para>')
+
         elif elem_type in ['numbered_list', 'unnumbered_list']:
+            # Flush any pending levelledPara before starting list
+            if current_levelled_para:
+                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                current_levelled_para = []
+                in_levelled_para = False
+
             # Check if this continues the current list
             if elem_type == current_list_type:
                 current_list_items.append(content)
@@ -671,9 +699,24 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 flush_current_list()
                 current_list_type = elem_type
                 current_list_items = [content]
+
+        elif elem_type == 'paragraph':
+            # Add paragraph content to current levelledPara or start new one
+            if not in_levelled_para:
+                current_levelled_para = []
+                in_levelled_para = True
+
+            current_levelled_para.append(f'<para>{content}</para>')
+
         else:
-            # Flush any pending list before adding other elements
+            # Flush any pending levelledPara and list before adding other elements
+            if current_levelled_para:
+                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                current_levelled_para = []
+                in_levelled_para = False
+
             flush_current_list()
+
             if elem_type == 'table':
                 # Use the enhanced table XML from element analysis
                 table_xml = elem.get('xml_example', '')
@@ -723,7 +766,9 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 if not elem.get('skip_output', False):
                     xml_parts.append(f'<para>{content}</para>')
 
-    # Flush any remaining list
+    # Flush any remaining content
+    if current_levelled_para:
+        xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
     flush_current_list()
 
     return {

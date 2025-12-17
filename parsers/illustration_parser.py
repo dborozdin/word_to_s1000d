@@ -206,11 +206,8 @@ def _get_illustration_reference_order(doc: Document) -> List[int]:
         # Find illustration references
         patterns = [
             r'\b[Рр]исунок\s*(\d+)',
-            r'Ссылка на иллюстрацию\s*(\d+)',
-            r'Ссылка на рисунок\s*(\d+)',
             r'\b[Рр]ис\.\s*(\d+)',
             r'\b[Фф]igure\s*(\d+)',
-            r'\b[Ии]ллюстрация\s*(\d+)',
         ]
 
         for pattern in patterns:
@@ -278,10 +275,9 @@ def find_image_references(text: str) -> List[Tuple[str, str]]:
 
     # Look for figure references like "рисунок 1", "figure 1", etc.
     figure_patterns = [
-        r'[Рр]ис\.\s*(\d+)',
         r'[Рр]исунок\s*(\d+)',
-        r'[Фф]igure\s*(\d+)',
-        r'[Ии]ллюстрация\s*(\d+)'
+        r'[Рр]ис\.\s*(\d+)',
+        r'[Фф]igure\s*(\d+)'
     ]
 
     for pattern in figure_patterns:

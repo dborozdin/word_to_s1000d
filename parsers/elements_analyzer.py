@@ -697,12 +697,9 @@ def _find_references(text: str) -> List[Tuple[str, str, str]]:
 
     # Illustration/Figure references - include regular figure mentions
     figure_patterns = [
-        r'\b[Рр]исунок\s*(\d+)',
-        r'Ссылка на иллюстрацию\s*(\d+)',
-        r'Ссылка на рисунок\s*(\d+)',
+        r'^[Рр]исунок\s*(\d+)\s*[–-]\s*.+',
         r'\b[Рр]ис\.\s*(\d+)',
         r'\b[Фф]igure\s*(\d+)',
-        r'\b[Ии]ллюстрация\s*(\d+)',
     ]
     for pattern in figure_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)

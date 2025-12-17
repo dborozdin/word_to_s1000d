@@ -655,28 +655,28 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                     figure_info.append({'id': figure_id, 'file': f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}.jpg"})
                 illustration_counter += 1
             elif elem_type == 'illustration_reference':
-                # For illustration references, create embedded figure with title from figure name
-                # Use sequential numbering starting from 0
-                if not hasattr(assemble_content_for_section, 'graphic_counter'):
-                    assemble_content_for_section.graphic_counter = 0
-                graphic_num = assemble_content_for_section.graphic_counter
-                assemble_content_for_section.graphic_counter += 1
+                # For illustration references that are not combined with titles, create internal references
+                # Extract reference number from content or details
+                ref_number = None
+                content = elem.get('content', '')
+                details = elem.get('details', '')
 
-                icn_ref = f"ICN{figure_counter + 1:02d}"
-                graphic_file = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
-                entity_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
+                # Try to extract number from content like "Ссылка на иллюстрацию 6"
+                match = re.search(r'(\d+)', content)
+                if match:
+                    ref_number = int(match.group(1))
+                else:
+                    # Try details
+                    match = re.search(r'illustration_reference (\d+)', details)
+                    if match:
+                        ref_number = int(match.group(1))
 
-                # Use figure title from the element if available, otherwise use default
-                figure_title = elem.get('figure_title', f"Figure {icn_ref}")
-
-                # Add embedded figure
-                xml_parts.append(f'''<figure id="{icn_ref}">
-            <title>{figure_title}</title>
-            <graphic infoEntityIdent="{entity_name}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="g{figure_counter + 1}"/>
-          </figure>''')
-                if figure_info is not None:
-                    figure_info.append({'id': icn_ref, 'file': graphic_file})
-                figure_counter += 1
+                if ref_number:
+                    icn_ref = f"ICN{ref_number:02d}"
+                    xml_parts.append(f'<para>Ссылка на рисунок: <internalRef internalRefId="{icn_ref}" internalRefTargetType="irtt01"/></para>')
+                else:
+                    # Fallback
+                    xml_parts.append(f'<para>{content}</para>')
             elif elem_type == 'warning':
                 xml_parts.append(f'<warning><para>{content}</para></warning>')
             else:

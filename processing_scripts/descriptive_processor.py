@@ -22,6 +22,38 @@ from generators.s1000d_generator import S1000DGenerator, create_data_module_conf
 from generators.pm_generator import PMGenerator, create_pm_config, create_dm_ref_data
 
 
+def normalize_title_case(text: str) -> str:
+    """
+    Normalize title case for techName according to requirements.
+
+    Args:
+        text: Input text
+
+    Returns:
+        Normalized text
+    """
+    if not text:
+        return text
+    
+    # If all letters are uppercase, leave as is
+    if text.isupper():
+        return text
+    
+    # Split by parentheses, preserving the parentheses
+    parts = re.split(r'(\([^)]*\))', text)
+    
+    result_parts = []
+    for part in parts:
+        if part.startswith('(') and part.endswith(')'):
+            # Keep parentheses content as is
+            result_parts.append(part)
+        else:
+            # Apply title case: first letter uppercase, rest lowercase
+            result_parts.append(part.capitalize())
+    
+    return ''.join(result_parts)
+
+
 def extract_document_title(document: Document) -> str:
     """
     Extract main title from the first page/document header.
@@ -38,12 +70,14 @@ def extract_document_title(document: Document) -> str:
         if text and not para.style.name.startswith('Heading'):  # Skip headings, look for title
             # Check if it looks like a title with dash
             if "–" in text:
-                return text.split("–")[0].strip()
+                title = text.split("–")[0].strip()
+                return normalize_title_case(title)
             elif "-" in text:
-                return text.split("-")[0].strip()
+                title = text.split("-")[0].strip()
+                return normalize_title_case(title)
             # If it has multiple words and is long, might be title
             if len(text) > 20:
-                return text.strip()
+                return normalize_title_case(text.strip())
 
     # Fallback: get from headings if above didn't work
     headings = get_document_structure(document)
@@ -51,12 +85,17 @@ def extract_document_title(document: Document) -> str:
         first_heading = headings[0].strip()
         # Parse the part before "–" or "-"
         if "–" in first_heading:
-            return first_heading.split("–")[0].strip()
+            title = first_heading.split("–")[0].strip()
+            return normalize_title_case(title)
         elif "-" in first_heading:
-            return first_heading.split("-")[0].strip()
+            title = first_heading.split("-")[0].strip()
+            return normalize_title_case(title)
 
     # Ultimate fallback
-    return "Система"
+    title = "Система"
+
+    # Apply title case normalization
+    return normalize_title_case(title)
 
 
 def extract_organization_from_document(document: Document) -> str:

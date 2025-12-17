@@ -303,12 +303,12 @@ def process_descriptive_document(doc_path: str, output_dir: str):
                 'end_para': len(doc.paragraphs) - 1,
                 'info_name': group_info['info_name']
             }
-            section_content = assemble_content_for_section(big_section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info)
+            section_content = assemble_content_for_section(big_section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info, document_title, group_info['info_name'])
             combined_content["xml_parts"].extend(section_content["xml_parts"])
         else:
             # Combine content from all sections in this group
             for section in sections_in_group:
-                section_content = assemble_content_for_section(section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info)
+                section_content = assemble_content_for_section(section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info, document_title, section.get('info_name', ''))
                 combined_content["xml_parts"].extend(section_content["xml_parts"])
                 # Update counters from the section processing
                 illustration_counter = section_content.get("illustration_counter", illustration_counter)
@@ -552,7 +552,7 @@ def group_sections_by_type(headings: List[str]) -> Dict[str, List[int]]:
     return groups
 
 
-def assemble_content_for_section(section: Dict, document: Document, tables: Dict[str, Dict], lists_data: List[Dict], elements: List[Dict], illustration_counter: int = 0, figure_counter: int = 0, figure_info: List = None) -> Dict:
+def assemble_content_for_section(section: Dict, document: Document, tables: Dict[str, Dict], lists_data: List[Dict], elements: List[Dict], illustration_counter: int = 0, figure_counter: int = 0, figure_info: List = None, tech_name: str = "", info_name_override: str = "") -> Dict:
     """
     Assemble content for a specific analyzed section using element analysis.
 
@@ -651,10 +651,39 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
     # Track if we're building a levelledPara with multiple elements
     current_levelled_para = []
     in_levelled_para = False
+    is_first_paragraph = True
 
     for elem in processed_elements:
         elem_type = elem.get('type', 'paragraph')
         content = elem.get('content', '')
+
+        # Check if this is the first paragraph and contains both techName and infoName
+        if elem_type == 'paragraph' and is_first_paragraph:
+            # Use provided tech_name, or fall back to section info
+            current_tech_name = tech_name or ""
+
+            content_lower = content.lower()
+            tech_name_lower = current_tech_name.lower()
+
+            # Check if techName is in the content
+            if tech_name_lower in content_lower:
+                # Extract the part after techName as infoName
+                tech_name_end = content_lower.find(tech_name_lower) + len(tech_name_lower)
+                remaining_content = content_lower[tech_name_end:].strip()
+
+                # Remove common separators like "–", "-", etc.
+                separators = [' – ', ' - ', ' –', ' -', '– ', '- ']
+                for sep in separators:
+                    if remaining_content.startswith(sep):
+                        remaining_content = remaining_content[len(sep):].strip()
+                        break
+
+                # If we have both techName and extracted infoName, skip the paragraph entirely
+                if remaining_content:
+                    # Skip outputting this paragraph as it contains both techName and infoName
+                    is_first_paragraph = False
+                    continue  # Skip adding this element to processed_elements entirely
+            is_first_paragraph = False
 
         if elem_type == 'header':
             # Flush any pending list and levelledPara before adding header
@@ -664,25 +693,24 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 current_levelled_para = []
                 in_levelled_para = False
 
-            # Generate levelledPara for headers
-            level = 1  # Default level
-            if 'level' in elem.get('details', ''):
-                match = re.search(r'Уровень (\d+)', elem.get('details', ''))
-                if match:
-                    level = int(match.group(1))
-            xml_parts.append(f'<levelledPara><title>{content}</title></levelledPara>')
+            # Generate para element instead of levelledPara
+            xml_parts.append(f'<para>{content}</para>')
 
         elif elem_type == 'numbered_paragraph_header':
-            # Start or continue a levelledPara with the title
-            if not in_levelled_para:
-                # If we have pending content, add it first
-                if current_levelled_para:
-                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+            # Always start a new levelledPara for numbered headers
+            # Close any pending levelledPara and flush any pending list first
+            flush_current_list()
+            if current_levelled_para:
+                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
                 current_levelled_para = []
-                in_levelled_para = True
+                in_levelled_para = False
 
-            # Add the numbered header as a regular para element (but it will be visually distinct in the XML structure)
-            current_levelled_para.append(f'<para>{content}</para>')
+            # Strip numbering from the header text for title element
+            title_text = re.sub(r'^\d+\.\s*', '', content).strip()
+
+            # Start new levelledPara with title
+            current_levelled_para = [f'<title>{title_text}</title>']
+            in_levelled_para = True
 
         elif elem_type in ['numbered_list', 'unnumbered_list']:
             # Flush any pending levelledPara before starting list
@@ -1048,6 +1076,42 @@ def _similar_text(text1: str, text2: str, threshold: float = 0.8) -> bool:
     """
     words1 = set(text1.lower().split())
     words2 = set(text2.lower().split())
+
+    if not words1 or not words2:
+        return False
+
+    intersection = words1.intersection(words2)
+    union = words1.union(words2)
+
+    similarity = len(intersection) / len(union)
+    return similarity >= threshold
+
+
+def _text_similar(text1: str, text2: str, threshold: float = 0.6) -> bool:
+    """
+    Check if two texts are similar, allowing for partial matches.
+
+    Args:
+        text1: First text
+        text2: Second text
+        threshold: Similarity threshold (0.0 to 1.0)
+
+    Returns:
+        True if texts are similar
+    """
+    if not text1 or not text2:
+        return False
+
+    text1_lower = text1.lower()
+    text2_lower = text2.lower()
+
+    # Check if one text contains the other
+    if text1_lower in text2_lower or text2_lower in text1_lower:
+        return True
+
+    # Check word overlap
+    words1 = set(text1_lower.split())
+    words2 = set(text2_lower.split())
 
     if not words1 or not words2:
         return False

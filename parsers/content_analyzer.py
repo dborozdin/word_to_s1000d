@@ -71,23 +71,6 @@ def analyze_document_content(document: Document) -> List[Dict]:
                         current_section['end_para'] = para_idx - 1
                         sections.append(current_section)
                     current_section = subsection_info
-
-                # Check for function lists starting with "обеспечивает:"
-                elif "обеспечивает:" in text.lower():
-                    # Create separate function description section
-                    if current_section:
-                        current_section['end_para'] = para_idx - 1
-                        sections.append(current_section)
-
-                    current_section = {
-                        'start_para': para_idx,
-                        'end_para': para_idx,
-                        'content': [text],
-                        'section_type': 'purpose',
-                        'info_name': 'Описание функций изделия',
-                        'description': 'Список функций, которые обеспечивает изделие',
-                        'header': 'Список функций изделия'
-                    }
         else:
             # No current section - create a default section for orphaned content
             current_section = {

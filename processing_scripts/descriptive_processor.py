@@ -709,12 +709,11 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 current_levelled_para = []
                 in_levelled_para = False
 
-            # Strip numbering from the header text for title element
+            # Strip numbering from header text for title element
             title_text = re.sub(r'^\d+\.\s*', '', content).strip()
 
-            # Start new levelledPara with title
-            current_levelled_para = [f'<title>{title_text}</title>']
-            in_levelled_para = True
+            # Create a complete levelledPara with title immediately
+            xml_parts.append(f'<levelledPara><title>{title_text}</title></levelledPara>')
 
         elif elem_type in ['numbered_list', 'unnumbered_list']:
             # Flush any pending levelledPara before starting list
@@ -739,6 +738,21 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 in_levelled_para = True
 
             current_levelled_para.append(f'<para>{content}</para>')
+
+        elif elem_type == 'title':
+            # Handle standalone title elements by wrapping them in levelledPara
+            # Flush any pending list and levelledPara first
+            flush_current_list()
+            if current_levelled_para:
+                if len(current_levelled_para) == 1:
+                    xml_parts.extend(current_levelled_para)
+                else:
+                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                current_levelled_para = []
+                in_levelled_para = False
+
+            # Wrap title in levelledPara
+            xml_parts.append(f'<levelledPara><title>{content}</title></levelledPara>')
 
         else:
             # Flush any pending levelledPara and list before adding other elements

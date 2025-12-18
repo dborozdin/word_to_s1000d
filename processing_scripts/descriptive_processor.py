@@ -687,10 +687,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             # Flush any pending list and levelledPara before adding header
             flush_current_list()
             if current_levelled_para:
-                if len(current_levelled_para) == 1:
-                    xml_parts.extend(current_levelled_para)
-                else:
-                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
                 current_levelled_para = []
                 in_levelled_para = False
 
@@ -702,18 +699,16 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             # Close any pending levelledPara and flush any pending list first
             flush_current_list()
             if current_levelled_para:
-                if len(current_levelled_para) == 1:
-                    xml_parts.extend(current_levelled_para)
-                else:
-                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
                 current_levelled_para = []
                 in_levelled_para = False
 
             # Strip numbering from header text for title element
             title_text = re.sub(r'^\d+\.\s*', '', content).strip()
 
-            # Create a complete levelledPara with title immediately
-            xml_parts.append(f'<levelledPara><title>{title_text}</title></levelledPara>')
+            # Start a new levelledPara with title (will be closed when next header or end)
+            current_levelled_para = [f'<title>{title_text}</title>']
+            in_levelled_para = True
 
         elif elem_type in ['numbered_list', 'unnumbered_list']:
             # Flush any pending levelledPara before starting list
@@ -744,10 +739,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             # Flush any pending list and levelledPara first
             flush_current_list()
             if current_levelled_para:
-                if len(current_levelled_para) == 1:
-                    xml_parts.extend(current_levelled_para)
-                else:
-                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
                 current_levelled_para = []
                 in_levelled_para = False
 
@@ -757,10 +749,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
         else:
             # Flush any pending levelledPara and list before adding other elements
             if current_levelled_para:
-                if len(current_levelled_para) == 1:
-                    xml_parts.extend(current_levelled_para)
-                else:
-                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
                 current_levelled_para = []
                 in_levelled_para = False
 
@@ -820,10 +809,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
 
     # Flush any remaining content
     if current_levelled_para:
-        if len(current_levelled_para) == 1:
-            xml_parts.extend(current_levelled_para)
-        else:
-            xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+        xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
     flush_current_list()
 
     return {

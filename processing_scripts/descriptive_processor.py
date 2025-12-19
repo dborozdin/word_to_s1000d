@@ -254,6 +254,10 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     print("Analyzing document elements...")
     elements = analyze_document_elements(doc, illustrations, illustration_positions)
 
+    # Process multi-sheet illustrations
+    from parsers.multi_sheet_illustration_parser import process_multi_sheet_illustrations
+    elements = process_multi_sheet_illustrations(elements)
+
     # Generate elements log (always)
     elements_log_path = generate_elements_log(doc_path, elements, output_dir)
 
@@ -761,19 +765,51 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 if table_xml:
                     xml_parts.append(table_xml)
             elif elem_type == 'illustration':
-                # Generate proper figure with ID and reproduction attributes for embedded illustrations
-                figure_id = f"ICN{illustration_counter + 1:02d}"
-                graphic_id = f"g{illustration_counter}"
-                graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
-                # Use the actual content from the element instead of hardcoded text
-                figure_title = elem.get('content', 'Название иллюстрации')
-                xml_parts.append(f'''<figure id="{figure_id}">
+                # Check if this is a multi-sheet illustration
+                if elem.get('is_multi_sheet'):
+                    # Use the pre-generated XML for multi-sheet illustration
+                    multi_sheet_xml = elem.get('xml_example', '')
+                    if multi_sheet_xml:
+                        xml_parts.append(multi_sheet_xml)
+                        # Update counter based on number of graphics in multi-sheet
+                        sheet_count = elem.get('sheet_count', 1)
+                        illustration_counter += sheet_count
+                        # Add figure info for each graphic in multi-sheet
+                        if figure_info is not None:
+                            for i in range(sheet_count):
+                                graphic_num = elem.get('graphic_start_num', illustration_counter - sheet_count) + i
+                                figure_info.append({
+                                    'id': elem.get('xml_example', '').split('id="')[1].split('"')[0] if 'id="' in elem.get('xml_example', '') else f"ICN{figure_counter + 1:02d}",
+                                    'file': f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
+                                })
+                        figure_counter += 1
+                    else:
+                        # Fallback: generate single figure
+                        figure_id = f"ICN{illustration_counter + 1:02d}"
+                        graphic_id = f"g{illustration_counter}"
+                        graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
+                        figure_title = elem.get('content', 'Название иллюстрации')
+                        xml_parts.append(f'''<figure id="{figure_id}">
             <title>{figure_title}</title>
             <graphic infoEntityIdent="{graphic_ident}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="{graphic_id}"/>
           </figure>''')
-                if figure_info is not None:
-                    figure_info.append({'id': figure_id, 'file': f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}.jpg"})
-                illustration_counter += 1
+                        if figure_info is not None:
+                            figure_info.append({'id': figure_id, 'file': f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}.jpg"})
+                        illustration_counter += 1
+                else:
+                    # Generate proper figure with ID and reproduction attributes for regular embedded illustrations
+                    figure_id = f"ICN{illustration_counter + 1:02d}"
+                    graphic_id = f"g{illustration_counter}"
+                    graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
+                    # Use the actual content from the element instead of hardcoded text
+                    figure_title = elem.get('content', 'Название иллюстрации')
+                    xml_parts.append(f'''<figure id="{figure_id}">
+            <title>{figure_title}</title>
+            <graphic infoEntityIdent="{graphic_ident}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="{graphic_id}"/>
+          </figure>''')
+                    if figure_info is not None:
+                        figure_info.append({'id': figure_id, 'file': f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}.jpg"})
+                    illustration_counter += 1
             elif elem_type == 'illustration_reference':
                 # For illustration references that are not combined with titles, create internal references
                 # Extract reference number from content or details

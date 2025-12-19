@@ -415,6 +415,8 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
 
         # Detect illustrations (embedded images in paragraphs)
         if _has_embedded_image(paragraph):
+            # Use the actual paragraph text as content
+            illustration_content = text.strip() if text.strip() else 'Иллюстрация'
             # Use the correct GRAPHIC identifier based on counter
             graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
             element_info = {
@@ -425,7 +427,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 'end_char': para_end_char,
                 'start_para': para_idx,
                 'end_para': para_idx,
-                'content': 'Иллюстрация',
+                'content': illustration_content,
                 'xml_example': f'<figure><title>Название иллюстрации</title><graphic infoEntityIdent="{graphic_ident}"/></figure>',
                 'details': 'Встраиваемая иллюстрация'
             }

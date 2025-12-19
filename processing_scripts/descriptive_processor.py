@@ -258,6 +258,25 @@ def process_descriptive_document(doc_path: str, output_dir: str):
     from parsers.multi_sheet_illustration_parser import process_multi_sheet_illustrations
     elements = process_multi_sheet_illustrations(elements)
 
+    # Post-process to clean figure titles by removing "Рисунок <number> – " prefix
+    for elem in elements:
+        if elem.get('type') == 'illustration':
+            content = elem.get('content', '')
+            # Check if content starts with figure title pattern
+            title_match = re.search(r'^[Рр]исунок\s*\d+\s*[–-]\s*(.+)', content, re.IGNORECASE)
+            if title_match:
+                clean_title = title_match.group(1).strip()
+                # Update both content and xml_example
+                elem['content'] = clean_title
+                # Also update the title in xml_example
+                if '<title>' in elem.get('xml_example', ''):
+                    # Replace the title content in the XML
+                    old_xml = elem['xml_example']
+                    # Find and replace the title content
+                    title_pattern = r'(<title>)[^<]*(</title>)'
+                    new_xml = re.sub(title_pattern, f'\\1{clean_title}\\2', old_xml, flags=re.IGNORECASE)
+                    elem['xml_example'] = new_xml
+
     # Generate elements log (always)
     elements_log_path = generate_elements_log(doc_path, elements, output_dir)
 

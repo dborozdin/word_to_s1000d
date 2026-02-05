@@ -30,7 +30,29 @@ def determine_module_type(doc_path: str) -> str:
     return "descriptive"
 
 
-def route_to_processor(module_type: str, doc_path: str, output_dir: str):
+def get_llm_config(config: configparser.ConfigParser) -> Dict:
+    """
+    Extract LLM configuration from config parser.
+
+    Args:
+        config: ConfigParser object
+
+    Returns:
+        Dict with LLM configuration
+    """
+    llm_config = {
+        'enabled': config.getboolean('llm', 'enabled', fallback=False),
+        'ollama_url': config.get('llm', 'ollama_url', fallback='http://localhost:11434'),
+        'ollama_model': config.get('llm', 'ollama_model', fallback='gemma3:4b-it-qat'),
+        'batch_size': config.getint('llm', 'batch_size', fallback=20),
+        'confidence_threshold': config.getfloat('llm', 'confidence_threshold', fallback=0.7),
+        'cache_enabled': config.getboolean('llm', 'cache_enabled', fallback=True),
+        'cache_dir': config.get('llm', 'cache_dir', fallback='.llm_cache')
+    }
+    return llm_config
+
+
+def route_to_processor(module_type: str, doc_path: str, output_dir: str, llm_config: Dict = None):
     """
     Route to appropriate processing script based on module type.
 
@@ -38,11 +60,12 @@ def route_to_processor(module_type: str, doc_path: str, output_dir: str):
         module_type: Type of module to create
         doc_path: Path to source document
         output_dir: Output directory for generated files
+        llm_config: Optional LLM configuration dict
     """
     if module_type == "descriptive":
         # Import and run descriptive module processor
         from processing_scripts import descriptive_processor
-        descriptive_processor.process_descriptive_document(doc_path, output_dir)
+        descriptive_processor.process_descriptive_document(doc_path, output_dir, llm_config=llm_config)
     elif module_type == "task":
         # Future: task module processor for technological maps
         print("Task module processing not implemented yet")
@@ -91,8 +114,13 @@ def main():
     module_type = determine_module_type(doc_path)
     print(f"Detected module type: {module_type}")
 
+    # Get LLM configuration
+    llm_config = get_llm_config(config)
+    if llm_config['enabled']:
+        print(f"LLM enabled: {llm_config['ollama_model']} at {llm_config['ollama_url']}")
+
     # Route to appropriate processor
-    route_to_processor(module_type, doc_path, output_dir)
+    route_to_processor(module_type, doc_path, output_dir, llm_config=llm_config)
 
 
 if __name__ == "__main__":

@@ -210,13 +210,14 @@ def map_heading_to_info_code(heading: str, component_index: int = 0) -> Dict:
     return base_dm_code
 
 
-def process_descriptive_document(doc_path: str, output_dir: str):
+def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dict = None):
     """
     Process descriptive document: orchestrate parsing, map sections, generate XML files.
 
     Args:
         doc_path: Path to docx document
         output_dir: Output directory for generated files
+        llm_config: Optional LLM configuration for element classification
     """
     print(f"Processing descriptive document: {doc_path}")
 
@@ -252,7 +253,7 @@ def process_descriptive_document(doc_path: str, output_dir: str):
 
     # Analyze document elements for logging and XML generation
     print("Analyzing document elements...")
-    elements = analyze_document_elements(doc, illustrations, illustration_positions)
+    elements = analyze_document_elements(doc, illustrations, illustration_positions, llm_config=llm_config)
 
     # Process multi-sheet illustrations
     from parsers.multi_sheet_illustration_parser import process_multi_sheet_illustrations
@@ -605,13 +606,20 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
     current_list_type = None
 
     def flush_current_list():
-        nonlocal current_list_items, current_list_type, xml_parts
+        nonlocal current_list_items, current_list_type, xml_parts, current_levelled_para, in_levelled_para
         if current_list_items:
             # Generate randomList XML wrapped in para to conform to schema
             items_xml = ''.join([f"<listItem><para>{item}</para></listItem>" for item in current_list_items])
             prefix = 'pf02' if current_list_type == 'unnumbered_list' else 'nfp01'
             list_xml = f'<randomList listItemPrefix="{prefix}">{items_xml}</randomList>'
-            xml_parts.append(f'<para>{list_xml}</para>')
+            list_para = f'<para>{list_xml}</para>'
+
+            # Add list to current levelledPara if we're inside one, otherwise to xml_parts
+            if in_levelled_para:
+                current_levelled_para.append(list_para)
+            else:
+                xml_parts.append(list_para)
+
             current_list_items = []
             current_list_type = None
 
@@ -734,17 +742,12 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             in_levelled_para = True
 
         elif elem_type in ['numbered_list', 'unnumbered_list']:
-            # Flush any pending levelledPara before starting list
-            if current_levelled_para:
-                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
-                current_levelled_para = []
-                in_levelled_para = False
-
+            # DON'T flush current_levelled_para - lists should be inside the current section
             # Check if this continues the current list
             if elem_type == current_list_type:
                 current_list_items.append(content)
             else:
-                # Flush previous list and start new one
+                # Flush previous list (will be added to current_levelled_para if inside one)
                 flush_current_list()
                 current_list_type = elem_type
                 current_list_items = [content]
@@ -770,26 +773,29 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             xml_parts.append(f'<levelledPara><title>{content}</title></levelledPara>')
 
         else:
-            # Flush any pending levelledPara and list before adding other elements
-            if current_levelled_para:
-                xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
-                current_levelled_para = []
-                in_levelled_para = False
-
+            # DON'T flush current_levelled_para for table/illustration - they belong to current section
+            # But DO flush the current list first so it appears before table/illustration
             flush_current_list()
+
+            def add_to_current_section(xml_content):
+                """Helper to add content to current levelledPara or xml_parts"""
+                if in_levelled_para:
+                    current_levelled_para.append(xml_content)
+                else:
+                    xml_parts.append(xml_content)
 
             if elem_type == 'table':
                 # Use the enhanced table XML from element analysis
                 table_xml = elem.get('xml_example', '')
                 if table_xml:
-                    xml_parts.append(table_xml)
+                    add_to_current_section(table_xml)
             elif elem_type == 'illustration':
                 # Check if this is a multi-sheet illustration
                 if elem.get('is_multi_sheet'):
                     # Use the pre-generated XML for multi-sheet illustration
                     multi_sheet_xml = elem.get('xml_example', '')
                     if multi_sheet_xml:
-                        xml_parts.append(multi_sheet_xml)
+                        add_to_current_section(multi_sheet_xml)
                         # Update counter based on number of graphics in multi-sheet
                         sheet_count = elem.get('sheet_count', 1)
                         illustration_counter += sheet_count
@@ -808,7 +814,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                         graphic_id = f"g{illustration_counter}"
                         graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
                         figure_title = elem.get('content', 'Название иллюстрации')
-                        xml_parts.append(f'''<figure id="{figure_id}">
+                        add_to_current_section(f'''<figure id="{figure_id}">
             <title>{figure_title}</title>
             <graphic infoEntityIdent="{graphic_ident}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="{graphic_id}"/>
           </figure>''')
@@ -822,7 +828,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                     graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
                     # Use the actual content from the element instead of hardcoded text
                     figure_title = elem.get('content', 'Название иллюстрации')
-                    xml_parts.append(f'''<figure id="{figure_id}">
+                    add_to_current_section(f'''<figure id="{figure_id}">
             <title>{figure_title}</title>
             <graphic infoEntityIdent="{graphic_ident}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="{graphic_id}"/>
           </figure>''')
@@ -848,19 +854,19 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
 
                 if ref_number:
                     icn_ref = f"ICN{ref_number:02d}"
-                    xml_parts.append(f'<para>Ссылка на рисунок: <internalRef internalRefId="{icn_ref}" internalRefTargetType="irtt01"/></para>')
+                    add_to_current_section(f'<para>Ссылка на рисунок: <internalRef internalRefId="{icn_ref}" internalRefTargetType="irtt01"/></para>')
                 else:
                     # Fallback
-                    xml_parts.append(f'<para>{content}</para>')
+                    add_to_current_section(f'<para>{content}</para>')
             elif elem_type == 'table_reference':
                 # Skip outputting table references as they are redundant when table is present
                 pass
             elif elem_type == 'warning':
-                xml_parts.append(f'<warning><para>{content}</para></warning>')
+                add_to_current_section(f'<warning><para>{content}</para></warning>')
             else:
                 # Default paragraph - skip if marked for skipping
                 if not elem.get('skip_output', False):
-                    xml_parts.append(f'<para>{content}</para>')
+                    add_to_current_section(f'<para>{content}</para>')
 
     # Flush any remaining content
     if current_levelled_para:

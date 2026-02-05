@@ -11,16 +11,33 @@ from docx.shared import Inches
 import datetime
 
 
-def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = None, illustration_positions: Dict[str, Dict] = None) -> List[Dict[str, Any]]:
+def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = None, illustration_positions: Dict[str, Dict] = None, llm_config: Dict[str, Any] = None) -> List[Dict[str, Any]]:
     """
     Analyze document and extract all elements with their start/end positions.
 
     Args:
         doc: Word document object
+        illustrations: Dictionary of illustration references
+        illustration_positions: Dictionary of illustration positions
+        llm_config: Optional LLM configuration for element classification
 
     Returns:
         List of element dictionaries with type, start_para, end_para, content, xml_example
     """
+    # Initialize LLM classifier if enabled
+    llm_classifier = None
+    if llm_config and llm_config.get('enabled', False):
+        try:
+            from llm import DocumentStructureClassifier
+            llm_classifier = DocumentStructureClassifier(llm_config)
+            if llm_classifier.is_llm_available():
+                print("[LLM] Structure classifier initialized")
+            else:
+                print("[LLM] Ollama not available, using heuristics only")
+                llm_classifier = None
+        except ImportError as e:
+            print(f"[LLM] Failed to import classifier: {e}")
+            llm_classifier = None
     elements = []
 
     # Track list state
@@ -173,12 +190,37 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
             if not text:
                 continue
 
+        # PHASE 1 FIX: Check for list markers BEFORE header detection
+        # This prevents list items from being incorrectly classified as headers
+        is_likely_list_item = _is_likely_list_item(text, doc.paragraphs, para_idx, elements)
+
+        # PHASE 2: Use LLM classifier for ambiguous cases
+        llm_says_header = False  # Currently unused, reserved for future enhancements
+        llm_says_paragraph = False
+        if llm_classifier and not is_likely_list_item:
+            # Only use LLM for ambiguous cases (medium length text without clear markers)
+            if 20 < len(text) < 300 and not text.endswith(';'):
+                context = {
+                    'prev_element': elements[-1] if elements else {},
+                    'prev_text_ending': elements[-1].get('content', '')[-1:] if elements else '',
+                    'style_name': style_name
+                }
+                classification = llm_classifier.classify_element(text, context)
+                if classification and classification.confidence >= llm_classifier.confidence_threshold:
+                    if classification.element_type == 'list_item':
+                        is_likely_list_item = True
+                    elif classification.element_type == 'header':
+                        llm_says_header = True
+                    elif classification.element_type == 'paragraph':
+                        llm_says_paragraph = True
+
         # Detect numbered paragraph headers first
         # (paragraphs with numbering properties that appear as numbered headings)
         is_numbered_header = False
         level = 1
 
-        if numPr is not None:
+        # Skip header detection if this looks like a list item or LLM says it's a paragraph
+        if numPr is not None and not is_likely_list_item and not llm_says_paragraph:
             # Check if this has numbering and looks like a header
             # Either has Heading style, or has specific header-like content, or just has numbering
             if (style_name.startswith('Heading') or
@@ -291,7 +333,9 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
             continue
 
         # Detect regular headers/headings - only treat as header if it looks like a proper section header
-        if style_name.startswith('Heading'):
+        # PHASE 1 FIX: Skip if this looks like a list item
+        # PHASE 2: Also skip if LLM says it's a paragraph
+        if style_name.startswith('Heading') and not is_likely_list_item and not llm_says_paragraph:
             level_match = re.search(r'Heading\s*(\d+)', style_name, re.IGNORECASE)
             level = int(level_match.group(1)) if level_match else 1
 
@@ -359,7 +403,9 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 continue
 
         # Detect main section headers (like 1., 2., etc.) - treat as numbered paragraph headers
-        if _is_main_section_header(text):
+        # PHASE 1 FIX: Skip if this looks like a list item
+        # PHASE 2: Also skip if LLM says it's a paragraph
+        if _is_main_section_header(text) and not is_likely_list_item and not llm_says_paragraph:
             element_info = {
                 'type': 'numbered_paragraph_header',
                 'start_line': para_start_line,
@@ -624,6 +670,82 @@ def _is_table_start(paragraph) -> bool:
     return False
 
 
+def _is_likely_list_item(text: str, paragraphs, para_idx: int, elements: list) -> bool:
+    """
+    Check if text is likely a list item rather than a header.
+    This function is called BEFORE header detection to prevent false positives.
+
+    Returns True if the text appears to be a list item based on:
+    1. Starts with a list marker (bullet, dash, etc.)
+    2. Ends with semicolon (typical list item ending)
+    3. Previous paragraph ends with colon (list introduction)
+    4. Previous element was also classified as a list item with similar structure
+    5. Matches common list item patterns (e.g., "N шт. - description")
+    """
+    if not text:
+        return False
+
+    text = text.strip()
+
+    # Check 0: Common Russian technical document list patterns
+    # Pattern like "2 шт. - описание" (quantity + dash + description)
+    quantity_pattern = r'^\d+\s*шт\.?\s*[-–—]'
+    if re.match(quantity_pattern, text):
+        return True
+
+    # Check 1: Explicit list markers at the start
+    list_markers = ['•', '◦', '▪', '▫', '⁃', '·', '−', '–', '—', '†', '‡', '§']
+    if any(text.startswith(marker) for marker in list_markers):
+        return True
+
+    # Check 1b: Dash at start (but not if it's a long text that looks like a heading)
+    if text.startswith('-') or text.startswith('*'):
+        # Only treat as list if it's followed by space and not all caps (which might be a header)
+        if len(text) > 1 and text[1] == ' ' and not text.isupper():
+            return True
+
+    # Check 2: Ends with semicolon - strong indicator of list item
+    if text.endswith(';'):
+        return True
+
+    # Check 3: Previous paragraph ends with colon (list introduction pattern)
+    if para_idx > 0 and para_idx < len(paragraphs):
+        prev_para = paragraphs[para_idx - 1]
+        prev_text = prev_para.text.strip()
+        if prev_text.endswith(':'):
+            # Current paragraph follows a colon-intro, likely a list item
+            # Unless it's clearly a section header (all caps, very short)
+            if not (len(text) < 30 and text.isupper()):
+                return True
+
+    # Check 4: Previous element was a list item with similar structure
+    if elements:
+        prev_element = elements[-1]
+        prev_type = prev_element.get('type', '')
+        if prev_type in ('unnumbered_list', 'numbered_list'):
+            prev_content = prev_element.get('content', '')
+            # If previous was list and this has similar ending pattern
+            if prev_content.endswith(';') and (text.endswith(';') or text.endswith('.')):
+                return True
+            # If previous was list and both are short without sentence endings
+            if len(prev_content) < 150 and len(text) < 150:
+                if not prev_content.endswith('.') and not text.endswith('.'):
+                    return True
+
+    # Check 5: Text looks like a continuation of a list (short, no period, similar to prev)
+    if elements and len(text) < 100:
+        prev_element = elements[-1]
+        prev_type = prev_element.get('type', '')
+        prev_content = prev_element.get('content', '')
+
+        # If previous element ended with semicolon and this one does too
+        if prev_type in ('unnumbered_list', 'numbered_list', 'numbered_paragraph_header'):
+            if prev_content.endswith(';') and text.endswith(';'):
+                return True
+
+    return False
+
+
 def _is_main_section_header(text: str) -> bool:
     """Check if text is a main section header (1., 2., 3., etc.)."""
     pattern = r'^\s*\d+\.?\s+'
@@ -705,10 +827,16 @@ def _get_list_type(paragraph, para_idx: int = None) -> str:
     
     # Check if text ends with ';' (typical for list items)
     if text.endswith(';'):
-        # Verify it's after an intro paragraph ending with ':'
+        # Strong indicator of list item - text ending with semicolon
+        # Either verify it's after an intro paragraph, or if text is short enough to be a list item
         if _is_after_colon_intro(doc, para_idx):
             return 'unnumbered_list'
-    
+        # PHASE 1 FIX: Also treat as list item if it looks like a list item
+        # Text ending with ; is very likely a list item - just verify it's not too long
+        # and doesn't look like a complete multi-sentence paragraph
+        if len(text) < 300 and text.count('. ') <= 2:
+            return 'unnumbered_list'
+
     # Check colon-intro pattern
     list_type = _detect_colon_intro_list(doc, para_idx)
     if list_type:

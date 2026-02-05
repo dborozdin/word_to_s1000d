@@ -157,19 +157,25 @@ class S1000DGenerator:
                                 current_levelled_para = ET.SubElement(description, "levelledPara")
                             current_levelled_para.append(part_elem)
                         elif part_elem.tag == 'table':
-                            # Tables are direct children of description
                             # Fix table entries to wrap text in <para>
                             for entry in part_elem.iter('entry'):
                                 if entry.text and entry.text.strip():
                                     para_elem = ET.SubElement(entry, "para")
                                     para_elem.text = entry.text
                                     entry.text = None
-                            description.append(part_elem)
-                            current_levelled_para = None  # Reset after table
+                            # Add table to current levelledPara if exists, otherwise to description
+                            if current_levelled_para is not None:
+                                current_levelled_para.append(part_elem)
+                            else:
+                                description.append(part_elem)
+                            # Don't reset current_levelled_para - keep adding to same section
                         elif part_elem.tag == 'randomList':
-                            # Lists are direct children of description
-                            description.append(part_elem)
-                            current_levelled_para = None  # Reset after list
+                            # Add list to current levelledPara if exists, otherwise to description
+                            if current_levelled_para is not None:
+                                current_levelled_para.append(part_elem)
+                            else:
+                                description.append(part_elem)
+                            # Don't reset current_levelled_para - keep adding to same section
                         elif part_elem.tag == 'figure':
                             # Fix figure and graphic IDs to be unique
                             figure_elem = part_elem
@@ -179,16 +185,22 @@ class S1000DGenerator:
                                     graphic.set('id', f'gra{figure_id_counter}')
                                     figure_id_counter += 1
                                     break
-                            # Figures are direct children of description
-                            description.append(figure_elem)
-                            current_levelled_para = None  # Reset after figure
+                            # Add figure to current levelledPara if exists, otherwise to description
+                            if current_levelled_para is not None:
+                                current_levelled_para.append(figure_elem)
+                            else:
+                                description.append(figure_elem)
+                            # Don't reset current_levelled_para - keep adding to same section
                         elif part_elem.tag == 'warning':
                             # Convert any <para> inside warning to <warningAndCautionPara>
                             for para in part_elem.xpath('.//para'):
                                 para.tag = 'warningAndCautionPara'
-                            # Warnings can be direct children of description
-                            description.append(part_elem)
-                            current_levelled_para = None  # Reset after warning
+                            # Add warning to current levelledPara if exists, otherwise to description
+                            if current_levelled_para is not None:
+                                current_levelled_para.append(part_elem)
+                            else:
+                                description.append(part_elem)
+                            # Don't reset current_levelled_para - keep adding to same section
                         else:
                             # For other elements, try to add them appropriately
                             if current_levelled_para is None:

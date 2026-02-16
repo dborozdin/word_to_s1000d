@@ -82,6 +82,17 @@ def is_descriptive_info_code(info_code: str) -> bool:
         return False
 
 
+def is_procedure_info_code(info_code: str) -> bool:
+    """
+    Check if info code falls in the procedure range (100-999).
+    S1000D: codes >= 100 use proced.xsd.
+    """
+    try:
+        return int(info_code) >= 100
+    except ValueError:
+        return False
+
+
 def build_graphic_ident_prefix(dm_code: Dict) -> str:
     """
     Build the graphic infoEntityIdent prefix from DMC code.

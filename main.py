@@ -12,6 +12,7 @@ import configparser
 from parsers.dmc_parser import (
     parse_dmc_from_folder_name,
     is_descriptive_info_code,
+    is_procedure_info_code,
     build_graphic_ident_prefix,
     dm_code_to_string,
 )
@@ -74,9 +75,9 @@ def route_to_processor(module_type: str, doc_path: str, output_dir: str, llm_con
         # Import and run descriptive module processor
         from processing_scripts import descriptive_processor
         descriptive_processor.process_descriptive_document(doc_path, output_dir, llm_config=llm_config)
-    elif module_type == "task":
-        # Future: task module processor for technological maps
-        print("Task module processing not implemented yet")
+    elif module_type in ("task", "procedure"):
+        from processing_scripts import procedure_processor
+        procedure_processor.process_procedure_document(doc_path, output_dir, llm_config=llm_config)
     elif module_type == "fault_isolation":
         # Future: fault isolation module processor
         print("Fault isolation module processing not implemented yet")
@@ -175,8 +176,12 @@ def collect_batch_tasks(input_dir: str) -> List[Dict]:
             continue
 
         info_code = dmc_info['dm_code']['infoCode']
-        if not is_descriptive_info_code(info_code):
-            task['skip_reason'] = f'Процедурный модуль (infoCode={info_code}, не в диапазоне 000-099)'
+        if is_descriptive_info_code(info_code):
+            task['module_type'] = 'descriptive'
+        elif is_procedure_info_code(info_code):
+            task['module_type'] = 'procedure'
+        else:
+            task['skip_reason'] = f'Неизвестный тип модуля (infoCode={info_code})'
             tasks.append(task)
             continue
 
@@ -304,20 +309,34 @@ def run_batch(config: configparser.ConfigParser, input_dir: str, output_dir: str
         logger.info(f"  infoName: {dmc_info['info_name']}")
 
         try:
-            from processing_scripts import descriptive_processor
-            dm_refs, illustrations = descriptive_processor.process_descriptive_document(
-                doc_path=task['docx_path'],
-                output_dir=output_dir,
-                llm_config=llm_config,
-                dm_code_override=dm_code,
-                tech_name_override=dmc_info['tech_name'],
-                info_name_override=dmc_info['info_name'],
-                skip_pmc=True,
-                graphic_ident_prefix=graphic_prefix,
-            )
+            module_type = task.get('module_type', 'descriptive')
+            if module_type == 'procedure':
+                from processing_scripts import procedure_processor
+                dm_refs, illustrations = procedure_processor.process_procedure_document(
+                    doc_path=task['docx_path'],
+                    output_dir=output_dir,
+                    llm_config=llm_config,
+                    dm_code_override=dm_code,
+                    tech_name_override=dmc_info['tech_name'],
+                    info_name_override=dmc_info['info_name'],
+                    skip_pmc=True,
+                    graphic_ident_prefix=graphic_prefix,
+                )
+            else:
+                from processing_scripts import descriptive_processor
+                dm_refs, illustrations = descriptive_processor.process_descriptive_document(
+                    doc_path=task['docx_path'],
+                    output_dir=output_dir,
+                    llm_config=llm_config,
+                    dm_code_override=dm_code,
+                    tech_name_override=dmc_info['tech_name'],
+                    info_name_override=dmc_info['info_name'],
+                    skip_pmc=True,
+                    graphic_ident_prefix=graphic_prefix,
+                )
             all_dm_refs.extend(dm_refs)
             all_illustrations.update(illustrations)
-            logger.info(f"  УСПЕХ: Сгенерировано {len(dm_refs)} модуль(ей) данных")
+            logger.info(f"  УСПЕХ: Сгенерировано {len(dm_refs)} модуль(ей) данных ({module_type})")
         except Exception as e:
             logger.error(f"  ОШИБКА: {task['folder_name']} — {e}", exc_info=True)
 

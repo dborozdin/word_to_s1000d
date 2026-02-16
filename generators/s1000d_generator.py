@@ -23,19 +23,26 @@ class S1000DGenerator:
         self.model_ident = model_ident
         self.system_diff = system_diff
 
-    def _create_base_xml_structure(self) -> ET.Element:
-        """Create basic dmodule element with namespaces."""
-        # Create XML string with proper namespaces for external validation
-        xml_str = '''<dmodule xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                      xsi:noNamespaceSchemaLocation="http://www.s1000d.org/S1000D_4-1/xml_schema_flat/descript.xsd"
+    def _create_base_xml_structure(self, schema_type: str = "descript") -> ET.Element:
+        """Create basic dmodule element with namespaces.
+
+        Args:
+            schema_type: 'descript' or 'proced' to select the XSD schema reference.
+        """
+        schema_urls = {
+            "descript": "http://www.s1000d.org/S1000D_4-1/xml_schema_flat/descript.xsd",
+            "proced": "http://www.s1000d.org/S1000D_4-1/xml_schema_flat/proced.xsd",
+        }
+        schema_url = schema_urls.get(schema_type, schema_urls["descript"])
+
+        xml_str = f'''<dmodule xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                      xsi:noNamespaceSchemaLocation="{schema_url}"
                       xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
                       xmlns:dc="http://www.purl.org/dc/elements/1.1/"
                       xmlns:xlink="http://www.w3.org/1999/xlink">
         </dmodule>'''
 
-        # Parse into element tree
         dmodule = ET.fromstring(xml_str)
-
         return dmodule
 
     def _create_ident_and_status_section(self, dm_code_components: Dict, title_data: Dict) -> ET.Element:
@@ -245,6 +252,200 @@ class S1000DGenerator:
 
         return content
 
+    # ------------------------------------------------------------------
+    # Procedure module generation
+    # ------------------------------------------------------------------
+
+    def _create_procedure_content_section(self, procedure_data: Dict) -> ET.Element:
+        """Create content section with <procedure> element for proced.xsd modules."""
+        content = ET.Element("content")
+        procedure = ET.SubElement(content, "procedure")
+
+        # 1. preliminaryRqmts (required)
+        prelim = ET.SubElement(procedure, "preliminaryRqmts")
+        self._build_prelim_rqmts(prelim, procedure_data.get('preliminary_rqmts', {}))
+
+        # 2. mainProcedure (required)
+        main_proc = ET.SubElement(procedure, "mainProcedure")
+        self._build_procedural_steps(main_proc, procedure_data.get('procedural_steps', []))
+
+        # 3. closeRqmts (required)
+        close = ET.SubElement(procedure, "closeRqmts")
+        req_cond_group = ET.SubElement(close, "reqCondGroup")
+        ET.SubElement(req_cond_group, "noConds")
+
+        return content
+
+    def _build_prelim_rqmts(self, parent: ET.Element, data: Dict):
+        """Build preliminaryRqmts children."""
+        # reqCondGroup
+        req_cond_group = ET.SubElement(parent, "reqCondGroup")
+        ET.SubElement(req_cond_group, "noConds")
+
+        # reqSupportEquips
+        support_equips = data.get('support_equips', [])
+        req_support = ET.SubElement(parent, "reqSupportEquips")
+        if support_equips:
+            group = ET.SubElement(req_support, "supportEquipDescrGroup")
+            for idx, item in enumerate(support_equips):
+                descr = ET.SubElement(group, "supportEquipDescr", id=f"seq-{idx:04d}")
+                name_elem = ET.SubElement(descr, "name")
+                name_elem.text = item.get('name', '') if isinstance(item, dict) else str(item)
+                ident_num = ET.SubElement(descr, "identNumber")
+                ET.SubElement(ident_num, "manufacturerCode")
+                qty = ET.SubElement(descr, "reqQuantity")
+                qty.text = "По требованию"
+        else:
+            ET.SubElement(req_support, "noSupportEquips")
+
+        # reqSupplies
+        supplies = data.get('supplies', [])
+        req_supplies = ET.SubElement(parent, "reqSupplies")
+        if supplies:
+            group = ET.SubElement(req_supplies, "supplyDescrGroup")
+            for idx, item in enumerate(supplies):
+                descr = ET.SubElement(group, "supplyDescr", id=f"sup-{idx:04d}")
+                name_elem = ET.SubElement(descr, "name")
+                name_elem.text = item.get('name', '') if isinstance(item, dict) else str(item)
+                ident_num = ET.SubElement(descr, "identNumber")
+                ET.SubElement(ident_num, "manufacturerCode")
+                qty = ET.SubElement(descr, "reqQuantity")
+                qty.text = "По требованию"
+        else:
+            ET.SubElement(req_supplies, "noSupplies")
+
+        # reqSpares
+        req_spares = ET.SubElement(parent, "reqSpares")
+        ET.SubElement(req_spares, "noSpares")
+
+        # reqSafety
+        safety_notes = data.get('safety_notes', [])
+        safety_warnings = data.get('safety_warnings', [])
+        safety_cautions = data.get('safety_cautions', [])
+        req_safety = ET.SubElement(parent, "reqSafety")
+        if safety_notes or safety_warnings or safety_cautions:
+            safety_rqmts = ET.SubElement(req_safety, "safetyRqmts")
+            for note_text in safety_notes:
+                note = ET.SubElement(safety_rqmts, "note")
+                note_para = ET.SubElement(note, "notePara")
+                note_para.text = note_text
+            for warn_text in safety_warnings:
+                warning = ET.SubElement(safety_rqmts, "warning")
+                wcp = ET.SubElement(warning, "warningAndCautionPara")
+                wcp.text = warn_text
+            for caut_text in safety_cautions:
+                caution = ET.SubElement(safety_rqmts, "caution")
+                wcp = ET.SubElement(caution, "warningAndCautionPara")
+                wcp.text = caut_text
+        else:
+            ET.SubElement(req_safety, "noSafety")
+
+    def _build_procedural_steps(self, parent: ET.Element, steps: List, counter: List = None):
+        """Recursively build proceduralStep elements.
+
+        Args:
+            parent: Parent XML element (mainProcedure or proceduralStep)
+            steps: List of step dicts with 'text' and optional 'substeps'
+            counter: Mutable list with single int for sequential ID generation
+        """
+        if counter is None:
+            counter = [1]
+
+        for step in steps:
+            step_id = f"stp-{counter[0]:05d}"
+            counter[0] += 1
+            proc_step = ET.SubElement(parent, "proceduralStep", id=step_id)
+
+            text = step.get('text', '') if isinstance(step, dict) else str(step)
+            para = ET.SubElement(proc_step, "para")
+            para.text = text
+
+            substeps = step.get('substeps', []) if isinstance(step, dict) else []
+            if substeps:
+                self._build_procedural_steps(proc_step, substeps, counter)
+
+    def generate_procedure_module(self, dm_config: Dict, output_path: str,
+                                   illustrations: Dict[str, str] = None,
+                                   figure_info: List = None) -> str:
+        """Generate complete S1000D procedure data module XML.
+
+        Args:
+            dm_config: Configuration dict with 'dm_code', 'title', 'content' (procedure_data)
+            output_path: Directory to save XML file
+            illustrations: Dict of illustration infoEntityIdent to file paths
+            figure_info: List of figure info dicts
+
+        Returns:
+            Path to generated XML file
+        """
+        dmodule = self._create_base_xml_structure(schema_type="proced")
+
+        # DOCTYPE
+        doctype_lines = [
+            '<!DOCTYPE dmodule [',
+            '<!NOTATION jpg PUBLIC "+//ISBN 0-7923-9432-1::Graphic Notation//NOTATION Joint Photographic Experts Group Raster//EN">',
+            '<!ENTITY PUBLICATION_LOGO SYSTEM "publication_logo.JPG" NDATA jpg>'
+        ]
+        entity_declarations = set()
+        if illustrations:
+            for info_entity_ident, file_path in illustrations.items():
+                filename = os.path.basename(file_path)
+                entity_declarations.add(f'<!ENTITY {info_entity_ident} SYSTEM "{filename}" NDATA jpg>')
+        if figure_info:
+            for fig in figure_info:
+                file_path = fig['file']
+                filename = os.path.basename(file_path)
+                entity_name = filename.replace('.jpg', '')
+                entity_declarations.add(f'<!ENTITY {entity_name} SYSTEM "{filename}" NDATA jpg>')
+        doctype_lines.extend(sorted(entity_declarations))
+        doctype_lines.append(']>')
+        doctype = '\n'.join(doctype_lines)
+
+        # identAndStatusSection (same as descriptive)
+        ident_section = self._create_ident_and_status_section(
+            dm_config['dm_code'], dm_config['title']
+        )
+        dmodule.append(ident_section)
+
+        # content with <procedure>
+        content_section = self._create_procedure_content_section(dm_config['content'])
+        dmodule.append(content_section)
+
+        # Generate filename
+        dm_code_parts = dm_config['dm_code']
+        filename = (
+            f"DMC-{dm_code_parts['modelIdentCode']}-{dm_code_parts['systemDiffCode']}-"
+            f"{dm_code_parts['systemCode']}-{dm_code_parts['subSystemCode']}"
+            f"{dm_code_parts['subSubSystemCode']}-{dm_code_parts['assyCode']}-"
+            f"{dm_code_parts['disassyCode']}{dm_code_parts['disassyCodeVariant']}-"
+            f"{dm_code_parts['infoCode']}{dm_code_parts['infoCodeVariant']}-"
+            f"{dm_code_parts['itemLocationCode']}_001_ru-RU.xml"
+        )
+        filepath = os.path.join(output_path, filename)
+
+        # Format XML
+        from xml.dom import minidom
+        rough_string = ET.tostring(dmodule, encoding='unicode')
+        reparsed = minidom.parseString(rough_string.encode('utf-8'))
+        xml_content = reparsed.toprettyxml(indent='    ', newl='\n')
+        xml_content = '\n'.join(xml_content.split('\n')[1:])
+        xml_content = xml_content.strip()
+
+        # Write
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write('<?xml version="1.0" encoding="utf-8"?>\n')
+            f.write(doctype + '\n')
+            f.write(xml_content)
+
+        # Validate against proced.xsd
+        is_valid, message = S1000DGenerator.validate_xml_against_schema(filepath, schema_file="xsd/proced.xsd")
+        if is_valid:
+            print(f"Validation PASSED for {filepath}")
+        else:
+            print(f"Validation FAILED for {filepath}: {message}")
+
+        return filepath
+
     def generate_data_module(self, dm_config: Dict, output_path: str, illustrations: Dict[str, str] = None, figure_info: List = None) -> str:
         """
         Generate complete S1000D data module XML.
@@ -362,6 +563,7 @@ class S1000DGenerator:
                 ET.strip_elements(element, '{http://www.w3.org/2001/XMLSchema-instance}*', with_tail=False)
                 ET.strip_attributes(element, '{http://www.w3.org/2001/XMLSchema-instance}*')
                 ET.strip_attributes(element, '{http://www.s1000d.org/S1000D_4-1/xml_schema_flat/descript.xsd}*')
+                ET.strip_attributes(element, '{http://www.s1000d.org/S1000D_4-1/xml_schema_flat/proced.xsd}*')
                 for child in element:
                     strip_namespaces(child)
                 element.tag = element.tag.split('}', 1)[-1] if '}' in element.tag else element.tag

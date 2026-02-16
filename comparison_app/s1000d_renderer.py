@@ -13,6 +13,12 @@ class S1000DHTMLRenderer:
     def __init__(self, graphics_base_url: str = '/graphics'):
         self.graphics_base_url = graphics_base_url
         self._section_counter = 0
+        self._anno_counter = 0
+
+    def _anno(self, anno_type: str) -> str:
+        """Return data-anno-idx and data-anno-type attributes string."""
+        self._anno_counter += 1
+        return f'data-anno-idx="{self._anno_counter}" data-anno-type="{anno_type}"'
 
     def render(self, xml_path: str) -> str:
         """Parse XML file and render to HTML string."""
@@ -25,6 +31,7 @@ class S1000DHTMLRenderer:
         root = tree.getroot()
 
         self._section_counter = 0
+        self._anno_counter = 0
         parts = []
 
         # Render header (techName + infoName)
@@ -54,7 +61,7 @@ class S1000DHTMLRenderer:
         if info_name:
             title += f' &mdash; {escape(info_name)}'
 
-        return f'<h1 class="dm-title">{title}</h1>'
+        return f'<h1 class="dm-title" {self._anno("heading")}>{title}</h1>'
 
     # ------------------------------------------------------------------
     # Descriptive modules
@@ -88,7 +95,7 @@ class S1000DHTMLRenderer:
                     # First para in a levelledPara is often a section heading
                     text = self._get_para_html(child)
                     if text.strip() and not child.find('.//randomList') is not None:
-                        parts.append(f'<h{level} data-section-id="{sec_id}">{text}</h{level}>')
+                        parts.append(f'<h{level} {self._anno("heading")} data-section-id="{sec_id}">{text}</h{level}>')
                         first_para = False
                         continue
                 parts.append(self._render_para(child))
@@ -145,7 +152,7 @@ class S1000DHTMLRenderer:
     def _render_preliminary_rqmts(self, prelim) -> str:
         """Render prerequisite section."""
         parts = ['<div class="preliminary-rqmts">',
-                 '<h2>Предварительные требования</h2>']
+                 f'<h2 {self._anno("heading")}>Предварительные требования</h2>']
 
         for child in prelim:
             tag = _local_tag(child)
@@ -167,8 +174,8 @@ class S1000DHTMLRenderer:
         if not items:
             return ''
 
-        parts = ['<h3>Средства наземного обслуживания</h3>',
-                 '<table class="rqmt-table"><thead><tr>',
+        parts = [f'<h3 {self._anno("heading")}>Средства наземного обслуживания</h3>',
+                 f'<table class="rqmt-table" {self._anno("table")}><thead><tr>',
                  '<th>#</th><th>Наименование</th><th>Количество</th>',
                  '</tr></thead><tbody>']
 
@@ -186,8 +193,8 @@ class S1000DHTMLRenderer:
         if not items:
             return ''
 
-        parts = ['<h3>Расходные материалы</h3>',
-                 '<table class="rqmt-table"><thead><tr>',
+        parts = [f'<h3 {self._anno("heading")}>Расходные материалы</h3>',
+                 f'<table class="rqmt-table" {self._anno("table")}><thead><tr>',
                  '<th>#</th><th>Наименование</th><th>Количество</th>',
                  '</tr></thead><tbody>']
 
@@ -202,12 +209,13 @@ class S1000DHTMLRenderer:
     def _render_req_spares(self, elem) -> str:
         """Render spare parts section."""
         if elem.find('noSpares') is not None:
-            return '<h3>Запасные части</h3><p class="no-items">Не требуются</p>'
+            return (f'<h3 {self._anno("heading")}>Запасные части</h3>'
+                    f'<p {self._anno("para")} class="no-items">Не требуются</p>')
         return ''
 
     def _render_req_safety(self, elem) -> str:
         """Render safety requirements."""
-        parts = ['<h3>Требования безопасности</h3>']
+        parts = [f'<h3 {self._anno("heading")}>Требования безопасности</h3>']
         for note in elem.findall('.//note'):
             parts.append(self._render_note(note))
         for warning in elem.findall('.//warning'):
@@ -217,7 +225,7 @@ class S1000DHTMLRenderer:
     def _render_main_procedure(self, main_proc) -> str:
         """Render <mainProcedure> element."""
         parts = ['<div class="main-procedure">',
-                 '<h2>Порядок выполнения работ</h2>']
+                 f'<h2 {self._anno("heading")}>Порядок выполнения работ</h2>']
 
         step_num = 0
         for child in main_proc:
@@ -245,10 +253,10 @@ class S1000DHTMLRenderer:
                 # Check if this is a section title (first para of a top-level step)
                 if '.' not in numbering and sub_step_num == 0:
                     # Top-level step heading
-                    parts.append(f'<h3 class="step-title">'
+                    parts.append(f'<h3 class="step-title" {self._anno("heading")}>'
                                  f'<span class="step-number">{numbering}</span> {text}</h3>')
                 else:
-                    parts.append(f'<p class="step-para">'
+                    parts.append(f'<p class="step-para" {self._anno("para")}>'
                                  f'<span class="step-number">{numbering}</span> {text}</p>')
             elif tag == 'proceduralStep':
                 sub_step_num += 1
@@ -273,7 +281,7 @@ class S1000DHTMLRenderer:
         # Usually just noConds
         if close.find('.//noConds') is not None:
             return ''
-        return '<div class="close-rqmts"><h2>Заключительные требования</h2></div>'
+        return f'<div class="close-rqmts"><h2 {self._anno("heading")}>Заключительные требования</h2></div>'
 
     # ------------------------------------------------------------------
     # Common elements
@@ -289,7 +297,7 @@ class S1000DHTMLRenderer:
             text_before = _text_content_before_child(para, random_list)
             parts = []
             if text_before.strip():
-                parts.append(f'<p>{escape(text_before)}</p>')
+                parts.append(f'<p {self._anno("para")}>{escape(text_before)}</p>')
             parts.append(self._render_random_list(random_list))
             return ''.join(parts)
 
@@ -297,14 +305,14 @@ class S1000DHTMLRenderer:
             text_before = _text_content_before_child(para, sequenced_list)
             parts = []
             if text_before.strip():
-                parts.append(f'<p>{escape(text_before)}</p>')
+                parts.append(f'<p {self._anno("para")}>{escape(text_before)}</p>')
             parts.append(self._render_sequenced_list(sequenced_list))
             return ''.join(parts)
 
         text = self._get_para_html(para)
         if not text.strip():
             return ''
-        return f'<p>{text}</p>'
+        return f'<p {self._anno("para")}>{text}</p>'
 
     def _get_para_html(self, para) -> str:
         """Get HTML content of a <para>, handling inline elements."""
@@ -337,7 +345,7 @@ class S1000DHTMLRenderer:
     def _render_table(self, table) -> str:
         """Render S1000D <table> to HTML <table>."""
         table_id = table.get('id', '')
-        parts = [f'<table class="s1000d-table" id="{escape(table_id)}">']
+        parts = [f'<table class="s1000d-table" {self._anno("table")} id="{escape(table_id)}">']
 
         for tgroup in table.findall('tgroup'):
             cols = int(tgroup.get('cols', '1'))
@@ -390,7 +398,7 @@ class S1000DHTMLRenderer:
     def _render_figure(self, figure) -> str:
         """Render <figure> with <title> and <graphic>."""
         title_text = figure.findtext('title', '')
-        parts = ['<div class="figure">']
+        parts = [f'<div class="figure" {self._anno("figure")}>']
 
         for graphic in figure.findall('graphic'):
             ident = graphic.get('infoEntityIdent', '')
@@ -405,7 +413,7 @@ class S1000DHTMLRenderer:
 
     def _render_random_list(self, rlist) -> str:
         """Render <randomList> as <ul>."""
-        parts = ['<ul class="random-list">']
+        parts = [f'<ul class="random-list" {self._anno("list")}>']
         for item in rlist.findall('listItem'):
             item_html = ''
             for child in item:
@@ -417,7 +425,7 @@ class S1000DHTMLRenderer:
 
     def _render_sequenced_list(self, slist) -> str:
         """Render <sequentialList> as <ol>."""
-        parts = ['<ol class="sequenced-list">']
+        parts = [f'<ol class="sequenced-list" {self._anno("list")}>']
         for item in slist.findall('listItem'):
             item_html = ''
             for child in item:
@@ -429,7 +437,7 @@ class S1000DHTMLRenderer:
 
     def _render_warning(self, warning) -> str:
         """Render <warning> block."""
-        parts = ['<div class="admonition warning">',
+        parts = [f'<div class="admonition warning" {self._anno("warning")}>',
                  '<div class="admonition-title">ПРЕДУПРЕЖДЕНИЕ</div>']
         for child in warning:
             if _local_tag(child) == 'warningAndCautionPara':
@@ -440,7 +448,7 @@ class S1000DHTMLRenderer:
 
     def _render_caution(self, caution) -> str:
         """Render <caution> block."""
-        parts = ['<div class="admonition caution">',
+        parts = [f'<div class="admonition caution" {self._anno("caution")}>',
                  '<div class="admonition-title">ВНИМАНИЕ</div>']
         for child in caution:
             if _local_tag(child) == 'warningAndCautionPara':
@@ -451,7 +459,7 @@ class S1000DHTMLRenderer:
 
     def _render_note(self, note) -> str:
         """Render <note> block."""
-        parts = ['<div class="admonition note">',
+        parts = [f'<div class="admonition note" {self._anno("note")}>',
                  '<div class="admonition-title">ПРИМЕЧАНИЕ</div>']
         for child in note:
             if _local_tag(child) == 'notePara':

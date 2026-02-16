@@ -129,6 +129,7 @@ def render_docx_to_word_html(docx_path: str, cache_key: str) -> tuple:
         body_content,
     )
 
+    body_content = _annotate_html_blocks(body_content)
     return body_content, resources_dir
 
 
@@ -195,6 +196,7 @@ def render_docx_to_html(docx_path: str) -> str:
         return f'<{tag} data-section-id="docx-sec-{heading_counter[0]}">'
 
     html = re.sub(r'<(h[1-6])>', _add_heading_id, html)
+    html = _annotate_html_blocks(html)
     return f'<div class="docx-content">{html}</div>'
 
 
@@ -237,3 +239,34 @@ def _image_to_base64(image):
     with image.open() as image_bytes:
         encoded = base64.b64encode(image_bytes.read()).decode("ascii")
     return {"src": f"data:{image.content_type};base64,{encoded}"}
+
+
+# ==========================================================================
+# Block-level annotation post-processing
+# ==========================================================================
+
+_BLOCK_TAG_MAP = {
+    'h1': 'heading', 'h2': 'heading', 'h3': 'heading',
+    'h4': 'heading', 'h5': 'heading', 'h6': 'heading',
+    'p': 'para', 'ul': 'list', 'ol': 'list',
+    'table': 'table', 'img': 'figure',
+}
+
+_BLOCK_PATTERN = re.compile(
+    r'<(h[1-6]|p|ul|ol|table|img)(\s[^>]*>|>)',
+    re.IGNORECASE,
+)
+
+
+def _annotate_html_blocks(html: str) -> str:
+    """Add data-anno-idx and data-anno-type attributes to each block element."""
+    counter = [0]
+
+    def _replacer(match):
+        tag = match.group(1).lower()
+        anno_type = _BLOCK_TAG_MAP.get(tag, 'para')
+        counter[0] += 1
+        rest = match.group(2)
+        return f'<{match.group(1)} data-anno-idx="{counter[0]}" data-anno-type="{anno_type}"{rest}'
+
+    return _BLOCK_PATTERN.sub(_replacer, html)

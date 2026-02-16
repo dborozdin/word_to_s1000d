@@ -23,6 +23,12 @@
                    title="HTML через mammoth (fallback)">mammoth</a>
             </div>
             {% endif %}
+            <div class="anno-controls">
+                <button id="toggle-anno" class="anno-btn" title="Показать/скрыть разметку элементов">Разметка</button>
+                <button id="anno-prev" class="anno-btn anno-nav" title="Предыдущий элемент">&laquo;</button>
+                <span id="anno-position" class="anno-position">&mdash; / &mdash;</span>
+                <button id="anno-next" class="anno-btn anno-nav" title="Следующий элемент">&raquo;</button>
+            </div>
             <label class="sync-label">
                 <input type="checkbox" id="sync-scroll" checked>
                 Синхронная прокрутка

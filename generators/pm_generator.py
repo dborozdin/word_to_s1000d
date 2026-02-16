@@ -25,7 +25,7 @@ class PMGenerator:
         """Create basic pm element with namespaces."""
         # Create XML string with proper namespaces
         xml_str = '''<pm xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                      xsi:noNamespaceSchemaLocation="http://www.s1000d.org/S1000D_5-0/xml_schema_flat/pm.xsd"
+                      xsi:noNamespaceSchemaLocation="http://www.s1000d.org/S1000D_4-1/xml_schema_flat/pm.xsd"
                       xmlns:xlink="http://www.w3.org/1999/xlink">
         </pm>'''
 

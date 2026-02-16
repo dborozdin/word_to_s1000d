@@ -4,7 +4,16 @@
       "Bash(unzip:*)",
       "Bash(ls:*)",
       "Bash(dir:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(pip install:*)",
+      "Bash(xargs:*)",
+      "Bash(python3:*)",
+      "Bash(dd:*)",
+      "Bash(curl:*)",
+      "Bash(awk:*)",
+      "Bash(file:*)"
     ]
   }
 }

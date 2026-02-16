@@ -13,7 +13,7 @@ from docx import Document
 from parsers.text_parser import extract_text_by_headings, get_document_structure
 from parsers.table_parser import get_tables_by_reference
 from parsers.list_parser import extract_lists, convert_list_to_s1000d_randomlist
-from parsers.illustration_parser import extract_illustrations, find_image_references, map_figures_to_illustrations
+from parsers.illustration_parser import extract_illustrations, find_image_references, map_figures_to_illustrations, ensure_missing_placeholders, copy_publication_logo
 from parsers.content_analyzer import analyze_document_content, generate_content_analysis_log, get_content_for_info_name, generate_module_mapping_log
 from parsers.elements_analyzer import analyze_document_elements, generate_elements_log
 
@@ -210,7 +210,10 @@ def map_heading_to_info_code(heading: str, component_index: int = 0) -> Dict:
     return base_dm_code
 
 
-def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dict = None):
+def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dict = None,
+                                 dm_code_override: Dict = None, tech_name_override: str = None,
+                                 info_name_override: str = None, skip_pmc: bool = False,
+                                 graphic_ident_prefix: str = None):
     """
     Process descriptive document: orchestrate parsing, map sections, generate XML files.
 
@@ -218,6 +221,11 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
         doc_path: Path to docx document
         output_dir: Output directory for generated files
         llm_config: Optional LLM configuration for element classification
+        dm_code_override: Optional DMC code dict to use instead of content-analysis-based codes
+        tech_name_override: Optional techName override (from folder name)
+        info_name_override: Optional infoName override (from folder name)
+        skip_pmc: If True, skip PMC generation (for batch mode)
+        graphic_ident_prefix: Optional prefix for graphic entity naming
     """
     print(f"Processing descriptive document: {doc_path}")
 
@@ -240,7 +248,10 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
 
     # Parse illustrations first to get correct infoEntityIdent mappings
     print("Extracting illustrations...")
-    illustrations, illustration_positions = extract_illustrations(doc, output_dir)
+    illustrations, illustration_positions = extract_illustrations(doc, output_dir, graphic_ident_prefix=graphic_ident_prefix)
+
+    # Ensure publication logo is available in graphics directory
+    copy_publication_logo(output_dir)
 
     # Analyze document content using the new content analyzer
     print("Analyzing document content structure...")
@@ -253,11 +264,11 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
 
     # Analyze document elements for logging and XML generation
     print("Analyzing document elements...")
-    elements = analyze_document_elements(doc, illustrations, illustration_positions, llm_config=llm_config)
+    elements = analyze_document_elements(doc, illustrations, illustration_positions, llm_config=llm_config, graphic_ident_prefix=graphic_ident_prefix)
 
     # Process multi-sheet illustrations
     from parsers.multi_sheet_illustration_parser import process_multi_sheet_illustrations
-    elements = process_multi_sheet_illustrations(elements)
+    elements = process_multi_sheet_illustrations(elements, graphic_ident_prefix=graphic_ident_prefix)
 
     # Post-process to clean figure titles by removing "Рисунок <number> – " prefix
     for elem in elements:
@@ -327,38 +338,45 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
                 'end_para': len(doc.paragraphs) - 1,
                 'info_name': group_info['info_name']
             }
-            section_content = assemble_content_for_section(big_section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info, document_title, group_info['info_name'])
+            section_content = assemble_content_for_section(big_section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info, document_title, group_info['info_name'], graphic_ident_prefix=graphic_ident_prefix)
             combined_content["xml_parts"].extend(section_content["xml_parts"])
         else:
             # Combine content from all sections in this group
             for section in sections_in_group:
-                section_content = assemble_content_for_section(section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info, document_title, section.get('info_name', ''))
+                section_content = assemble_content_for_section(section, doc, tables, lists_data, elements, illustration_counter, figure_counter, figure_info, document_title, section.get('info_name', ''), graphic_ident_prefix=graphic_ident_prefix)
                 combined_content["xml_parts"].extend(section_content["xml_parts"])
                 # Update counters from the section processing
                 illustration_counter = section_content.get("illustration_counter", illustration_counter)
                 figure_counter = section_content.get("figure_counter", figure_counter)
 
-        # Determine DM code based on section type
-        dm_code = get_dm_code_for_section(representative_section, component_counter)
+        # Determine DM code based on override or section type
+        if dm_code_override:
+            dm_code = dm_code_override.copy()
+        else:
+            dm_code = get_dm_code_for_section(representative_section, component_counter)
 
-        # Map section type to appropriate module type
-        if representative_section.get('section_type') == 'purpose':
-            if representative_section.get('info_name') == 'Описание функций изделия':
-                dm_code.update({'infoCode': '012', 'infoCodeVariant': 'B'})  # Function description
-            else:
-                dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # General purpose
-        elif representative_section.get('section_type') == 'description':
-            dm_code.update({'infoCode': '012', 'infoCodeVariant': 'A'})  # Description
-        elif representative_section.get('section_type') == 'operation':
-            dm_code.update({'infoCode': '013', 'infoCodeVariant': 'A'})  # Operation
-        elif representative_section.get('section_type') == 'component':
-            dm_code.update({'infoCode': '017', 'infoCodeVariant': 'A'})  # Component description
-            component_counter += 1
+            # Map section type to appropriate module type
+            if representative_section.get('section_type') == 'purpose':
+                if representative_section.get('info_name') == 'Описание функций изделия':
+                    dm_code.update({'infoCode': '012', 'infoCodeVariant': 'B'})  # Function description
+                else:
+                    dm_code.update({'infoCode': '011', 'infoCodeVariant': 'A'})  # General purpose
+            elif representative_section.get('section_type') == 'description':
+                dm_code.update({'infoCode': '012', 'infoCodeVariant': 'A'})  # Description
+            elif representative_section.get('section_type') == 'operation':
+                dm_code.update({'infoCode': '013', 'infoCodeVariant': 'A'})  # Operation
+            elif representative_section.get('section_type') == 'component':
+                dm_code.update({'infoCode': '017', 'infoCodeVariant': 'A'})  # Component description
+                component_counter += 1
+
+        # Use overrides for title if provided
+        effective_tech_name = tech_name_override or document_title
+        effective_info_name = info_name_override or representative_section.get('info_name', 'Неопределен')
 
         # Create DM config
         dm_config = create_data_module_config(
-            document_title,
-            representative_section.get('info_name', 'Неопределен'),
+            effective_tech_name,
+            effective_info_name,
             dm_code,
             combined_content,
             enterprise_name=organization,
@@ -369,11 +387,14 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
         filepath = generator.generate_data_module(dm_config, output_dir, illustrations, figure_info)
         generated_files.append(filepath)
 
+        # Generate placeholder images for missing illustrations
+        ensure_missing_placeholders(figure_info, output_dir)
+
         # Collect DM ref for PM generation
         dm_ref = create_dm_ref_data(
             dm_code,
-            document_title,  # techName
-            representative_section.get('info_name', 'Неопределен')  # infoName
+            effective_tech_name,  # techName
+            effective_info_name  # infoName
         )
         dm_refs.append(dm_ref)
 
@@ -387,9 +408,9 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
 
         print(f"Generated module: {representative_section.get('info_name', 'Unknown')} -> {filename}")
 
-    # Generate Publication Module (PMC)
+    # Generate Publication Module (PMC) - skip if in batch mode
     pm_filepath = None
-    if dm_refs:
+    if dm_refs and not skip_pmc:
         # Use fixed modelIdentCode from first DM or extract short code
         first_dm = dm_refs[0] if dm_refs else None
         model_code = first_dm['dm_code'].get('modelIdentCode', 'S5') if first_dm else 'S5'
@@ -471,7 +492,7 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
     else:
         print("All content successfully validated")
 
-    return generated_files
+    return dm_refs, illustrations
 
 
 def group_sections_for_modules(analysis_results: List[Dict], split_into_modules: bool) -> Dict[str, Dict]:
@@ -529,15 +550,15 @@ def group_sections_for_modules(analysis_results: List[Dict], split_into_modules:
 
 def dm_code_to_string(dm_code: Dict) -> str:
     """Convert DM code dict to string representation."""
-    return "DMC-S5-A-120-{system_sub}-{sub_sub}-{assy}-{disassy}{disassy_var}-{info}{info_var}-{location}_001".format(
-        system_sub=dm_code.get('subSystemCode', '1'),
-        sub_sub=dm_code.get('subSubSystemCode', '0'),
-        assy=dm_code.get('assyCode', '00'),
-        disassy=dm_code.get('disassyCode', '00'),
-        disassy_var=dm_code.get('disassyCodeVariant', 'A'),
-        info=dm_code.get('infoCode', '012'),
-        info_var=dm_code.get('infoCodeVariant', 'A'),
-        location=dm_code.get('itemLocationCode', 'A')
+    return (
+        f"DMC-{dm_code.get('modelIdentCode', 'S5')}-"
+        f"{dm_code.get('systemDiffCode', 'A')}-"
+        f"{dm_code.get('systemCode', '000')}-"
+        f"{dm_code.get('subSystemCode', '0')}{dm_code.get('subSubSystemCode', '0')}-"
+        f"{dm_code.get('assyCode', '00')}-"
+        f"{dm_code.get('disassyCode', '00')}{dm_code.get('disassyCodeVariant', 'A')}-"
+        f"{dm_code.get('infoCode', '000')}{dm_code.get('infoCodeVariant', 'A')}-"
+        f"{dm_code.get('itemLocationCode', 'A')}_001"
     )
 
 
@@ -576,7 +597,7 @@ def group_sections_by_type(headings: List[str]) -> Dict[str, List[int]]:
     return groups
 
 
-def assemble_content_for_section(section: Dict, document: Document, tables: Dict[str, Dict], lists_data: List[Dict], elements: List[Dict], illustration_counter: int = 0, figure_counter: int = 0, figure_info: List = None, tech_name: str = "", info_name_override: str = "") -> Dict:
+def assemble_content_for_section(section: Dict, document: Document, tables: Dict[str, Dict], lists_data: List[Dict], elements: List[Dict], illustration_counter: int = 0, figure_counter: int = 0, figure_info: List = None, tech_name: str = "", info_name_override: str = "", graphic_ident_prefix: str = None) -> Dict:
     """
     Assemble content for a specific analyzed section using element analysis.
 
@@ -593,6 +614,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
         Content dict with xml_parts and updated counters
     """
     xml_parts = []
+    effective_prefix = graphic_ident_prefix or "GS5-A-120-10-00-00A-041A-A_001_RU-RU"
 
     # Extract content from the section's paragraph range
     start_para = section.get('start_para', 0)
@@ -805,27 +827,27 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                                 graphic_num = elem.get('graphic_start_num', illustration_counter - sheet_count) + i
                                 figure_info.append({
                                     'id': elem.get('xml_example', '').split('id="')[1].split('"')[0] if 'id="' in elem.get('xml_example', '') else f"ICN{figure_counter + 1:02d}",
-                                    'file': f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
+                                    'file': f"{effective_prefix}-GRAPHIC{graphic_num}.jpg"
                                 })
                         figure_counter += 1
                     else:
                         # Fallback: generate single figure
                         figure_id = f"ICN{illustration_counter + 1:02d}"
                         graphic_id = f"g{illustration_counter}"
-                        graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
+                        graphic_ident = f"{effective_prefix}-GRAPHIC{illustration_counter}"
                         figure_title = elem.get('content', 'Название иллюстрации')
                         add_to_current_section(f'''<figure id="{figure_id}">
             <title>{figure_title}</title>
             <graphic infoEntityIdent="{graphic_ident}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="{graphic_id}"/>
           </figure>''')
                         if figure_info is not None:
-                            figure_info.append({'id': figure_id, 'file': f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}.jpg"})
+                            figure_info.append({'id': figure_id, 'file': f"{effective_prefix}-GRAPHIC{illustration_counter}.jpg"})
                         illustration_counter += 1
                 else:
                     # Generate proper figure with ID and reproduction attributes for regular embedded illustrations
                     figure_id = f"ICN{illustration_counter + 1:02d}"
                     graphic_id = f"g{illustration_counter}"
-                    graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
+                    graphic_ident = f"{effective_prefix}-GRAPHIC{illustration_counter}"
                     # Use the actual content from the element instead of hardcoded text
                     figure_title = elem.get('content', 'Название иллюстрации')
                     add_to_current_section(f'''<figure id="{figure_id}">
@@ -833,7 +855,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             <graphic infoEntityIdent="{graphic_ident}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="{graphic_id}"/>
           </figure>''')
                     if figure_info is not None:
-                        figure_info.append({'id': figure_id, 'file': f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}.jpg"})
+                        figure_info.append({'id': figure_id, 'file': f"{effective_prefix}-GRAPHIC{illustration_counter}.jpg"})
                     illustration_counter += 1
             elif elem_type == 'illustration_reference':
                 # For illustration references that are not combined with titles, create internal references

@@ -86,17 +86,18 @@ def find_multi_sheet_references(elements: List[Dict[str, Any]]) -> List[Dict[str
     return multi_sheet_refs
 
 
-def create_multi_sheet_figure(multi_ref: Dict[str, Any], start_graphic_num: int = 0) -> Dict[str, Any]:
+def create_multi_sheet_figure(multi_ref: Dict[str, Any], start_graphic_num: int = 0, graphic_ident_prefix: str = None) -> Dict[str, Any]:
     """
     Создает элемент многолистовой иллюстрации для S1000D.
     """
     figure_num = multi_ref['figure_number']
     sheets = multi_ref['sheets']
     element = multi_ref['element']
-    
+    effective_prefix = graphic_ident_prefix or "GS5-A-120-10-00-00A-041A-A_001_RU-RU"
+
     # Определяем базовое название иллюстрации
     content = multi_ref['content']
-    
+
     # Извлекаем название рисунка
     title_match = re.search(r'[Рр]исунок\s*\d+\s*[–-]\s*(.+?)(?:\s*\(|$)', content, re.IGNORECASE)
     if title_match:
@@ -108,18 +109,18 @@ def create_multi_sheet_figure(multi_ref: Dict[str, Any], start_graphic_num: int 
             title = title_match.group(1).strip()
         else:
             title = f"Рисунок {figure_num}"
-    
+
     # Очищаем заголовок от ссылок на листы
     title = re.sub(r'\s*\(?\s*лист\s*\d+(\s*[,\s]*лист\s*\d+)*\s*\)?', '', title, flags=re.IGNORECASE).strip()
-    
+
     # Создаем ID для figure
     figure_id = f"ICN{figure_num:02d}"
-    
+
     # Создаем графические элементы для каждого листа
     graphics = []
     for idx, sheet_num in enumerate(sheets):
         graphic_num = start_graphic_num + idx
-        graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
+        graphic_ident = f"{effective_prefix}-GRAPHIC{graphic_num}"
         
         graphics.append({
             'infoEntityIdent': graphic_ident,
@@ -165,7 +166,7 @@ def create_multi_sheet_figure(multi_ref: Dict[str, Any], start_graphic_num: int 
     return combined_elem
 
 
-def process_multi_sheet_illustrations(elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def process_multi_sheet_illustrations(elements: List[Dict[str, Any]], graphic_ident_prefix: str = None) -> List[Dict[str, Any]]:
     """
     Обрабатывает элементы и группирует многолистовые иллюстрации.
     Заменяет группы последовательных элементов иллюстраций с одинаковым номером
@@ -207,7 +208,7 @@ def process_multi_sheet_illustrations(elements: List[Dict[str, Any]]) -> List[Di
                     graphic_start_num = sum(1 for e in elements[:i] if e.get('type') == 'illustration')
 
                     # Создаем многолистовую иллюстрацию
-                    multi_sheet_figure = create_multi_sheet_figure_from_elements(group_illustrations, graphic_start_num)
+                    multi_sheet_figure = create_multi_sheet_figure_from_elements(group_illustrations, graphic_start_num, graphic_ident_prefix=graphic_ident_prefix)
                     processed_elements.append(multi_sheet_figure)
 
                     # Пропускаем все элементы группы
@@ -222,12 +223,14 @@ def process_multi_sheet_illustrations(elements: List[Dict[str, Any]]) -> List[Di
     return processed_elements
 
 
-def create_multi_sheet_figure_from_elements(illustrations: List[Dict[str, Any]], start_graphic_num: int = 0) -> Dict[str, Any]:
+def create_multi_sheet_figure_from_elements(illustrations: List[Dict[str, Any]], start_graphic_num: int = 0, graphic_ident_prefix: str = None) -> Dict[str, Any]:
     """
     Создает элемент многолистовой иллюстрации из группы элементов illustration.
     """
     if not illustrations:
         return None
+
+    effective_prefix = graphic_ident_prefix or "GS5-A-120-10-00-00A-041A-A_001_RU-RU"
 
     # Берем первый элемент для основных данных
     first_element = illustrations[0]
@@ -254,7 +257,7 @@ def create_multi_sheet_figure_from_elements(illustrations: List[Dict[str, Any]],
     graphics = []
     for idx, illustration in enumerate(illustrations):
         graphic_num = start_graphic_num + idx
-        graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
+        graphic_ident = f"{effective_prefix}-GRAPHIC{graphic_num}"
 
         graphics.append({
             'infoEntityIdent': graphic_ident,

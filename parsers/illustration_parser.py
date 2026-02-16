@@ -5,15 +5,16 @@ Extracts embedded images and tracks their references.
 
 import os
 import re
+import shutil
 from typing import Dict, List, Tuple
 from docx import Document
 from docx.shared import Inches
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageDraw, ImageFont
 from docx.document import Document as DocxDocument
 from docx.oxml.shape import CT_Picture
 
 
-def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publications") -> Tuple[Dict[str, str], Dict[str, Dict]]:
+def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publications", graphic_ident_prefix: str = None) -> Tuple[Dict[str, str], Dict[str, Dict]]:
     """
     Extract embedded images from document and save to output/graphics directory with S1000D naming.
     Images are numbered based on the order of illustration references in the text.
@@ -158,11 +159,12 @@ def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publication
         log_file.write("-" * 50 + "\n")
 
     # Step 4: Save images with sequential GRAPHIC numbering in document order
+    effective_prefix = graphic_ident_prefix or "GS5-A-120-10-00-00A-041A-A_001_RU-RU"
     for idx, img_info in enumerate(embedded_images):
         # Use sequential numbering starting from 0 for all extracted images
         graphic_num = idx
 
-        img_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
+        img_name = f"{effective_prefix}-GRAPHIC{graphic_num}.jpg"
         img_path = os.path.join(graphics_dir, img_name)
 
         # Save image
@@ -170,7 +172,7 @@ def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publication
             f.write(img_info['blob'])
 
         # Map to reference name
-        ref_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
+        ref_name = f"{effective_prefix}-GRAPHIC{graphic_num}"
         illustrations[ref_name] = img_path
 
         # Store position information
@@ -241,23 +243,36 @@ def _get_doc_elements(doc: Document) -> List[Tuple[str, int]]:
 
 
 def _has_embedded_image(paragraph) -> bool:
-    """Check if paragraph contains embedded image."""
+    """Check if paragraph contains embedded image (DrawingML or VML)."""
     for run in paragraph.runs:
+        # DrawingML format (modern .docx)
         if run.element.xpath('.//a:blip'):
             return True
+    # VML format (converted .doc → .docx via Word COM)
+    # v:imagedata lives inside w:pict which may be outside runs
+    para_xml = paragraph._element.xml
+    if 'v:imagedata' in para_xml:
+        return True
     return False
 
 
 def _get_image_rid_from_paragraph(paragraph) -> str:
     """Extract relationship ID (rId) from embedded image in paragraph."""
+    # Try DrawingML first (a:blip)
     for run in paragraph.runs:
         blip_elements = run.element.xpath('.//a:blip')
         if blip_elements:
             blip = blip_elements[0]
-            # Get embed attribute which contains rId
             embed_attr = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
             if embed_attr:
                 return embed_attr
+    # Try VML format (v:imagedata inside w:pict)
+    VML_NS = 'urn:schemas-microsoft-com:vml'
+    R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    for elem in paragraph._element.iter('{%s}imagedata' % VML_NS):
+        rid = elem.get('{%s}id' % R_NS)
+        if rid:
+            return rid
     return None
 
 
@@ -288,24 +303,26 @@ def find_image_references(text: str) -> List[Tuple[str, str]]:
     return references
 
 
-def map_figures_to_illustrations(figure_refs: List[Tuple[str, str]], illustrations: Dict[str, str]) -> Dict[str, str]:
+def map_figures_to_illustrations(figure_refs: List[Tuple[str, str]], illustrations: Dict[str, str], graphic_ident_prefix: str = None) -> Dict[str, str]:
     """
     Map figure references to actual illustration files.
 
     Args:
         figure_refs: List of (type, number) references
         illustrations: Dict of illustration reference to file path
+        graphic_ident_prefix: Optional prefix for graphic naming (default: hardcoded RSUO prefix)
 
     Returns:
         Dictionary mapping figure references to illustration files
     """
     mapping = {}
+    effective_prefix = graphic_ident_prefix or "GS5-A-120-10-00-00A-041A-A_001_RU-RU"
 
     for ref_type, ref_num in figure_refs:
         # Map to S1000D GRAPHIC naming: GRAPHIC{N} where N starts from 0
         # Assume figure reference numbers are 1-indexed, convert to 0-indexed
         graphic_num = int(ref_num) - 1
-        graphic_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
+        graphic_name = f"{effective_prefix}-GRAPHIC{graphic_num}"
 
         if graphic_name in illustrations:
             mapping[f"{ref_type}_{ref_num}"] = illustrations[graphic_name]
@@ -347,3 +364,87 @@ def get_document_illustrations_info(doc: Document) -> Dict[str, str]:
         'total_count': total_images,
         'message': f'Document contains approximately {total_images} embedded images'
     }
+
+
+def generate_placeholder_image(filepath: str, text: str = "< Добавьте иллюстрацию >"):
+    """
+    Generate a placeholder JPEG image with the given text.
+
+    Args:
+        filepath: Full path where the placeholder .jpg should be saved
+        text: Text to render on the placeholder image
+    """
+    width, height = 800, 200
+    img = PILImage.new('RGB', (width, height), color=(240, 240, 240))
+    draw = ImageDraw.Draw(img)
+
+    # Try to use a reasonable font size; fall back to default
+    try:
+        font = ImageFont.truetype("arial.ttf", 28)
+    except (OSError, IOError):
+        font = ImageFont.load_default()
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = (width - text_w) // 2
+    y = (height - text_h) // 2
+    draw.text((x, y), text, fill=(180, 0, 0), font=font)
+
+    # Draw border
+    draw.rectangle([0, 0, width - 1, height - 1], outline=(200, 200, 200), width=2)
+
+    img.save(filepath, 'JPEG', quality=85)
+
+
+def ensure_missing_placeholders(figure_info: List[Dict], output_dir: str):
+    """
+    Check figure_info for referenced graphic files that don't exist
+    on disk and generate placeholder images for them.
+
+    Args:
+        figure_info: List of dicts with 'file' key (e.g. 'PREFIX-GRAPHIC0.jpg')
+        output_dir: Output directory (parent of graphics/)
+    """
+    if not figure_info:
+        return
+
+    graphics_dir = os.path.join(output_dir, "graphics")
+    if not os.path.exists(graphics_dir):
+        os.makedirs(graphics_dir)
+
+    for fig in figure_info:
+        filename = fig.get('file', '')
+        if not filename:
+            continue
+        filepath = os.path.join(graphics_dir, filename)
+        if not os.path.exists(filepath):
+            print(f"  Generating placeholder for missing illustration: {filename}")
+            generate_placeholder_image(filepath)
+
+
+def copy_publication_logo(output_dir: str):
+    """
+    Copy publication_logo.JPG to the output graphics/ directory
+    so the viewer can resolve the PUBLICATION_LOGO entity.
+
+    Args:
+        output_dir: Output directory (parent of graphics/)
+    """
+    graphics_dir = os.path.join(output_dir, "graphics")
+    dest = os.path.join(graphics_dir, "publication_logo.JPG")
+    if os.path.exists(dest):
+        return
+
+    # Search for source logo in known locations
+    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates = [
+        os.path.join(script_dir, "manual_data_modules", "graphics", "publication_logo.JPG"),
+    ]
+
+    for src in candidates:
+        if os.path.exists(src):
+            if not os.path.exists(graphics_dir):
+                os.makedirs(graphics_dir)
+            shutil.copy2(src, dest)
+            return

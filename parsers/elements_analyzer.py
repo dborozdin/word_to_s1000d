@@ -11,7 +11,7 @@ from docx.shared import Inches
 import datetime
 
 
-def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = None, illustration_positions: Dict[str, Dict] = None, llm_config: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = None, illustration_positions: Dict[str, Dict] = None, llm_config: Dict[str, Any] = None, graphic_ident_prefix: str = None) -> List[Dict[str, Any]]:
     """
     Analyze document and extract all elements with their start/end positions.
 
@@ -39,6 +39,9 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
             print(f"[LLM] Failed to import classifier: {e}")
             llm_classifier = None
     elements = []
+
+    # Graphic naming prefix (dynamic per DM or hardcoded fallback)
+    effective_prefix = graphic_ident_prefix or "GS5-A-120-10-00-00A-041A-A_001_RU-RU"
 
     # Track list state
     current_list = None
@@ -464,7 +467,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
             # Use the actual paragraph text as content
             illustration_content = text.strip() if text.strip() else 'Иллюстрация'
             # Use the correct GRAPHIC identifier based on counter
-            graphic_ident = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{illustration_counter}"
+            graphic_ident = f"{effective_prefix}-GRAPHIC{illustration_counter}"
             element_info = {
                 'type': 'illustration',
                 'start_line': para_start_line,
@@ -523,7 +526,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
 
                 # Use sequential numbering for graphic files (will be updated in post-processing)
                 graphic_num = int(ref_number) - 1  # Will be corrected in post-processing
-                graphic_file = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
+                graphic_file = f"{effective_prefix}-GRAPHIC{graphic_num}.jpg"
                 details = f'Ссылка на {ref_type} {ref_number}, file: {graphic_file}'
             else:
                 details = f'Ссылка на {ref_type} {ref_number}'
@@ -597,11 +600,11 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 graphic_num = analyze_document_elements.graphic_counter
                 analyze_document_elements.graphic_counter += 1
 
-                graphic_file = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}.jpg"
+                graphic_file = f"{effective_prefix}-GRAPHIC{graphic_num}.jpg"
 
                 # Create combined illustration element
                 # Use position information from illustration_positions if available
-                ref_name = f"GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}"
+                ref_name = f"{effective_prefix}-GRAPHIC{graphic_num}"
                 pos_info = illustration_positions.get(ref_name, {}) if illustration_positions else {}
                 combined_elem = {
                     'type': 'illustration',
@@ -612,7 +615,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                     'start_para': pos_info.get('start_para', elements[i].get('start_para', 0)),
                     'end_para': pos_info.get('end_para', elements[i + 1].get('end_para', elements[i].get('end_para', 0))),
                     'content': figure_content,
-                    'xml_example': f'<figure id="{icn_ref}"><title>{figure_content}</title><graphic infoEntityIdent="GS5-A-120-10-00-00A-041A-A_001_RU-RU-GRAPHIC{graphic_num}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="g{int(icn_num)}"/></figure>',
+                    'xml_example': f'<figure id="{icn_ref}"><title>{figure_content}</title><graphic infoEntityIdent="{effective_prefix}-GRAPHIC{graphic_num}" reproductionScale="32" reproductionWidth="170mm" reproductionHeight="120mm" id="g{int(icn_num)}"/></figure>',
                     'details': f'Иллюстрация {icn_num}, file: {graphic_file}',
                     'context_text': pos_info.get('context_text', '')
                 }

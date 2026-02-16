@@ -302,7 +302,7 @@ class S1000DGenerator:
 
         # Generate filename
         dm_code_parts = dm_config['dm_code']
-        filename = f"DMC-{dm_code_parts['modelIdentCode']}-{dm_code_parts['systemDiffCode']}-{dm_code_parts['systemCode']}-{dm_code_parts['subSystemCode']}-{dm_code_parts['subSubSystemCode']}-{dm_code_parts['assyCode']}-{dm_code_parts['disassyCode']}{dm_code_parts['disassyCodeVariant']}-{dm_code_parts['infoCode']}{dm_code_parts['infoCodeVariant']}-{dm_code_parts['itemLocationCode']}_001_ru-RU.xml"
+        filename = f"DMC-{dm_code_parts['modelIdentCode']}-{dm_code_parts['systemDiffCode']}-{dm_code_parts['systemCode']}-{dm_code_parts['subSystemCode']}{dm_code_parts['subSubSystemCode']}-{dm_code_parts['assyCode']}-{dm_code_parts['disassyCode']}{dm_code_parts['disassyCodeVariant']}-{dm_code_parts['infoCode']}{dm_code_parts['infoCodeVariant']}-{dm_code_parts['itemLocationCode']}_001_ru-RU.xml"
 
         filepath = os.path.join(output_path, filename)
 

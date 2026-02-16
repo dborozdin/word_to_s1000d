@@ -108,37 +108,19 @@ class PMGenerator:
 
         return section
 
-    def _create_content_section(self, dm_refs: List[Dict]) -> ET.Element:
+    def _create_content_section(self, dm_refs: List[Dict], pm_title: str = "Руководство") -> ET.Element:
         """Create content section with dmRefs organized in pmEntries."""
         content = ET.Element("content")
 
-        # Main pmEntry
+        # Single root pmEntry — all dmRefs go directly here
         main_pm_entry = ET.SubElement(content, "pmEntry")
         main_pm_entry_title = ET.SubElement(main_pm_entry, "pmEntryTitle")
-        main_pm_entry_title.text = "Publication Module"
+        main_pm_entry_title.text = pm_title
 
-        # Add dmRefs - group them under sub-pmEntries based on systemCode or other logic
-        # For simplicity, create one level structure as in the example
+        for ref in dm_refs:
+            self._add_dm_ref(main_pm_entry, ref)
 
-        # Collect DM refs by category if possible
-        categorized_refs = self._categorize_dm_refs(dm_refs)
-
-        for category, refs in categorized_refs.items():
-            if len(refs) > 1 or category != "general":
-                # Create a pmEntry for this category
-                category_pm_entry = ET.SubElement(main_pm_entry, "pmEntry")
-                category_pm_entry_title = ET.SubElement(category_pm_entry, "pmEntryTitle")
-                category_pm_entry_title.text = category
-
-                # Add dmRefs for this category
-                for ref in refs:
-                    self._add_dm_ref(category_pm_entry, ref)
-            else:
-                # Single or general refs go directly to main
-                for ref in refs:
-                    self._add_dm_ref(main_pm_entry, ref)
-
-        # Add BREX and ACIR refs (as in example)
+        # Add BREX and ACIR refs
         self._add_brex_ref(main_pm_entry)
         self._add_acir_ref(main_pm_entry)
 
@@ -295,6 +277,11 @@ class PMGenerator:
         doctype_lines.append(']>')
         doctype = '\n'.join(doctype_lines)
 
+        # Generate filename early so it can be used as pmEntryTitle
+        pm_code = pm_config.get('pmCode', {})
+        filename = f"PMC-{pm_code.get('modelIdentCode', self.model_ident)}-{pm_code.get('pmIssuer', 'SFX44')}-{pm_code.get('pmNumber', 'ETP05')}-{pm_code.get('pmVolume', '00')}_001-ru-RU.xml"
+        pm_entry_title = filename.replace('.xml', '')
+
         # Current date
         current_date = datetime.now()
 
@@ -302,12 +289,8 @@ class PMGenerator:
         ident_section = self._create_ident_and_status_section(pm_config, current_date)
         pm.append(ident_section)
 
-        content_section = self._create_content_section(dm_refs)
+        content_section = self._create_content_section(dm_refs, pm_entry_title)
         pm.append(content_section)
-
-        # Generate filename
-        pm_code = pm_config.get('pmCode', {})
-        filename = f"PMC-{pm_code.get('modelIdentCode', self.model_ident)}-{pm_code.get('pmIssuer', 'SFX44')}-{pm_code.get('pmNumber', 'ETP05')}-{pm_code.get('pmVolume', '00')}_001-ru-RU.xml"
 
         filepath = os.path.join(output_path, filename)
 

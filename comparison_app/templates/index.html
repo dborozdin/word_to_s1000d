@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сравнение: выбор модуля данных</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 16px 24px;
+        }
+        .header h1 { font-size: 20px; font-weight: 500; }
+        .header p { font-size: 13px; opacity: 0.7; margin-top: 4px; }
+        .container { max-width: 1200px; margin: 24px auto; padding: 0 24px; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        th {
+            background: #34495e;
+            color: white;
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 500;
+            font-size: 13px;
+        }
+        td {
+            padding: 10px 16px;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+        tr:hover td { background: #f0f7ff; }
+        .dmc-code { font-family: monospace; font-size: 12px; color: #666; }
+        .status-ok { color: #27ae60; }
+        .status-missing { color: #e74c3c; }
+        a.compare-link {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        a.compare-link:hover { background: #2980b9; }
+        a.compare-link.disabled {
+            background: #bdc3c7;
+            pointer-events: none;
+        }
+        .info-code-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .info-code-descr { background: #e8f5e9; color: #2e7d32; }
+        .info-code-proc { background: #fff3e0; color: #e65100; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Сравнение исходных документов и модулей данных S1000D</h1>
+        <p>Выберите пару для визуальной сверки</p>
+    </div>
+    <div class="container">
+        <table>
+            <thead>
+                <tr>
+                    <th>DMC код</th>
+                    <th>Тип</th>
+                    <th>Наименование</th>
+                    <th>DOCX</th>
+                    <th>XML</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pair in pairs %}
+                <tr>
+                    <td class="dmc-code">{{ pair.dmc_string }}</td>
+                    <td>
+                        {% if pair.info_code|int < 100 %}
+                        <span class="info-code-badge info-code-descr">Описание</span>
+                        {% else %}
+                        <span class="info-code-badge info-code-proc">Процедура</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <strong>{{ pair.tech_name }}</strong>
+                        {% if pair.info_name %}&mdash; {{ pair.info_name }}{% endif %}
+                    </td>
+                    <td>
+                        {% if pair.docx_exists %}
+                        <span class="status-ok">&#10003;</span>
+                        {% else %}
+                        <span class="status-missing">&#10007;</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if pair.xml_exists %}
+                        <span class="status-ok">&#10003;</span>
+                        {% else %}
+                        <span class="status-missing">&#10007;</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if pair.docx_exists and pair.xml_exists %}
+                        <a href="/compare/{{ pair.dmc_string }}" class="compare-link">Сравнить</a>
+                        {% else %}
+                        <a class="compare-link disabled">Сравнить</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

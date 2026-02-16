@@ -15,6 +15,14 @@
             "postDebugTask": "Start tgwebserver"
         },
         {
+            "name": "Start comparison app",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "comparison_app.app",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
             "name": "Word to S1000D Converter",
             "type": "debugpy",
             "request": "launch",

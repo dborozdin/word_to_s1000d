@@ -12,6 +12,21 @@
             "problemMatcher": []
         },
         {
+            "label": "Start comparison app",
+            "type": "shell",
+            "command": "python",
+            "args": ["-m", "comparison_app.app"],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "isBackground": true,
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "Start tgwebserver",
             "type": "shell",
             "command": "cmd",

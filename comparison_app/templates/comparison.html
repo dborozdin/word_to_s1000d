@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ pair.tech_name }} &mdash; {{ pair.info_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/comparison.css') }}">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-left">
+            <a href="/" class="back-link">&larr; К списку</a>
+            <h1>{{ pair.tech_name }}{% if pair.info_name %} &mdash; {{ pair.info_name }}{% endif %}</h1>
+        </div>
+        <div class="header-controls">
+            <label class="sync-label">
+                <input type="checkbox" id="sync-scroll" checked>
+                Синхронная прокрутка
+            </label>
+        </div>
+    </header>
+
+    {% if errors %}
+    <div class="errors-bar">
+        {% for error in errors %}
+        <div class="error-msg">{{ error }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="comparison-container">
+        <div class="panel panel-left" id="panel-docx">
+            <div class="panel-header">
+                <span class="panel-title">Исходный документ (.docx)</span>
+            </div>
+            <div class="panel-content" id="content-docx">
+                {{ docx_html | safe }}
+            </div>
+        </div>
+
+        <div class="divider" id="divider" title="Перетащите для изменения размера"></div>
+
+        <div class="panel panel-right" id="panel-s1000d">
+            <div class="panel-header">
+                <span class="panel-title">S1000D модуль данных</span>
+                <span class="dmc-code">{{ pair.dmc_string }}</span>
+            </div>
+            <div class="panel-content" id="content-s1000d">
+                {{ s1000d_html | safe }}
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/comparison.js') }}"></script>
+</body>
+</html>

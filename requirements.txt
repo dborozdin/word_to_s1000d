@@ -6,3 +6,4 @@ typing_extensions==4.15.0
 wheel==0.44.0
 flask>=3.0
 mammoth>=1.8
+pywin32>=306

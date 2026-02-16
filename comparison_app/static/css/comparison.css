@@ -65,6 +65,36 @@ body {
     white-space: nowrap;
 }
 
+/* Mode switch (PDF / HTML) */
+.mode-switch {
+    display: flex;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.3);
+}
+.mode-btn {
+    padding: 3px 10px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    background: transparent;
+}
+.mode-btn:hover {
+    color: white;
+    background: rgba(255,255,255,0.1);
+}
+.mode-btn.active {
+    background: #3498db;
+    color: white;
+}
+
+/* Render mode badge in panel header */
+.render-mode-badge {
+    font-size: 11px;
+    color: #7f8c8d;
+    font-style: italic;
+}
+
 /* Errors bar */
 .errors-bar {
     background: #ffeaa7;
@@ -119,6 +149,68 @@ body {
     padding: 16px 20px;
     background: white;
     scroll-behavior: auto;
+}
+
+/* pdf.js rendered pages */
+.pdf-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+.pdf-page {
+    max-width: 100%;
+    height: auto;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+}
+.pdf-loading {
+    padding: 40px;
+    text-align: center;
+    color: #7f8c8d;
+    font-size: 14px;
+}
+.pdf-error {
+    padding: 20px;
+    color: #e74c3c;
+    font-size: 14px;
+}
+
+/* Word HTML content styling */
+.word-html-content {
+    font-size: 14px;
+    line-height: 1.5;
+}
+.word-html-content img {
+    max-width: 100%;
+    height: auto;
+}
+.word-html-content table {
+    border-collapse: collapse;
+    width: 100%;
+}
+.word-html-content td,
+.word-html-content th {
+    border: 1px solid #bdc3c7;
+    padding: 4px 8px;
+}
+
+/* Dash lists (mammoth post-processing) */
+.dash-list {
+    list-style: none;
+    margin: 4px 0 4px 12px;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1.5;
+}
+.dash-list li {
+    margin: 2px 0;
+    padding-left: 16px;
+    position: relative;
+}
+.dash-list li::before {
+    content: '\2013';
+    position: absolute;
+    left: 0;
 }
 
 /* Divider */
@@ -366,4 +458,11 @@ body {
     margin-top: 16px;
     padding-top: 12px;
     border-top: 1px dashed #bdc3c7;
+}
+
+/* Page-break spacers (improves scroll sync with paginated left panel) */
+.page-spacer {
+    height: 40px;
+    border-bottom: 1px dashed #dfe6e9;
+    margin: 20px 0;
 }

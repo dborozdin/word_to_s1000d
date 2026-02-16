@@ -234,3 +234,4 @@ nul
 /last_version_generated
 *.js
 /examples
+/comparison_app/pdf_cache

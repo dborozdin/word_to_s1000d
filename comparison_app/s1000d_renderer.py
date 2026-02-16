@@ -63,10 +63,14 @@ class S1000DHTMLRenderer:
     def _render_description(self, desc) -> str:
         """Render <description> element."""
         parts = []
+        count = 0
         for child in desc:
             tag = etree.QName(child.tag).localname if '}' in child.tag else child.tag
             if tag == 'levelledPara':
+                if count > 0:
+                    parts.append('<div class="page-spacer"></div>')
                 parts.append(self._render_levelled_para(child, level=2))
+                count += 1
         return ''.join(parts)
 
     def _render_levelled_para(self, lp, level: int = 2) -> str:
@@ -118,14 +122,24 @@ class S1000DHTMLRenderer:
     def _render_procedure(self, proc) -> str:
         """Render <procedure> element."""
         parts = []
+        has_content = False
         for child in proc:
             tag = _local_tag(child)
             if tag == 'preliminaryRqmts':
+                if has_content:
+                    parts.append('<div class="page-spacer"></div>')
                 parts.append(self._render_preliminary_rqmts(child))
+                has_content = True
             elif tag == 'mainProcedure':
+                if has_content:
+                    parts.append('<div class="page-spacer"></div>')
                 parts.append(self._render_main_procedure(child))
+                has_content = True
             elif tag == 'closeRqmts':
+                if has_content:
+                    parts.append('<div class="page-spacer"></div>')
                 parts.append(self._render_close_rqmts(child))
+                has_content = True
         return ''.join(parts)
 
     def _render_preliminary_rqmts(self, prelim) -> str:
@@ -209,6 +223,8 @@ class S1000DHTMLRenderer:
         for child in main_proc:
             if _local_tag(child) == 'proceduralStep':
                 step_num += 1
+                if step_num > 1:
+                    parts.append('<div class="page-spacer"></div>')
                 parts.append(self._render_procedural_step(child, str(step_num)))
 
         parts.append('</div>')

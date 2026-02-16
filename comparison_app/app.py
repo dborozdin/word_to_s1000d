@@ -7,7 +7,7 @@ import os
 import sys
 import configparser
 
-from flask import Flask, render_template, send_from_directory, send_file, abort, request
+from flask import Flask, render_template, send_from_directory, send_file, abort, request, jsonify
 
 # Add project root to path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,6 +22,8 @@ from comparison_app.docx_renderer import (
     CACHE_DIR,
 )
 from comparison_app.s1000d_renderer import render_s1000d_to_html
+from comparison_app.reference_store import get_reference, save_reference, init_reference_from_auto
+from comparison_app.headless_comparator import extract_xml_elements, compare_elements, ElementInfo
 
 app = Flask(__name__)
 
@@ -140,6 +142,126 @@ def serve_graphic(filename):
     if not os.path.isdir(GRAPHICS_DIR):
         abort(404)
     return send_from_directory(GRAPHICS_DIR, filename)
+
+
+# ======================================================================
+# Reference markup and verification API
+# ======================================================================
+
+@app.route('/api/reference/<path:dmc_string>', methods=['GET'])
+def get_reference_api(dmc_string: str):
+    """Get stored reference markup for a DMC."""
+    ref = get_reference(dmc_string)
+    if ref is None:
+        return jsonify({'exists': False}), 200
+    return jsonify({'exists': True, 'reference': ref}), 200
+
+
+@app.route('/api/reference/<path:dmc_string>/init', methods=['POST'])
+def init_reference_api(dmc_string: str):
+    """Create initial reference from automatic docx element extraction."""
+    pair = get_pair_by_dmc(dmc_string, INPUT_DIR, OUTPUT_DIR)
+    if not pair or not pair['docx_exists']:
+        return jsonify({'error': 'DOCX not found'}), 404
+
+    try:
+        ref = init_reference_from_auto(dmc_string, pair['docx_path'])
+        return jsonify({'reference': ref}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/reference/<path:dmc_string>', methods=['POST'])
+def save_reference_api(dmc_string: str):
+    """Save user-edited reference markup."""
+    data = request.get_json()
+    if not data or 'elements' not in data:
+        return jsonify({'error': 'Missing elements'}), 400
+
+    source = data.get('source', 'manual')
+    ref = save_reference(dmc_string, data['elements'], source=source)
+    return jsonify({'reference': ref}), 200
+
+
+@app.route('/api/verify/<path:dmc_string>', methods=['POST'])
+def run_verification_api(dmc_string: str):
+    """Run headless comparison between reference and current XML."""
+    pair = get_pair_by_dmc(dmc_string, INPUT_DIR, OUTPUT_DIR)
+    if not pair:
+        return jsonify({'error': 'Pair not found'}), 404
+
+    # Load reference
+    ref = get_reference(dmc_string)
+    if ref is None:
+        return jsonify({'error': 'No reference markup saved'}), 400
+
+    if not pair['xml_exists']:
+        return jsonify({'error': 'XML not found'}), 404
+
+    try:
+        # Extract XML elements
+        xml_elems = extract_xml_elements(pair['xml_path'])
+
+        # Convert reference to ElementInfo
+        ref_elems = [ElementInfo.from_dict(e) for e in ref['elements']]
+
+        # Compare
+        report = compare_elements(ref_elems, xml_elems)
+        return jsonify({'report': report.to_dict()}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/verify-loop/<path:dmc_string>', methods=['POST'])
+def run_verify_loop_api(dmc_string: str):
+    """Run the full verification loop (convert → compare → override → repeat)."""
+    pair = get_pair_by_dmc(dmc_string, INPUT_DIR, OUTPUT_DIR)
+    if not pair:
+        return jsonify({'error': 'Pair not found'}), 404
+
+    ref = get_reference(dmc_string)
+    if ref is None:
+        return jsonify({'error': 'No reference markup saved'}), 400
+
+    if not pair['docx_exists']:
+        return jsonify({'error': 'DOCX not found'}), 404
+
+    # Read config for verification settings
+    max_cycles = config.getint('verification', 'max_cycles', fallback=3)
+    threshold = config.getfloat('verification', 'convergence_threshold', fallback=0.95)
+
+    # Allow overrides from request body
+    body = request.get_json(silent=True) or {}
+    max_cycles = body.get('max_cycles', max_cycles)
+    threshold = body.get('threshold', threshold)
+
+    if max_cycles <= 0:
+        return jsonify({'error': 'max_cycles must be > 0'}), 400
+
+    llm_enabled = config.getboolean('llm', 'enabled', fallback=False)
+    llm_config = {
+        'enabled': llm_enabled,
+        'ollama_url': config.get('llm', 'ollama_url', fallback='http://localhost:11434'),
+        'ollama_model': config.get('llm', 'ollama_model', fallback='gemma3:4b-it-qat'),
+        'batch_size': config.getint('llm', 'batch_size', fallback=20),
+        'confidence_threshold': config.getfloat('llm', 'confidence_threshold', fallback=0.7),
+        'cache_enabled': config.getboolean('llm', 'cache_enabled', fallback=True),
+        'cache_dir': config.get('llm', 'cache_dir', fallback='.llm_cache'),
+    }
+
+    try:
+        from verify_loop import run_verification_loop
+        results = run_verification_loop(
+            dmc_string=dmc_string,
+            input_dir=INPUT_DIR,
+            output_dir=OUTPUT_DIR,
+            max_cycles=max_cycles,
+            threshold=threshold,
+            llm_config=llm_config,
+        )
+        return jsonify({'results': results}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

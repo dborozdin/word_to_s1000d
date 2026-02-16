@@ -657,3 +657,108 @@ body.show-annotations .anno-marker {
     background: #f39c12;
     color: white;
 }
+
+/* ==========================================================================
+   Reference controls (header)
+   ========================================================================== */
+
+.ref-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Edit mode indicator on body */
+body.ref-editing .anno-badge-start {
+    cursor: pointer;
+    outline: 1px dashed rgba(255,255,255,0.5);
+    outline-offset: 1px;
+}
+body.ref-editing .anno-badge-start:hover {
+    outline-color: white;
+    transform: scale(1.15);
+}
+
+/* ==========================================================================
+   Context menu for element editing
+   ========================================================================== */
+
+.anno-context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: white;
+    border: 1px solid #bdc3c7;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    min-width: 220px;
+    font-size: 13px;
+    color: #333;
+}
+
+.ctx-header {
+    padding: 8px 12px;
+    background: #2c3e50;
+    color: white;
+    font-weight: 600;
+    font-size: 12px;
+    border-radius: 5px 5px 0 0;
+}
+
+.ctx-row {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.ctx-row label {
+    font-size: 12px;
+    color: #7f8c8d;
+    min-width: 30px;
+}
+
+.ctx-row select {
+    flex: 1;
+    padding: 3px 6px;
+    font-size: 12px;
+    border: 1px solid #bdc3c7;
+    border-radius: 3px;
+}
+
+.ctx-actions {
+    padding: 6px 8px;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.ctx-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    border: 1px solid #bdc3c7;
+    border-radius: 3px;
+    background: #ecf0f1;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.ctx-btn:hover {
+    background: #d5dbdb;
+}
+.ctx-btn-danger {
+    color: #e74c3c;
+    border-color: #e74c3c;
+}
+.ctx-btn-danger:hover {
+    background: #fdedec;
+}
+
+.ctx-preview {
+    padding: 6px 12px;
+    font-size: 11px;
+    color: #7f8c8d;
+    max-height: 60px;
+    overflow: hidden;
+    word-break: break-word;
+}

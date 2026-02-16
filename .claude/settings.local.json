@@ -14,7 +14,8 @@
       "Bash(curl:*)",
       "Bash(awk:*)",
       "Bash(file:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(head:*)"
     ]
   }
 }

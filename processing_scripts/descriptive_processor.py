@@ -15,7 +15,7 @@ from parsers.table_parser import get_tables_by_reference
 from parsers.list_parser import extract_lists, convert_list_to_s1000d_randomlist
 from parsers.illustration_parser import extract_illustrations, find_image_references, map_figures_to_illustrations, ensure_missing_placeholders, copy_publication_logo
 from parsers.content_analyzer import analyze_document_content, generate_content_analysis_log, get_content_for_info_name, generate_module_mapping_log
-from parsers.elements_analyzer import analyze_document_elements, generate_elements_log
+from parsers.elements_analyzer import analyze_document_elements, generate_elements_log, apply_overrides
 
 # Import generators
 from generators.s1000d_generator import S1000DGenerator, create_data_module_config
@@ -288,6 +288,12 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
                     title_pattern = r'(<title>)[^<]*(</title>)'
                     new_xml = re.sub(title_pattern, f'\\1{clean_title}\\2', old_xml, flags=re.IGNORECASE)
                     elem['xml_example'] = new_xml
+
+    # Apply verification overrides if available (from verify_loop.py)
+    if dm_code_override:
+        from parsers.dmc_parser import dm_code_to_string
+        dmc_str = dm_code_to_string(dm_code_override)
+        elements = apply_overrides(elements, dmc_str)
 
     # Generate elements log (always)
     elements_log_path = generate_elements_log(doc_path, elements, output_dir)

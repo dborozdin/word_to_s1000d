@@ -30,6 +30,13 @@
                 <button id="anno-next" class="anno-btn anno-nav" title="Следующий элемент">&raquo;</button>
             </div>
             <span id="mismatch-badge" class="mismatch-badge" style="display:none"></span>
+            <div class="ref-controls">
+                <button id="edit-ref-btn" class="anno-btn" title="Загрузить / создать эталонную разметку">Эталон</button>
+                <button id="save-ref-btn" class="anno-btn" style="display:none" title="Сохранить изменения в эталоне">Сохранить</button>
+                <button id="run-verify-btn" class="anno-btn" style="display:none" title="Сверить XML с эталоном">Проверить</button>
+                <button id="run-loop-btn" class="anno-btn" style="display:none" title="Запустить цикл автоулучшения">Автоулучшение</button>
+                <span id="verify-score" class="mismatch-badge" style="display:none"></span>
+            </div>
             <label class="sync-label">
                 <input type="checkbox" id="sync-scroll" checked>
                 Синхронная прокрутка
@@ -81,9 +88,34 @@
         </div>
     </div>
 
+    <!-- Context menu for element editing -->
+    <div id="anno-context-menu" class="anno-context-menu" style="display:none">
+        <div class="ctx-header"><span id="ctx-label"></span></div>
+        <div class="ctx-row">
+            <label>Тип:</label>
+            <select id="ctx-type-select">
+                <option value="heading">заголовок</option>
+                <option value="para">параграф</option>
+                <option value="list">список</option>
+                <option value="table">таблица</option>
+                <option value="figure">рисунок</option>
+                <option value="warning">предупреждение</option>
+                <option value="caution">внимание</option>
+                <option value="note">примечание</option>
+            </select>
+        </div>
+        <div class="ctx-actions">
+            <button id="ctx-merge-prev" class="ctx-btn" title="Объединить с предыдущим">&#8597; С верхним</button>
+            <button id="ctx-merge-next" class="ctx-btn" title="Объединить со следующим">&#8597; С нижним</button>
+            <button id="ctx-delete" class="ctx-btn ctx-btn-danger" title="Удалить из эталона">&#10005; Удалить</button>
+        </div>
+        <div class="ctx-preview" id="ctx-preview"></div>
+    </div>
+
     <script>
         window.RENDER_MODE = '{{ render_mode }}';
         window.PDF_URL = '/pdf/{{ pair.dmc_string }}';
+        window.DMC_STRING = '{{ pair.dmc_string }}';
     </script>
     {% if render_mode == 'pdf' %}
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs" type="module"></script>

@@ -235,3 +235,4 @@ nul
 *.js
 /examples
 /comparison_app/pdf_cache
+/comparison_app/_references

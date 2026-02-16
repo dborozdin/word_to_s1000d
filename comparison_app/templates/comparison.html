@@ -29,6 +29,7 @@
                 <span id="anno-position" class="anno-position">&mdash; / &mdash;</span>
                 <button id="anno-next" class="anno-btn anno-nav" title="Следующий элемент">&raquo;</button>
             </div>
+            <span id="mismatch-badge" class="mismatch-badge" style="display:none"></span>
             <label class="sync-label">
                 <input type="checkbox" id="sync-scroll" checked>
                 Синхронная прокрутка
@@ -97,6 +98,8 @@
             const pdf = await getDocument(window.PDF_URL).promise;
             container.innerHTML = '';
 
+            var annoOffset = 0;
+
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const containerWidth = panelContent.clientWidth - 32;
@@ -108,10 +111,27 @@
                 canvas.className = 'pdf-page';
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
-                container.appendChild(canvas);
+
+                // Wrap canvas in position:relative wrapper
+                const wrapper = document.createElement('div');
+                wrapper.className = 'pdf-page-wrapper';
+                wrapper.appendChild(canvas);
+                container.appendChild(wrapper);
 
                 const ctx = canvas.getContext('2d');
                 await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+                // Extract text content and create overlay markers
+                const textContent = await page.getTextContent();
+                if (window.createPdfOverlay) {
+                    var blockCount = window.createPdfOverlay(wrapper, textContent, viewport, annoOffset);
+                    annoOffset += blockCount;
+                }
+            }
+
+            // After all pages rendered, trigger mismatch detection
+            if (window.detectMismatch) {
+                window.detectMismatch();
             }
         } catch (err) {
             container.innerHTML = '<div class="pdf-error">Ошибка загрузки PDF: ' + err.message + '</div>';

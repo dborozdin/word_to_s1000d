@@ -574,3 +574,86 @@ body.show-annotations [data-anno-idx].anno-highlight {
     outline: 2px solid var(--anno-clr, #999);
     outline-offset: 1px;
 }
+
+/* Mismatch highlight (elements without a match in the other panel) */
+body.show-annotations [data-anno-idx].anno-mismatch {
+    outline: 2px dashed #e74c3c;
+    outline-offset: 1px;
+    background: rgba(231, 76, 60, 0.08);
+}
+
+/* ==========================================================================
+   PDF overlay markers (annotations on canvas pages)
+   ========================================================================== */
+
+.pdf-page-wrapper {
+    position: relative;
+}
+
+.pdf-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.anno-marker {
+    position: absolute;
+    left: 2px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: monospace;
+    padding: 2px 5px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--anno-clr, #333);
+    border: 2px solid var(--anno-clr, #999);
+    pointer-events: auto;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+    z-index: 10;
+    line-height: 1.3;
+}
+
+body.show-annotations .anno-marker {
+    opacity: 1;
+}
+
+.anno-marker:hover {
+    filter: brightness(1.2);
+    transform: scale(1.1);
+}
+
+/* Highlighted PDF marker */
+.anno-marker.anno-highlight {
+    opacity: 1 !important;
+    background: rgba(255, 255, 200, 0.95);
+    outline: 2px solid var(--anno-clr, #333);
+    outline-offset: 1px;
+    transform: scale(1.15);
+}
+
+/* ==========================================================================
+   Mismatch indicator badge (header)
+   ========================================================================== */
+
+.mismatch-badge {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.mismatch-badge.ok {
+    background: #27ae60;
+    color: white;
+}
+
+.mismatch-badge.warn {
+    background: #f39c12;
+    color: white;
+}

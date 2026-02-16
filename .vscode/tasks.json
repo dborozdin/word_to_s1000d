@@ -1,0 +1,30 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Kill tgwebserver (port 8082)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$p = Get-NetTCPConnection -LocalPort 8082 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { $p | ForEach-Object { Stop-Process -Id $_ -Force }; Write-Host 'Killed' } else { Write-Host 'No process on port 8082' }; exit 0\"",
+            "presentation": {
+                "reveal": "silent",
+                "close": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Start tgwebserver",
+            "type": "shell",
+            "command": "cmd",
+            "args": ["/c", "run_consoled.bat"],
+            "options": {
+                "cwd": "${workspaceFolder}/tg_web"
+            },
+            "isBackground": true,
+            "presentation": {
+                "reveal": "silent",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

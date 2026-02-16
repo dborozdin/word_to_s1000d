@@ -8,6 +8,7 @@ import re
 import configparser
 from typing import Dict, List, Tuple
 from docx import Document
+from lxml import etree
 
 # Import parser modules
 from parsers.illustration_parser import extract_illustrations, ensure_missing_placeholders, copy_publication_logo
@@ -58,6 +59,77 @@ SECTION_HEADER_KEYWORDS = [
 WARNING_KEYWORDS = ['внимание', 'осторожно', 'предупреждение', 'опасно']
 NOTE_KEYWORDS = ['примечание', 'примечания']
 
+# XML namespaces for VML textbox table extraction
+VML_NS = 'urn:schemas-microsoft-com:vml'
+WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+
+
+# ---------------------------------------------------------------------------
+# VML textbox table extraction
+# ---------------------------------------------------------------------------
+
+def _extract_tables_from_vml_textboxes(doc: Document) -> List[Dict]:
+    """
+    Extract tables embedded inside VML floating textboxes.
+
+    In .doc files converted to .docx, tables for equipment/supplies are often
+    inside VML shapes: <w:p>/<w:r>/<w:pict>/<v:shape>/<v:textbox>/<w:txbxContent>/<w:tbl>
+    These are invisible to doc.tables which only returns top-level body tables.
+
+    Returns:
+        List of table dicts: [{'rows': [['cell1', 'cell2', ...], ...]}]
+    """
+    tables = []
+
+    # Search entire document body XML for VML shapes containing tables
+    for element in doc.element.body:
+        # Look for v:shape elements anywhere in this body child
+        for shape in element.iter('{%s}shape' % VML_NS):
+            for textbox in shape.iter('{%s}textbox' % VML_NS):
+                for txbx_content in textbox.iter('{%s}txbxContent' % WORD_NS):
+                    for tbl in txbx_content.iter('{%s}tbl' % WORD_NS):
+                        table_data = _parse_vml_table_element(tbl)
+                        if table_data and table_data['rows']:
+                            tables.append(table_data)
+
+    return tables
+
+
+def _parse_vml_table_element(tbl_element) -> Dict:
+    """
+    Parse a <w:tbl> lxml element into a dict of rows/cells.
+
+    Each cell is represented as a list of paragraph texts (preserving
+    paragraph boundaries, since equipment/supply items are individual paragraphs
+    within a single cell).
+
+    Args:
+        tbl_element: lxml element for <w:tbl>
+
+    Returns:
+        {'rows': [[['para1', 'para2'], ['para1'], ...], ...]}
+        Each cell is a list of paragraph strings.
+    """
+    rows = []
+
+    for tr in tbl_element.findall('{%s}tr' % WORD_NS):
+        row_cells = []
+        for tc in tr.findall('{%s}tc' % WORD_NS):
+            cell_paras = []
+            for p in tc.findall('{%s}p' % WORD_NS):
+                para_text = ''
+                for t in p.iter('{%s}t' % WORD_NS):
+                    if t.text:
+                        para_text += t.text
+                para_text = para_text.strip()
+                if para_text:
+                    cell_paras.append(para_text)
+            row_cells.append(cell_paras)
+        if row_cells:
+            rows.append(row_cells)
+
+    return {'rows': rows}
+
 
 def parse_preliminary_requirements(doc: Document, elements: List[Dict]) -> Dict:
     """
@@ -80,8 +152,16 @@ def parse_preliminary_requirements(doc: Document, elements: List[Dict]) -> Dict:
         'prelim_end_index': 0,  # element index where prelim ends
     }
 
-    tables = doc.tables
-    tables_classified = _classify_tables(tables)
+    # Extract tables from VML textboxes (common in .doc → .docx converted files)
+    vml_tables = _extract_tables_from_vml_textboxes(doc)
+    if vml_tables:
+        print(f"  Found {len(vml_tables)} table(s) in VML textboxes")
+        tables_classified = _classify_tables_from_dicts(vml_tables)
+    else:
+        # Fallback: try top-level doc.tables (standard .docx files)
+        top_level_tables = [_docx_table_to_dict(t) for t in doc.tables]
+        tables_classified = _classify_tables_from_dicts(top_level_tables)
+    print(f"  Classified: equipment={len(tables_classified['equipment'])}, supplies={len(tables_classified['supplies'])}")
     result['support_equips'] = tables_classified.get('equipment', [])
     result['supplies'] = tables_classified.get('supplies', [])
     result['spares'] = tables_classified.get('spares', [])
@@ -116,64 +196,69 @@ def parse_preliminary_requirements(doc: Document, elements: List[Dict]) -> Dict:
     return result
 
 
-def _classify_tables(tables) -> Dict[str, List]:
-    """Classify document tables into equipment, supplies, spares based on content."""
-    classified = {'equipment': [], 'supplies': [], 'spares': []}
+def _docx_table_to_dict(table) -> Dict:
+    """Convert a python-docx Table object to the same format as _parse_vml_table_element."""
+    rows = []
+    for row in table.rows:
+        row_cells = []
+        for cell in row.cells:
+            # Split cell text by lines (approximate paragraph boundaries)
+            lines = [line.strip() for line in cell.text.split('\n') if line.strip()]
+            row_cells.append(lines)
+        rows.append(row_cells)
+    return {'rows': rows}
 
-    for table in tables:
-        items, table_type = _parse_requirement_table(table)
-        if table_type and items:
-            classified[table_type].extend(items)
 
-    return classified
-
-
-def _parse_requirement_table(table) -> Tuple[List[Dict], str]:
+def _classify_tables_from_dicts(tables: List[Dict]) -> Dict[str, List]:
     """
-    Parse a single table and determine its type (equipment/supplies/spares).
+    Classify VML tables into equipment, supplies, spares.
+
+    Tech card tables use a column-based layout where the header row identifies
+    column types (e.g. "Инструмент и приспособления" | "Расходные материалы"),
+    and data cells contain multiple items as separate paragraphs within one cell.
+
+    Args:
+        tables: List of table dicts from _parse_vml_table_element().
+                Each cell is a list of paragraph strings.
 
     Returns:
-        Tuple of (list of item dicts, table_type string or None)
+        Dict with 'equipment', 'supplies', 'spares' lists of item dicts.
     """
-    if not table.rows:
-        return [], None
+    classified = {'equipment': [], 'supplies': [], 'spares': []}
 
-    # Check header row for classification
-    header_text = ''
-    for cell in table.rows[0].cells:
-        header_text += ' ' + cell.text.strip().lower()
-
-    table_type = None
-    if any(kw in header_text for kw in EQUIPMENT_KEYWORDS):
-        table_type = 'equipment'
-    elif any(kw in header_text for kw in SUPPLY_KEYWORDS):
-        table_type = 'supplies'
-    elif 'запасные части' in header_text or 'запчаст' in header_text:
-        table_type = 'spares'
-
-    if table_type is None:
-        return [], None
-
-    # Extract items from data rows (skip header)
-    items = []
-    for row in table.rows[1:]:
-        cells = row.cells
-        if not cells:
+    for table_dict in tables:
+        rows = table_dict.get('rows', [])
+        if len(rows) < 2:
             continue
 
-        # Find the name column — typically the first or second column with substantial text
-        name = ''
-        for cell in cells:
-            text = cell.text.strip()
-            # Skip numeric-only cells (row numbers) and short cells
-            if text and not text.isdigit() and len(text) > 3:
-                name = text
-                break
+        # Identify column types from header row(s)
+        header_row = rows[0]
+        col_types = {}  # column index -> type string
 
-        if name:
-            items.append({'name': name})
+        for col_idx, cell_paras in enumerate(header_row):
+            cell_text = ' '.join(cell_paras).lower()
+            if any(kw in cell_text for kw in EQUIPMENT_KEYWORDS):
+                col_types[col_idx] = 'equipment'
+            elif any(kw in cell_text for kw in SUPPLY_KEYWORDS):
+                col_types[col_idx] = 'supplies'
+            elif 'запасные части' in cell_text or 'запчаст' in cell_text:
+                col_types[col_idx] = 'spares'
 
-    return items, table_type
+        if not col_types:
+            continue
+
+        # Extract items from data rows (skip header)
+        for row in rows[1:]:
+            for col_idx, item_type in col_types.items():
+                if col_idx >= len(row):
+                    continue
+                cell_paras = row[col_idx]
+                for para_text in cell_paras:
+                    name = para_text.strip()
+                    if name and len(name) > 3:
+                        classified[item_type].append({'name': name})
+
+    return classified
 
 
 def _find_step_start_index(elements: List[Dict]) -> int:

@@ -872,14 +872,17 @@ body.ref-editing [data-anno-idx-cleared]:hover {
     cursor: pointer;
 }
 
-/* PDF mode: unassigned markers */
+/* PDF mode: unassigned markers — always visible (even without show-annotations) */
 .anno-marker-unassigned {
     border-style: dashed !important;
-    opacity: 0.5;
+    border-color: #27ae60 !important;
+    opacity: 0.6 !important;
 }
-body.show-annotations .anno-marker-unassigned {
-    opacity: 0.5;
+.anno-marker-unassigned .marker-label {
+    color: #27ae60 !important;
+    border-color: #27ae60 !important;
+    background: rgba(234, 250, 241, 0.95) !important;
 }
 body.show-annotations .anno-marker-unassigned:hover {
-    opacity: 1;
+    opacity: 1 !important;
 }

@@ -301,11 +301,11 @@ def _walk_para(para_elem, elements, counter):
             if tag == 'randomList':
                 counter[0] += 1
                 ts, te = _text_snippet(child)
-                elements.append(ElementInfo(idx=counter[0], type='list', text_start=ts, text_end=te))
+                elements.append(ElementInfo(idx=counter[0], type='unnumbered_list', text_start=ts, text_end=te))
             elif tag == 'sequentialList':
                 counter[0] += 1
                 ts, te = _text_snippet(child)
-                elements.append(ElementInfo(idx=counter[0], type='list', text_start=ts, text_end=te))
+                elements.append(ElementInfo(idx=counter[0], type='numbered_list', text_start=ts, text_end=te))
     else:
         # Simple para
         counter[0] += 1

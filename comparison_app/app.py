@@ -27,6 +27,9 @@ from comparison_app.headless_comparator import extract_xml_elements, compare_ele
 
 app = Flask(__name__)
 
+# In-memory progress tracking for verification loops
+_loop_progress = {}  # dmc_string -> {cycle, max_cycles, status}
+
 # Read config
 config = configparser.ConfigParser()
 config.read(os.path.join(PROJECT_ROOT, 'config.ini'), encoding='utf-8')
@@ -125,6 +128,26 @@ def serve_pdf(dmc_string: str):
         return send_file(pdf_path, mimetype='application/pdf')
     except Exception as e:
         abort(500, f'PDF generation failed: {e}')
+
+
+@app.route('/api/pdf-blocks/<path:dmc_string>')
+def get_pdf_blocks(dmc_string: str):
+    """Return text blocks with bbox for each page of the PDF."""
+    from comparison_app.pdf_block_extractor import extract_pdf_blocks
+
+    pair = get_pair_by_dmc(dmc_string, INPUT_DIR, OUTPUT_DIR)
+    if not pair or not pair['docx_exists']:
+        abort(404)
+
+    if not _is_word_available():
+        abort(503, 'MS Word not available for PDF rendering')
+
+    try:
+        pdf_path = render_docx_to_pdf(pair['docx_path'], dmc_string)
+        pages = extract_pdf_blocks(pdf_path)
+        return jsonify(pages=pages)
+    except Exception as e:
+        abort(500, f'PDF block extraction failed: {e}')
 
 
 @app.route('/wordhtml_res/<path:dmc_string>/<path:filename>')
@@ -249,6 +272,15 @@ def run_verify_loop_api(dmc_string: str):
         'cache_dir': config.get('llm', 'cache_dir', fallback='.llm_cache'),
     }
 
+    def progress_callback(cycle, total, status):
+        _loop_progress[dmc_string] = {
+            'cycle': cycle,
+            'max_cycles': total,
+            'status': status,
+        }
+
+    _loop_progress[dmc_string] = {'cycle': 0, 'max_cycles': max_cycles, 'status': 'starting'}
+
     try:
         from verify_loop import run_verification_loop
         results = run_verification_loop(
@@ -258,8 +290,34 @@ def run_verify_loop_api(dmc_string: str):
             max_cycles=max_cycles,
             threshold=threshold,
             llm_config=llm_config,
+            progress_callback=progress_callback,
         )
         return jsonify({'results': results}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        _loop_progress.pop(dmc_string, None)
+
+
+@app.route('/api/verify-loop-progress/<path:dmc_string>')
+def verify_loop_progress(dmc_string: str):
+    """Get current progress of verification loop."""
+    progress = _loop_progress.get(dmc_string)
+    if progress is None:
+        return jsonify({'running': False}), 200
+    return jsonify({'running': True, **progress}), 200
+
+
+@app.route('/api/s1000d-html/<path:dmc_string>')
+def get_s1000d_html(dmc_string: str):
+    """Return fresh S1000D HTML for a DMC (used after verify loop completes)."""
+    pair = get_pair_by_dmc(dmc_string, INPUT_DIR, OUTPUT_DIR)
+    if not pair or not pair['xml_exists']:
+        return jsonify({'error': 'XML not found'}), 404
+
+    try:
+        html = render_s1000d_to_html(pair['xml_path'])
+        return jsonify({'html': html}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

@@ -15,7 +15,8 @@
       "Bash(awk:*)",
       "Bash(file:*)",
       "Bash(wc:*)",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(node --check:*)"
     ]
   }
 }

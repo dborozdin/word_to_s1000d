@@ -413,7 +413,7 @@ class S1000DHTMLRenderer:
 
     def _render_random_list(self, rlist) -> str:
         """Render <randomList> as <ul>."""
-        parts = [f'<ul class="random-list" {self._anno("list")}>']
+        parts = [f'<ul class="random-list" {self._anno("unnumbered_list")}>']
         for item in rlist.findall('listItem'):
             item_html = ''
             for child in item:
@@ -425,7 +425,7 @@ class S1000DHTMLRenderer:
 
     def _render_sequenced_list(self, slist) -> str:
         """Render <sequentialList> as <ol>."""
-        parts = [f'<ol class="sequenced-list" {self._anno("list")}>']
+        parts = [f'<ol class="sequenced-list" {self._anno("numbered_list")}>']
         for item in slist.findall('listItem'):
             item_html = ''
             for child in item:

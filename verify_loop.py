@@ -174,6 +174,7 @@ def run_verification_loop(
     max_cycles: int = 3,
     threshold: float = 0.95,
     llm_config: Dict = None,
+    progress_callback=None,
 ) -> List[dict]:
     """
     Run the verification loop for a single DMC.
@@ -231,6 +232,9 @@ def run_verification_loop(
     for cycle_num in range(1, max_cycles + 1):
         print(f'\n[verify_loop] Cycle {cycle_num}/{max_cycles} for {dmc_string}')
 
+        if progress_callback:
+            progress_callback(cycle_num, max_cycles, 'converting')
+
         # Step 1: Run conversion
         try:
             _run_conversion(
@@ -262,6 +266,9 @@ def run_verification_loop(
             break
 
         # Step 4: Compare
+        if progress_callback:
+            progress_callback(cycle_num, max_cycles, 'comparing')
+
         report = compare_elements(ref_elements, xml_elements)
         cycle_result = {
             'cycle': cycle_num,

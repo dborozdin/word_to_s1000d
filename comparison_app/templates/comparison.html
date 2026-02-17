@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ pair.tech_name }} &mdash; {{ pair.info_name }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/comparison.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/comparison.css') }}?v=4">
 </head>
 <body>
     <header class="app-header">
@@ -35,6 +35,10 @@
                 <button id="save-ref-btn" class="anno-btn" style="display:none" title="Сохранить изменения в эталоне">Сохранить</button>
                 <button id="run-verify-btn" class="anno-btn" style="display:none" title="Сверить XML с эталоном">Проверить</button>
                 <button id="run-loop-btn" class="anno-btn" style="display:none" title="Запустить цикл автоулучшения">Автоулучшение</button>
+                <div id="loop-progress" class="loop-progress" style="display:none">
+                    <div class="loop-progress-bar" id="loop-progress-bar"></div>
+                    <span class="loop-progress-text" id="loop-progress-text"></span>
+                </div>
                 <span id="verify-score" class="mismatch-badge" style="display:none"></span>
             </div>
             <label class="sync-label">
@@ -96,7 +100,8 @@
             <select id="ctx-type-select">
                 <option value="heading">заголовок</option>
                 <option value="para">параграф</option>
-                <option value="list">список</option>
+                <option value="numbered_list">нумерованный список</option>
+                <option value="unnumbered_list">ненумерованный список</option>
                 <option value="table">таблица</option>
                 <option value="figure">рисунок</option>
                 <option value="warning">предупреждение</option>
@@ -108,6 +113,11 @@
             <button id="ctx-merge-prev" class="ctx-btn" title="Объединить с предыдущим">&#8597; С верхним</button>
             <button id="ctx-merge-next" class="ctx-btn" title="Объединить со следующим">&#8597; С нижним</button>
             <button id="ctx-delete" class="ctx-btn ctx-btn-danger" title="Удалить из эталона">&#10005; Удалить</button>
+            <button id="ctx-split" class="ctx-btn ctx-btn-split" style="display:none" title="Разделить объединённый элемент">&#8622; Разделить</button>
+            <button id="ctx-create" class="ctx-btn ctx-btn-create" style="display:none" title="Создать новый элемент">&#10010; Создать</button>
+        </div>
+        <div class="ctx-actions ctx-save-row">
+            <button id="ctx-save" class="ctx-btn ctx-btn-save" title="Сохранить эталон">&#128190; Сохранить</button>
         </div>
         <div class="ctx-preview" id="ctx-preview"></div>
     </div>
@@ -127,7 +137,15 @@
         const panelContent = document.getElementById('content-docx');
 
         try {
+            // Fetch server-side block positions (PyMuPDF) in parallel with PDF loading
+            const blocksPromise = fetch('/api/pdf-blocks/' + window.DMC_STRING)
+                .then(function (r) { return r.json(); })
+                .then(function (data) { window._serverPdfBlocks = data.pages; })
+                .catch(function () { window._serverPdfBlocks = null; });
+
             const pdf = await getDocument(window.PDF_URL).promise;
+            await blocksPromise;  // ensure blocks are ready
+
             container.innerHTML = '';
 
             var annoOffset = 0;
@@ -156,7 +174,7 @@
                 // Extract text content and create overlay markers
                 const textContent = await page.getTextContent();
                 if (window.createPdfOverlay) {
-                    var blockCount = window.createPdfOverlay(wrapper, textContent, viewport, annoOffset);
+                    var blockCount = window.createPdfOverlay(wrapper, textContent, viewport, annoOffset, i - 1);
                     annoOffset += blockCount;
                 }
             }
@@ -170,6 +188,6 @@
         }
     </script>
     {% endif %}
-    <script src="{{ url_for('static', filename='js/comparison.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/comparison.js') }}?v=4"></script>
 </body>
 </html>

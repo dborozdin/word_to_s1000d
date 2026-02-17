@@ -248,7 +248,7 @@ def _image_to_base64(image):
 _BLOCK_TAG_MAP = {
     'h1': 'heading', 'h2': 'heading', 'h3': 'heading',
     'h4': 'heading', 'h5': 'heading', 'h6': 'heading',
-    'p': 'para', 'ul': 'list', 'ol': 'list',
+    'p': 'para', 'ul': 'unnumbered_list', 'ol': 'numbered_list',
     'table': 'table', 'img': 'figure',
 }
 

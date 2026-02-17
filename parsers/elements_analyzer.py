@@ -1056,7 +1056,9 @@ def apply_overrides(elements: List[Dict[str, Any]], dmc_string: str) -> List[Dic
     type_map = {
         'heading': 'numbered_paragraph_header',
         'para': 'paragraph',
-        'list': 'unnumbered_list',
+        'numbered_list': 'numbered_list',
+        'unnumbered_list': 'unnumbered_list',
+        'list': 'unnumbered_list',  # backward compat
         'table': 'table',
         'figure': 'illustration',
         'warning': 'warning',

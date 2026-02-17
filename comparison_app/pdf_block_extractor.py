@@ -158,6 +158,7 @@ _BULLET_RE = re.compile(
     r'^[\-\u2013\u2014\u2212\u2022\u25CF\u25CB\u2023\u25AA\u25AB\u2043]'
 )
 _NUMBERED_RE = re.compile(r'^\d+[\.\)]\s')
+_TERMINAL_RE = re.compile(r'[.!?;][»"\'\)\]]*\s*$')
 
 
 def _is_list_start(text: str) -> bool:
@@ -243,7 +244,14 @@ def _merge_lines_into_blocks(blocks: list) -> list:
             if ratio > 1.25 or ratio < 0.8:
                 new_block = True
 
-        # 6. Bullet / numbered prefix at list indent → new list item
+        # 6. Previous line ends with terminal punctuation at same indent
+        #    → paragraph break (essential for prose text with uniform spacing)
+        if not new_block and abs(x_shift) < 3:
+            prev_text = blocks[i - 1]["text"].rstrip()
+            if _TERMINAL_RE.search(prev_text):
+                new_block = True
+
+        # 7. Bullet / numbered prefix at list indent → new list item
         if not new_block and _is_list_start(b["text"]):
             # Only split if this looks like a list indent (not body text)
             # i.e. x0 is more indented than the minimum x0 on this page

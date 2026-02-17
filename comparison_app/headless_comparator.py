@@ -24,13 +24,17 @@ class ElementInfo:
     type: str
     text_start: str = ''
     text_end: str = ''
+    span: int = 1
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @staticmethod
     def from_dict(d: dict) -> 'ElementInfo':
-        return ElementInfo(**d)
+        # Filter to known fields to tolerate extra keys
+        known = {'idx', 'type', 'text_start', 'text_end', 'span'}
+        filtered = {k: v for k, v in d.items() if k in known}
+        return ElementInfo(**filtered)
 
 
 @dataclass

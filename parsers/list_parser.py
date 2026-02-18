@@ -349,6 +349,6 @@ def convert_list_to_s1000d_randomlist(list_data: Dict[str, List[str]]) -> str:
 
     list_items_xml = ''.join(items)
 
-    prefix = 'pf02' if list_data['type'] == 'unnumbered_list' else 'nfp01'
+    prefix = 'pf02' if list_data['type'] == 'unnumbered_list' else 'pf01'
 
     return f'<randomList listItemPrefix="{prefix}">{list_items_xml}</randomList>'

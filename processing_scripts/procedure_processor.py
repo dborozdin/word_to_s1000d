@@ -12,7 +12,7 @@ from lxml import etree
 
 # Import parser modules
 from parsers.illustration_parser import extract_illustrations, ensure_missing_placeholders, copy_publication_logo
-from parsers.elements_analyzer import analyze_document_elements, generate_elements_log, apply_overrides
+from parsers.elements_analyzer import analyze_document_elements, generate_elements_log, apply_reference_markup
 
 # Import generators
 from generators.s1000d_generator import S1000DGenerator, create_data_module_config
@@ -516,11 +516,11 @@ def process_procedure_document(doc_path: str, output_dir: str, llm_config: Dict 
         llm_config=llm_config, graphic_ident_prefix=graphic_ident_prefix
     )
 
-    # Apply verification overrides if available (from verify_loop.py)
+    # Apply user reference markup (or fall back to overrides) if available
     if dm_code_override:
         from parsers.dmc_parser import dm_code_to_string
         dmc_str = dm_code_to_string(dm_code_override)
-        elements = apply_overrides(elements, dmc_str)
+        elements = apply_reference_markup(elements, dmc_str)
 
     # Generate elements log
     elements_log_path = generate_elements_log(doc_path, elements, output_dir)

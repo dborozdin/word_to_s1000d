@@ -454,7 +454,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
 
             # Add list item
             clean_text = _clean_list_item_text(paragraph, list_type)
-            xml_prefix = 'pf02' if list_type == 'unnumbered_list' else 'nfp01'
+            xml_prefix = 'pf02' if list_type == 'unnumbered_list' else 'pf01'
             xml_example = f'<randomList listItemPrefix="{xml_prefix}"><listItem><para>{clean_text}</para></listItem></randomList>'
 
             element_info = {
@@ -1137,6 +1137,144 @@ def apply_overrides(elements: List[Dict[str, Any]], dmc_string: str) -> List[Dic
         elements = [e for i, e in enumerate(elements) if i not in adjusted]
 
     return elements
+
+
+def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> List[Dict[str, Any]]:
+    """
+    Apply user reference markup directly to classified elements.
+
+    Instead of the indirect text-patch override system, this loads the user's
+    ground-truth annotation and uses it to:
+    1. Reclassify element types to match user annotations
+    2. Reorder elements to match user-defined order
+    3. Handle span-based grouping (reference span=N → N auto elements get same type)
+
+    Falls back to apply_overrides() if no reference markup exists.
+
+    Args:
+        elements: List of element dicts from analyze_document_elements()
+        dmc_string: DMC identifier to look up reference
+
+    Returns:
+        Modified elements list with reference types and ordering applied.
+    """
+    # Try to load reference markup
+    try:
+        from comparison_app.reference_store import get_reference
+        ref_data = get_reference(dmc_string)
+    except ImportError:
+        ref_data = None
+
+    if not ref_data or not ref_data.get('elements'):
+        # No reference — fall back to overrides
+        return apply_overrides(elements, dmc_string)
+
+    ref_elements = ref_data['elements']
+
+    # Type mapping: reference types → analyzer types
+    type_map = {
+        'heading': 'numbered_paragraph_header',
+        'para': 'paragraph',
+        'numbered_list': 'numbered_list',
+        'unnumbered_list': 'unnumbered_list',
+        'list': 'unnumbered_list',
+        'table': 'table',
+        'figure': 'illustration',
+        'warning': 'warning',
+        'caution': 'warning',
+        'note': 'paragraph',
+    }
+
+    def _prefix_score(ref_text, content_text):
+        """Compute prefix-based similarity score."""
+        if not ref_text or not content_text:
+            return 0.0
+        a = ref_text.strip()
+        b = content_text.strip()
+        min_len = min(len(a), len(b))
+        if min_len == 0:
+            return 0.0
+        prefix_len = 0
+        for i in range(min_len):
+            if a[i] == b[i]:
+                prefix_len += 1
+            else:
+                break
+        if prefix_len < 3:
+            return 0.0
+        return prefix_len / max(len(a), 1)
+
+    # Build result by matching reference elements to auto elements in order
+    result = []
+    cursor = 0  # approximate position in auto elements list
+    used = set()
+
+    for ref_elem in ref_elements:
+        ref_text_start = (ref_elem.get('text_start', '') or '').strip()
+        ref_type = ref_elem.get('type', '')
+        ref_span = ref_elem.get('span', 1) or 1
+        mapped_type = type_map.get(ref_type, ref_type)
+
+        if not ref_text_start:
+            continue
+
+        # Search forward from cursor for best match (window: cursor-3 .. cursor+30)
+        best_idx = None
+        best_score = 0.3  # minimum threshold
+
+        search_start = max(0, cursor - 3)
+        search_end = min(len(elements), cursor + 30)
+
+        for i in range(search_start, search_end):
+            if i in used:
+                continue
+            content = elements[i].get('content', '')
+            score = _prefix_score(ref_text_start, content[:60])
+            if score > best_score:
+                best_score = score
+                best_idx = i
+
+        # Fallback: search entire list (handles reordered elements)
+        if best_idx is None:
+            for i in range(len(elements)):
+                if i in used:
+                    continue
+                content = elements[i].get('content', '')
+                score = _prefix_score(ref_text_start, content[:60])
+                if score > best_score:
+                    best_score = score
+                    best_idx = i
+
+        if best_idx is not None:
+            # Match found — apply reference type and add to result
+            elem = elements[best_idx].copy()
+            if mapped_type:
+                elem['type'] = mapped_type
+            result.append(elem)
+            used.add(best_idx)
+            cursor = best_idx + 1
+
+            # Handle span > 1: next (span-1) consecutive auto elements get same type
+            if ref_span > 1:
+                for s in range(1, ref_span):
+                    next_idx = best_idx + s
+                    if next_idx < len(elements) and next_idx not in used:
+                        next_elem = elements[next_idx].copy()
+                        if mapped_type:
+                            next_elem['type'] = mapped_type
+                        result.append(next_elem)
+                        used.add(next_idx)
+                        cursor = next_idx + 1
+
+    # Append unmatched auto elements at the end (content the reference doesn't cover)
+    unmatched = [elements[i] for i in range(len(elements)) if i not in used]
+    if unmatched:
+        result.extend(unmatched)
+
+    print(f'[apply_reference_markup] {len(used)}/{len(elements)} auto elements matched '
+          f'({len(ref_elements)} ref elements, {len(unmatched)} unmatched appended)')
+
+    return result
 
 
 def generate_elements_log(document_path: str, elements: List[Dict[str, Any]], output_path: str) -> str:

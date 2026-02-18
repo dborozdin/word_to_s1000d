@@ -15,7 +15,7 @@ from parsers.table_parser import get_tables_by_reference
 from parsers.list_parser import extract_lists, convert_list_to_s1000d_randomlist
 from parsers.illustration_parser import extract_illustrations, find_image_references, map_figures_to_illustrations, ensure_missing_placeholders, copy_publication_logo
 from parsers.content_analyzer import analyze_document_content, generate_content_analysis_log, get_content_for_info_name, generate_module_mapping_log
-from parsers.elements_analyzer import analyze_document_elements, generate_elements_log, apply_overrides
+from parsers.elements_analyzer import analyze_document_elements, generate_elements_log, apply_reference_markup
 
 # Import generators
 from generators.s1000d_generator import S1000DGenerator, create_data_module_config
@@ -289,11 +289,11 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
                     new_xml = re.sub(title_pattern, f'\\1{clean_title}\\2', old_xml, flags=re.IGNORECASE)
                     elem['xml_example'] = new_xml
 
-    # Apply verification overrides if available (from verify_loop.py)
+    # Apply user reference markup (or fall back to overrides) if available
     if dm_code_override:
         from parsers.dmc_parser import dm_code_to_string
         dmc_str = dm_code_to_string(dm_code_override)
-        elements = apply_overrides(elements, dmc_str)
+        elements = apply_reference_markup(elements, dmc_str)
 
     # Generate elements log (always)
     elements_log_path = generate_elements_log(doc_path, elements, output_dir)
@@ -638,7 +638,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
         if current_list_items:
             # Generate randomList XML wrapped in para to conform to schema
             items_xml = ''.join([f"<listItem><para>{item}</para></listItem>" for item in current_list_items])
-            prefix = 'pf02' if current_list_type == 'unnumbered_list' else 'nfp01'
+            prefix = 'pf02' if current_list_type == 'unnumbered_list' else 'pf01'
             list_xml = f'<randomList listItemPrefix="{prefix}">{items_xml}</randomList>'
             list_para = f'<para>{list_xml}</para>'
 

@@ -750,8 +750,10 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 current_levelled_para = []
                 in_levelled_para = False
 
-            # Generate para element instead of levelledPara
-            xml_parts.append(f'<para>{content}</para>')
+            # Wrap header in its own levelledPara with <title> for XSD compliance
+            # (standalone <para> would get appended to previous levelledPara in generator)
+            current_levelled_para = [f'<title>{content}</title>']
+            in_levelled_para = True
 
         elif elem_type == 'numbered_paragraph_header':
             # Always start a new levelledPara for numbered headers
@@ -781,6 +783,8 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 current_list_items = [content]
 
         elif elem_type == 'paragraph':
+            # Flush any pending list before adding paragraph (preserve document order)
+            flush_current_list()
             # Add paragraph content to current levelledPara or start new one
             if not in_levelled_para:
                 current_levelled_para = []

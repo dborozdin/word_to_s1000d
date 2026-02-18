@@ -1,6 +1,8 @@
 """
 Element analyzer for Word documents.
 Analyzes document structure and generates logs of all detected elements.
+
+Parsing heuristics are documented in parsing_rules.json at project root.
 """
 
 import os
@@ -10,6 +12,18 @@ from typing import Dict, List, Tuple, Any
 from docx import Document
 from docx.shared import Inches
 import datetime
+
+
+def get_parsing_rules() -> dict:
+    """Load parsing rules from parsing_rules.json."""
+    rules_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        'parsing_rules.json',
+    )
+    if os.path.isfile(rules_path):
+        with open(rules_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
 
 
 def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = None, illustration_positions: Dict[str, Dict] = None, llm_config: Dict[str, Any] = None, graphic_ident_prefix: str = None) -> List[Dict[str, Any]]:
@@ -1049,9 +1063,6 @@ def apply_overrides(elements: List[Dict[str, Any]], dmc_string: str) -> List[Dic
     with open(overrides_path, 'r', encoding='utf-8') as f:
         overrides = json.load(f)
 
-    reclassify = overrides.get('reclassify', {})
-    skip_indices = set(overrides.get('skip_elements', []))
-
     # Type mapping from reference types to elements_analyzer types
     type_map = {
         'heading': 'numbered_paragraph_header',
@@ -1066,17 +1077,64 @@ def apply_overrides(elements: List[Dict[str, Any]], dmc_string: str) -> List[Dic
         'note': 'paragraph',
     }
 
-    # Apply reclassify: change element type based on overrides
-    for elem in elements:
-        key = str(elem.get('start_para', ''))
-        if key in reclassify:
-            new_type = reclassify[key]
-            mapped_type = type_map.get(new_type, new_type)
-            elem['type'] = mapped_type
+    # --- Text-based reclassify rules (new format) ---
+    reclassify_rules = overrides.get('reclassify_rules', [])
+    for rule in reclassify_rules:
+        target_text = rule.get('text_start', '')
+        target_end = rule.get('text_end', '')
+        new_type = rule.get('to_type', '')
+        mapped_type = type_map.get(new_type, new_type)
+        if not target_text or not mapped_type:
+            continue
+        for elem in elements:
+            content = elem.get('content', '')
+            content_start = content[:60].strip()
+            content_end = content[-40:].strip() if len(content) > 40 else content.strip()
+            # Match by text_start prefix (primary) + optional text_end check
+            if content_start and target_text.strip() and content_start.startswith(target_text.strip()[:30]):
+                if not target_end or content_end.endswith(target_end.strip()[-20:]):
+                    elem['type'] = mapped_type
+                    break
 
-    # Apply skip_elements: remove elements whose indices are in the skip list
-    if skip_indices:
-        elements = [e for i, e in enumerate(elements) if i not in skip_indices]
+    # --- Text-based skip rules (new format) ---
+    skip_rules = overrides.get('skip_rules', [])
+    if skip_rules:
+        skip_texts = set()
+        for rule in skip_rules:
+            text = rule.get('text_start', '').strip()
+            if text:
+                skip_texts.add(text[:30])  # Use first 30 chars as key
+
+        def _should_skip(elem):
+            content = elem.get('content', '')[:30].strip()
+            return content in skip_texts if content else False
+
+        elements = [e for e in elements if not _should_skip(e)]
+
+    # --- Legacy index-based overrides (backward compat) ---
+    reclassify_legacy = overrides.get('reclassify', {})
+    skip_legacy = set(overrides.get('skip_elements', []))
+
+    # Only apply legacy if no new-format rules exist
+    if not reclassify_rules and reclassify_legacy:
+        # Legacy: keys were XML idx, try matching by list position (approximate)
+        for str_idx, new_type in reclassify_legacy.items():
+            try:
+                idx = int(str_idx)
+                # Offset by -1 because XML extraction adds a heading element at idx=1
+                elem_idx = idx - 1
+                if 0 <= elem_idx < len(elements):
+                    mapped_type = type_map.get(new_type, new_type)
+                    elements[elem_idx]['type'] = mapped_type
+            except (ValueError, IndexError):
+                pass
+
+    if not skip_rules and skip_legacy:
+        # Legacy: values were XML idx (1-based), convert to 0-based
+        adjusted = set()
+        for idx in skip_legacy:
+            adjusted.add(idx - 1)  # Convert from 1-based to 0-based
+        elements = [e for i, e in enumerate(elements) if i not in adjusted]
 
     return elements
 

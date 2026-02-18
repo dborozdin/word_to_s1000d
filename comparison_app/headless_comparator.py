@@ -221,13 +221,26 @@ def _walk_description(desc, elements, counter, level):
 
 def _walk_levelled_para(lp, elements, counter, level):
     """Walk <levelledPara>, collecting elements."""
+    has_title = False
     first_para = True
     for child in lp:
         tag = _local_tag(child)
-        if tag == 'para':
+        if tag == 'title':
+            # <title> inside levelledPara → heading element
             text = _text_content(child)
-            if first_para and level <= 4 and text.strip():
-                # First para is often a heading
+            if text.strip():
+                counter[0] += 1
+                elements.append(ElementInfo(
+                    idx=counter[0], type='heading',
+                    text_start=text[:60],
+                    text_end=text[-40:] if len(text) > 40 else text,
+                ))
+                has_title = True
+                first_para = False
+        elif tag == 'para':
+            text = _text_content(child)
+            if first_para and not has_title and level <= 4 and text.strip():
+                # First para is often a heading (when no <title> present)
                 has_list = child.find('.//randomList') is not None
                 if not has_list:
                     counter[0] += 1

@@ -1,0 +1,258 @@
+{
+  "_description": "Reusable parsing heuristics for Word-to-S1000D element classification. Each rule has a unique ID, conditions, and the resulting element type. Rules can be updated by the verify loop or manually.",
+  "_version": "1.0",
+  "_usage": "Loaded by elements_analyzer.py and pdf_block_extractor.py for classification decisions. Override individual rules via comparison_app/_overrides/<dmc>.json.",
+
+  "element_classification": [
+    {
+      "id": "warning_keywords",
+      "description": "Detect warning/caution paragraphs by keyword presence",
+      "source": "parsers/elements_analyzer.py:_is_warning",
+      "result_type": "warning",
+      "conditions": {
+        "text_contains_any_ci": ["внимание", "осторожно", "предупреждение", "caution", "warning", "опасно"]
+      },
+      "priority": 10,
+      "notes": "Case-insensitive. Matches entire paragraph. May need context-aware detection (e.g. 'ВНИМАНИЕ!' vs 'обратите внимание на...')."
+    },
+    {
+      "id": "list_item_markers",
+      "description": "Text starts with explicit list markers (bullets, dashes)",
+      "source": "parsers/elements_analyzer.py:_is_likely_list_item:check1",
+      "result_type": "unnumbered_list",
+      "conditions": {
+        "text_starts_with_any": ["•", "◦", "▪", "▫", "⁃", "·", "−", "–", "—", "†", "‡", "§"]
+      },
+      "priority": 20
+    },
+    {
+      "id": "list_item_dash_star",
+      "description": "Text starts with dash or asterisk followed by space (not all-caps header)",
+      "source": "parsers/elements_analyzer.py:_is_likely_list_item:check1b",
+      "result_type": "unnumbered_list",
+      "conditions": {
+        "text_starts_with_any": ["-", "*"],
+        "char_at_1_is_space": true,
+        "text_is_not_upper": true
+      },
+      "priority": 20
+    },
+    {
+      "id": "list_item_semicolon_ending",
+      "description": "Text ending with semicolon is a strong indicator of list item",
+      "source": "parsers/elements_analyzer.py:_is_likely_list_item:check2",
+      "result_type": "unnumbered_list",
+      "conditions": {
+        "text_ends_with": ";"
+      },
+      "priority": 15,
+      "notes": "Very reliable signal in Russian technical documents. List items end with ; except the last which ends with ."
+    },
+    {
+      "id": "list_item_after_colon",
+      "description": "Paragraph after colon-ending intro is likely a list item",
+      "source": "parsers/elements_analyzer.py:_is_likely_list_item:check3",
+      "result_type": "unnumbered_list",
+      "conditions": {
+        "previous_paragraph_ends_with": ":",
+        "text_is_not_short_upper_header": true
+      },
+      "priority": 15,
+      "notes": "Pattern: intro paragraph ends with ':', following paragraphs are list items until next section."
+    },
+    {
+      "id": "list_item_continuation",
+      "description": "Paragraph follows another list item with similar structure",
+      "source": "parsers/elements_analyzer.py:_is_likely_list_item:check4-5",
+      "result_type": "unnumbered_list",
+      "conditions": {
+        "previous_element_type_in": ["unnumbered_list", "numbered_list"],
+        "both_short_or_matching_endings": true
+      },
+      "priority": 12
+    },
+    {
+      "id": "quantity_pattern",
+      "description": "Russian technical list pattern: '2 шт. - description'",
+      "source": "parsers/elements_analyzer.py:_is_likely_list_item:check0",
+      "result_type": "unnumbered_list",
+      "conditions": {
+        "text_matches_regex": "^\\d+\\s*шт\\.?\\s*[-–—]"
+      },
+      "priority": 20
+    },
+    {
+      "id": "main_section_header",
+      "description": "Main section header numbered like '1. TITLE' or '2 TITLE'",
+      "source": "parsers/elements_analyzer.py:_is_main_section_header",
+      "result_type": "numbered_paragraph_header",
+      "conditions": {
+        "text_matches_regex": "^\\s*\\d+\\.?\\s+",
+        "is_not_likely_list_item": true
+      },
+      "priority": 25,
+      "notes": "Conflicts with numbered list detection. Priority: list_item_semicolon > main_section_header."
+    },
+    {
+      "id": "heading_style",
+      "description": "Paragraph with Word 'Heading N' style, short non-descriptive text",
+      "source": "parsers/elements_analyzer.py:line342",
+      "result_type": "header",
+      "conditions": {
+        "style_starts_with": "Heading",
+        "text_length_less_than": 100,
+        "text_not_ends_with": ":",
+        "text_not_contains_verbs": ["представляет", "обеспечивает", "осуществляет", "является", "таблица", "рисунок", "указан"]
+      },
+      "priority": 22,
+      "notes": "Long 'Heading' styled text with verbs → treated as paragraph instead."
+    },
+    {
+      "id": "numbered_header_numPr",
+      "description": "Paragraph with OOXML numPr that looks like a section header",
+      "source": "parsers/elements_analyzer.py:line227",
+      "result_type": "numbered_paragraph_header",
+      "conditions": {
+        "has_numPr": true,
+        "is_not_likely_list_item": true,
+        "one_of": [
+          {"style_starts_with": "Heading"},
+          {"style_is_numeric": true},
+          {"text_short_no_sentence_ending": true},
+          {"text_starts_with_header_words": ["ОБЩИЕ", "СОСТАВ", "ОПИСАНИЕ", "Пульт", "Блок", "Рама", "Таблица", "Рисунок"]}
+        ]
+      },
+      "priority": 22
+    },
+    {
+      "id": "embedded_image",
+      "description": "Paragraph contains embedded image (a:blip element)",
+      "source": "parsers/elements_analyzer.py:_has_embedded_image",
+      "result_type": "illustration",
+      "conditions": {
+        "paragraph_has_blip_element": true
+      },
+      "priority": 30
+    },
+    {
+      "id": "figure_reference",
+      "description": "Text mentions figure reference like 'Рисунок N'",
+      "source": "parsers/elements_analyzer.py:_find_references",
+      "result_type": "illustration_reference",
+      "conditions": {
+        "text_matches_regex_any": [
+          "^[Рр]исунок\\s*\\d+\\s*[–-]\\s*.+",
+          "\\b[Рр]ис\\.\\s*\\d+",
+          "\\b[Фф]igure\\s*\\d+"
+        ]
+      },
+      "priority": 18
+    },
+    {
+      "id": "table_reference",
+      "description": "Text mentions table reference like 'Таблица N'",
+      "source": "parsers/elements_analyzer.py:_find_references",
+      "result_type": "table_reference",
+      "conditions": {
+        "text_matches_regex_any": [
+          "\\b[Тт]аблица\\s*\\d+",
+          "\\b[Тт]абл\\.\\s*\\d+",
+          "\\bTable\\s*\\d+"
+        ]
+      },
+      "priority": 18
+    }
+  ],
+
+  "pdf_block_merging": [
+    {
+      "id": "large_vertical_gap",
+      "description": "Large gap between lines indicates new block",
+      "source": "comparison_app/pdf_block_extractor.py:rule1",
+      "action": "split",
+      "conditions": {
+        "gap_exceeds_threshold_factor": 1.6,
+        "threshold_base": "min_gap_among_all_lines"
+      }
+    },
+    {
+      "id": "left_shift",
+      "description": "Return to outer indent indicates new paragraph",
+      "source": "comparison_app/pdf_block_extractor.py:rule2",
+      "action": "split",
+      "conditions": {
+        "x_shift_less_than": -3
+      }
+    },
+    {
+      "id": "large_rightward_shift",
+      "description": "Large rightward indent indicates new indented block",
+      "source": "comparison_app/pdf_block_extractor.py:rule3",
+      "action": "split",
+      "conditions": {
+        "x_shift_exceeds": "median_font_size * 1.1"
+      }
+    },
+    {
+      "id": "return_to_anchor",
+      "description": "Return from continuation indent to anchor position",
+      "source": "comparison_app/pdf_block_extractor.py:rule4",
+      "action": "split",
+      "conditions": {
+        "x_shift_back_to_anchor": true,
+        "previous_was_continuation": true
+      }
+    },
+    {
+      "id": "font_size_change",
+      "description": "Significant font size change indicates different content type",
+      "source": "comparison_app/pdf_block_extractor.py:rule5",
+      "action": "split",
+      "conditions": {
+        "font_size_ratio_exceeds": 1.25,
+        "or_font_size_ratio_below": 0.8
+      }
+    },
+    {
+      "id": "terminal_punctuation",
+      "description": "Previous line ends with terminal punctuation at same indent level",
+      "source": "comparison_app/pdf_block_extractor.py:rule6",
+      "action": "split",
+      "conditions": {
+        "previous_line_matches_regex": "[.!?;][»\"'\\)\\]]*\\s*$",
+        "same_indent_level": true,
+        "x_shift_abs_less_than": 3
+      },
+      "notes": "Essential for Word PDFs where all lines have uniform spacing (~6.7pt). Without this rule, entire prose pages merge into single block."
+    },
+    {
+      "id": "list_marker_start",
+      "description": "Line starts with bullet or number marker",
+      "source": "comparison_app/pdf_block_extractor.py:rule7",
+      "action": "split",
+      "conditions": {
+        "text_matches_bullet_regex": true,
+        "or_text_matches_number_regex": true
+      }
+    }
+  ],
+
+  "xsd_ordering": [
+    {
+      "id": "levelled_para_order",
+      "description": "XSD ordering inside levelledPara",
+      "schema": "xsd/descript.xsd",
+      "element": "levelledPara",
+      "order": ["title", "warning", "caution", "para|table|figure|note|randomList", "levelledPara"],
+      "notes": "warning/caution MUST come before para/table/figure. Content elements can be in any order after warnings."
+    },
+    {
+      "id": "description_order",
+      "description": "XSD ordering inside description",
+      "schema": "xsd/descript.xsd",
+      "element": "description",
+      "order": ["para", "warning|caution|note", "levelledPara|levelledParaAlts"],
+      "notes": "At description level, warnings come between initial paras and levelledPara elements."
+    }
+  ]
+}

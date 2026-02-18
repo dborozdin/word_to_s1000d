@@ -72,14 +72,19 @@ def generate_overrides(report: ComparisonReport,
 
     Rules:
         - left_unmatched  → force_include (element present in reference, missing in XML)
-        - right_unmatched → skip_elements  (extra element in XML, not in reference)
-        - type_mismatches → reclassify     (correct type from reference)
+        - right_unmatched → skip_rules    (extra element in XML, not in reference)
+        - type_mismatches → reclassify_rules (correct type from reference)
         - If counts differ significantly → preserve_document_order
+
+    Uses text-based matching (text_start snippets) instead of index-based
+    to avoid mismatch between XML element indices and source element indices.
     """
     overrides: dict = {
-        'reclassify': {},
+        'reclassify': {},           # legacy (kept for compat, unused)
+        'reclassify_rules': [],     # text-based reclassification
         'force_include': {},
-        'skip_elements': [],
+        'skip_elements': [],        # legacy (kept for compat, unused)
+        'skip_rules': [],           # text-based skip rules
         'preserve_document_order': False,
     }
 
@@ -87,10 +92,16 @@ def generate_overrides(report: ComparisonReport,
     ref_by_idx = {e.idx: e for e in ref_elements}
     xml_by_idx = {e.idx: e for e in xml_elements}
 
-    # Type mismatches → reclassify
+    # Type mismatches → reclassify_rules (text-based)
     for l_idx, r_idx, l_type, r_type in report.type_mismatches:
-        # Use the reference (left) type as ground truth
-        overrides['reclassify'][str(r_idx)] = l_type
+        xml_elem = xml_by_idx.get(r_idx)
+        if xml_elem:
+            overrides['reclassify_rules'].append({
+                'text_start': xml_elem.text_start,
+                'text_end': xml_elem.text_end,
+                'from_type': r_type,
+                'to_type': l_type,
+            })
 
     # Left unmatched → force_include
     for idx in report.left_unmatched:
@@ -101,8 +112,15 @@ def generate_overrides(report: ComparisonReport,
                 'text_start': elem.text_start,
             }
 
-    # Right unmatched → skip_elements
-    overrides['skip_elements'] = report.right_unmatched
+    # Right unmatched → skip_rules (text-based)
+    for idx in report.right_unmatched:
+        xml_elem = xml_by_idx.get(idx)
+        if xml_elem:
+            overrides['skip_rules'].append({
+                'text_start': xml_elem.text_start,
+                'text_end': xml_elem.text_end,
+                'type': xml_elem.type,
+            })
 
     # Preserve document order if count difference is significant
     if report.left_count > 0 and report.right_count > 0:
@@ -282,6 +300,27 @@ def run_verification_loop(
               f'left_unmatched={len(report.left_unmatched)}, '
               f'right_unmatched={len(report.right_unmatched)})')
 
+        # Step 4b: Validate generated XML against XSD
+        xsd_valid = True
+        xsd_message = ''
+        try:
+            from generators.s1000d_generator import S1000DGenerator
+            schema = 'xsd/proced.xsd' if module_type == 'procedure' else 'xsd/descript.xsd'
+            xsd_valid, xsd_message = S1000DGenerator.validate_xml_against_schema(
+                xml_path, schema_file=schema)
+        except Exception as e:
+            xsd_message = f'XSD validation error: {e}'
+            xsd_valid = False
+
+        cycle_result['xsd_valid'] = xsd_valid
+        if not xsd_valid:
+            print(f'[verify_loop]   XSD validation: FAILED')
+            # Log first few errors
+            for line in xsd_message.split('\n')[:5]:
+                print(f'[verify_loop]     {line}')
+        else:
+            print(f'[verify_loop]   XSD validation: PASSED')
+
         # Step 5: Check convergence
         if report.score >= threshold:
             print(f'[verify_loop]   Converged at cycle {cycle_num}!')
@@ -291,9 +330,9 @@ def run_verification_loop(
         overrides = generate_overrides(report, ref_elements, xml_elements)
         save_overrides(dmc_string, overrides)
         print(f'[verify_loop]   Overrides saved: '
-              f'reclassify={len(overrides["reclassify"])}, '
+              f'reclassify_rules={len(overrides.get("reclassify_rules", []))}, '
               f'force_include={len(overrides["force_include"])}, '
-              f'skip={len(overrides["skip_elements"])}')
+              f'skip_rules={len(overrides.get("skip_rules", []))}')
 
     return results
 

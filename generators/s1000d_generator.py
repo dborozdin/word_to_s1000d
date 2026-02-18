@@ -136,7 +136,12 @@ class S1000DGenerator:
         return section
 
     def _create_content_section(self, content_data: Dict, figure_info: List = None) -> ET.Element:
-        """Create content section."""
+        """Create content section.
+
+        XSD ordering rules for levelledPara:
+            title? → warning* → caution* → (para|table|figure|note|randomList)* → levelledPara*
+        Warnings/cautions MUST come before para/table/figure/note within a levelledPara.
+        """
         content = ET.Element("content")
         description = ET.SubElement(content, "description")
 
@@ -147,6 +152,9 @@ class S1000DGenerator:
         # If xml_parts are provided, process them according to S1000D structure
         if 'xml_parts' in content_data:
             current_levelled_para = None
+            # Track whether we've added non-warning content to current_levelled_para.
+            # Once a para/table/figure is added, warnings can no longer go into this LP.
+            lp_has_content = False
 
             for xml_part in content_data['xml_parts']:
                 if xml_part.strip():
@@ -155,14 +163,25 @@ class S1000DGenerator:
 
                         # Handle different element types according to S1000D schema
                         if part_elem.tag == 'levelledPara':
-                            # levelledPara can be direct child of description
+                            # levelledPara is a direct child of description
+                            # Reorder children: move warning/caution before para/table/etc.
+                            self._reorder_levelled_para_children(part_elem)
                             description.append(part_elem)
                             current_levelled_para = part_elem
+                            # Check if it already has content children
+                            lp_has_content = any(
+                                child.tag in ('para', 'table', 'figure', 'note', 'randomList')
+                                for child in part_elem
+                            )
                         elif part_elem.tag == 'para':
-                            # para elements should be wrapped in levelledPara if not already in one
-                            if current_levelled_para is None:
-                                current_levelled_para = ET.SubElement(description, "levelledPara")
+                            # Standalone para → start a NEW levelledPara
+                            # (don't append to a pre-built one from assemble_content)
+                            if current_levelled_para is None or lp_has_content is False:
+                                if current_levelled_para is None:
+                                    current_levelled_para = ET.SubElement(description, "levelledPara")
+                                    lp_has_content = False
                             current_levelled_para.append(part_elem)
+                            lp_has_content = True
                         elif part_elem.tag == 'table':
                             # Fix table entries to wrap text in <para>
                             for entry in part_elem.iter('entry'):
@@ -175,14 +194,14 @@ class S1000DGenerator:
                                 current_levelled_para.append(part_elem)
                             else:
                                 description.append(part_elem)
-                            # Don't reset current_levelled_para - keep adding to same section
+                            lp_has_content = True
                         elif part_elem.tag == 'randomList':
                             # Add list to current levelledPara if exists, otherwise to description
                             if current_levelled_para is not None:
                                 current_levelled_para.append(part_elem)
                             else:
                                 description.append(part_elem)
-                            # Don't reset current_levelled_para - keep adding to same section
+                            lp_has_content = True
                         elif part_elem.tag == 'figure':
                             # Fix figure and graphic IDs to be unique
                             figure_elem = part_elem
@@ -197,29 +216,41 @@ class S1000DGenerator:
                                 current_levelled_para.append(figure_elem)
                             else:
                                 description.append(figure_elem)
-                            # Don't reset current_levelled_para - keep adding to same section
-                        elif part_elem.tag == 'warning':
-                            # Convert any <para> inside warning to <warningAndCautionPara>
+                            lp_has_content = True
+                        elif part_elem.tag in ('warning', 'caution'):
+                            # Convert any <para> inside warning/caution to <warningAndCautionPara>
                             for para in part_elem.xpath('.//para'):
                                 para.tag = 'warningAndCautionPara'
-                            # Add warning to current levelledPara if exists, otherwise to description
-                            if current_levelled_para is not None:
+                            # XSD: warning/caution must come BEFORE para/table/figure
+                            if current_levelled_para is not None and not lp_has_content:
+                                # Safe to add: no content elements yet in this LP
                                 current_levelled_para.append(part_elem)
+                            elif current_levelled_para is not None and lp_has_content:
+                                # LP already has content — start a new LP for the warning
+                                current_levelled_para = ET.SubElement(description, "levelledPara")
+                                current_levelled_para.append(part_elem)
+                                lp_has_content = False
                             else:
-                                description.append(part_elem)
-                            # Don't reset current_levelled_para - keep adding to same section
+                                # No current LP — create one
+                                current_levelled_para = ET.SubElement(description, "levelledPara")
+                                current_levelled_para.append(part_elem)
+                                lp_has_content = False
                         else:
                             # For other elements, try to add them appropriately
                             if current_levelled_para is None:
                                 current_levelled_para = ET.SubElement(description, "levelledPara")
+                                lp_has_content = False
                             current_levelled_para.append(part_elem)
+                            lp_has_content = True
 
                     except ET.ParseError:
                         # If parsing fails, add as text in para within levelledPara
                         if current_levelled_para is None:
                             current_levelled_para = ET.SubElement(description, "levelledPara")
+                            lp_has_content = False
                         para_elem = ET.SubElement(current_levelled_para, "para")
                         para_elem.text = xml_part
+                        lp_has_content = True
         else:
             # Legacy mode: wrap everything in levelledPara
             levelled_para = ET.SubElement(description, "levelledPara")
@@ -251,6 +282,62 @@ class S1000DGenerator:
                     description.append(list_elem)  # Lists go directly to description
 
         return content
+
+    @staticmethod
+    def _reorder_levelled_para_children(lp_elem):
+        """Reorder children of a levelledPara to comply with XSD.
+
+        XSD order: title? → warning* → caution* → (para|table|figure|note|...)* → levelledPara*
+        Move warning/caution before any para/table/figure/note children.
+        Also converts <para> inside warning/caution to <warningAndCautionPara>.
+        """
+        children = list(lp_elem)
+        if not children:
+            return
+
+        title_elems = []
+        warning_elems = []
+        caution_elems = []
+        content_elems = []
+        nested_lp = []
+
+        for child in children:
+            tag = child.tag
+            if tag == 'title':
+                title_elems.append(child)
+            elif tag in ('warning', 'caution'):
+                # Convert <para> inside warning/caution to <warningAndCautionPara>
+                for para in child.xpath('.//para'):
+                    para.tag = 'warningAndCautionPara'
+                if tag == 'warning':
+                    warning_elems.append(child)
+                else:
+                    caution_elems.append(child)
+            elif tag == 'levelledPara':
+                # Recursively reorder nested levelledPara
+                S1000DGenerator._reorder_levelled_para_children(child)
+                nested_lp.append(child)
+            else:
+                content_elems.append(child)
+
+        # Only reorder if warnings/cautions exist and are misplaced
+        if not warning_elems and not caution_elems:
+            return
+
+        # Remove all children and re-add in correct XSD order
+        for child in children:
+            lp_elem.remove(child)
+
+        for elem in title_elems:
+            lp_elem.append(elem)
+        for elem in warning_elems:
+            lp_elem.append(elem)
+        for elem in caution_elems:
+            lp_elem.append(elem)
+        for elem in content_elems:
+            lp_elem.append(elem)
+        for elem in nested_lp:
+            lp_elem.append(elem)
 
     # ------------------------------------------------------------------
     # Procedure module generation

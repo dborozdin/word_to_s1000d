@@ -23,13 +23,13 @@ def _ensure_cache_dir():
 def _is_cache_valid(cache_path: str, mtime_path: str, docx_mtime: str) -> bool:
     """Check if cached file is still valid based on source mtime."""
     if os.path.isfile(cache_path) and os.path.isfile(mtime_path):
-        with open(mtime_path, 'r') as f:
+        with open(mtime_path, 'r', encoding='utf-8') as f:
             return f.read().strip() == docx_mtime
     return False
 
 
 def _save_mtime(mtime_path: str, docx_mtime: str):
-    with open(mtime_path, 'w') as f:
+    with open(mtime_path, 'w', encoding='utf-8') as f:
         f.write(docx_mtime)
 
 

@@ -636,17 +636,16 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
     def flush_current_list():
         nonlocal current_list_items, current_list_type, xml_parts, current_levelled_para, in_levelled_para
         if current_list_items:
-            # Generate randomList XML wrapped in para to conform to schema
+            # Generate randomList XML — bare <randomList> is a valid child of <levelledPara>
             items_xml = ''.join([f"<listItem><para>{item}</para></listItem>" for item in current_list_items])
             prefix = 'pf02' if current_list_type == 'unnumbered_list' else 'pf01'
             list_xml = f'<randomList listItemPrefix="{prefix}">{items_xml}</randomList>'
-            list_para = f'<para>{list_xml}</para>'
 
             # Add list to current levelledPara if we're inside one, otherwise to xml_parts
             if in_levelled_para:
-                current_levelled_para.append(list_para)
+                current_levelled_para.append(list_xml)
             else:
-                xml_parts.append(list_para)
+                xml_parts.append(list_xml)
 
             current_list_items = []
             current_list_type = None
@@ -716,31 +715,38 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
 
         # Check if this is the first paragraph and contains both techName and infoName
         if elem_type == 'paragraph' and is_first_paragraph:
-            # Use provided tech_name, or fall back to section info
-            current_tech_name = tech_name or ""
+            # If user explicitly annotated this element as non-paragraph in reference,
+            # respect the annotation and don't apply the techName skip logic
+            ref_type = elem.get('ref_type', '')
+            if ref_type and ref_type not in ('paragraph', 'para', ''):
+                is_first_paragraph = False
+                # Fall through to normal element processing below
+            else:
+                # Use provided tech_name, or fall back to section info
+                current_tech_name = tech_name or ""
 
-            content_lower = content.lower()
-            tech_name_lower = current_tech_name.lower()
+                content_lower = content.lower()
+                tech_name_lower = current_tech_name.lower()
 
-            # Check if techName is in the content
-            if tech_name_lower in content_lower:
-                # Extract the part after techName as infoName
-                tech_name_end = content_lower.find(tech_name_lower) + len(tech_name_lower)
-                remaining_content = content_lower[tech_name_end:].strip()
+                # Check if techName is in the content
+                if tech_name_lower in content_lower:
+                    # Extract the part after techName as infoName
+                    tech_name_end = content_lower.find(tech_name_lower) + len(tech_name_lower)
+                    remaining_content = content_lower[tech_name_end:].strip()
 
-                # Remove common separators like "–", "-", etc.
-                separators = [' – ', ' - ', ' –', ' -', '– ', '- ']
-                for sep in separators:
-                    if remaining_content.startswith(sep):
-                        remaining_content = remaining_content[len(sep):].strip()
-                        break
+                    # Remove common separators like "–", "-", etc.
+                    separators = [' – ', ' - ', ' –', ' -', '– ', '- ']
+                    for sep in separators:
+                        if remaining_content.startswith(sep):
+                            remaining_content = remaining_content[len(sep):].strip()
+                            break
 
-                # If we have both techName and extracted infoName, skip the paragraph entirely
-                if remaining_content:
-                    # Skip outputting this paragraph as it contains both techName and infoName
-                    is_first_paragraph = False
-                    continue  # Skip adding this element to processed_elements entirely
-            is_first_paragraph = False
+                    # If we have both techName and extracted infoName, skip the paragraph entirely
+                    if remaining_content:
+                        # Skip outputting this paragraph as it contains both techName and infoName
+                        is_first_paragraph = False
+                        continue  # Skip adding this element to processed_elements entirely
+                is_first_paragraph = False
 
         if elem_type == 'header':
             # Flush any pending list and levelledPara before adding header

@@ -76,9 +76,54 @@ def save_reference(dmc_string: str, elements: list, source: str = 'manual') -> d
     return ref
 
 
+def _init_reference_hybrid(dmc_string: str, docx_path: str) -> list:
+    """Build reference elements via hybrid PDF+DOCX pipeline (with element_id)."""
+    import configparser as _cp
+
+    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _cfg = _cp.ConfigParser()
+    _cfg.read(os.path.join(_project_root, 'config.ini'), encoding='utf-8')
+    output_dir = os.path.join(_project_root, _cfg.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
+
+    from comparison_app.docx_renderer import render_docx_to_pdf, is_word_available
+    if not is_word_available():
+        raise RuntimeError('Hybrid mode requires MS Word for PDF rendering')
+
+    pdf_path = render_docx_to_pdf(docx_path, dmc_string)
+
+    from comparison_app.pdf_block_extractor import extract_pdf_blocks_full
+    from docx import Document
+    from parsers.elements_analyzer import analyze_document_elements
+    from parsers.hybrid_matcher import match_pdf_to_docx
+
+    pdf_pages = extract_pdf_blocks_full(pdf_path)
+    doc = Document(docx_path)
+    docx_elements = analyze_document_elements(doc)
+    unified = match_pdf_to_docx(pdf_pages, docx_elements)
+
+    element_dicts = []
+    for ue in unified:
+        d = {
+            'idx': ue.idx,
+            'type': ue.type,
+            'type_source': ue.type_source,
+            'text_start': ue.text_start,
+            'text_end': ue.text_end,
+            'span': ue.span,
+            'element_id': ue.element_id,
+        }
+        element_dicts.append(d)
+
+    return element_dicts
+
+
 def init_reference_from_auto(dmc_string: str, docx_path: str) -> dict:
     """
     Create initial reference from automatic docx element extraction.
+
+    In hybrid mode (element_source=hybrid in config.ini), uses PDF+DOCX
+    matching pipeline which provides element_id for stable identification.
+    Otherwise falls back to mammoth-based HTML parsing.
 
     Args:
         dmc_string: DMC identifier
@@ -87,10 +132,25 @@ def init_reference_from_auto(dmc_string: str, docx_path: str) -> dict:
     Returns:
         The created reference dict.
     """
-    from comparison_app.headless_comparator import extract_docx_elements
+    import configparser as _cp
 
-    elements = extract_docx_elements(docx_path)
-    element_dicts = [e.to_dict() for e in elements]
+    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _cfg = _cp.ConfigParser()
+    _cfg.read(os.path.join(_project_root, 'config.ini'), encoding='utf-8')
+    element_source = _cfg.get('processing', 'element_source', fallback='docx_only')
+
+    if element_source == 'hybrid':
+        try:
+            element_dicts = _init_reference_hybrid(dmc_string, docx_path)
+        except Exception as e:
+            print(f'[reference_store] Hybrid init failed ({e}), falling back to docx_only')
+            from comparison_app.headless_comparator import extract_docx_elements
+            elements = extract_docx_elements(docx_path)
+            element_dicts = [e.to_dict() for e in elements]
+    else:
+        from comparison_app.headless_comparator import extract_docx_elements
+        elements = extract_docx_elements(docx_path)
+        element_dicts = [e.to_dict() for e in elements]
 
     _ensure_dir()
     now = datetime.now().isoformat(timespec='seconds')
@@ -101,7 +161,7 @@ def init_reference_from_auto(dmc_string: str, docx_path: str) -> dict:
         'docx_hash': docx_hash,
         'created_at': now,
         'modified_at': now,
-        'source': 'auto',
+        'source': 'auto_hybrid' if element_source == 'hybrid' else 'auto',
         'elements': element_dicts,
     }
 

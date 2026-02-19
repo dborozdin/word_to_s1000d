@@ -887,6 +887,19 @@ body.show-annotations .anno-marker-unassigned:hover {
     opacity: 1 !important;
 }
 
+/* ── User-edited vs auto markup visual distinction ── */
+.anno-marker[data-anno-source="user_override"] .marker-label::before {
+    content: '\270E ';  /* ✎ pencil */
+    font-size: 9px;
+}
+.anno-badge-start[data-anno-source="user_override"]::before {
+    content: '\270E ';  /* ✎ pencil */
+    font-size: 9px;
+}
+.anno-marker[data-anno-source="user_override"] {
+    border-left-style: solid !important;
+}
+
 /* ── XSD Issues Panel ── */
 .xsd-issues-panel {
     position: fixed;

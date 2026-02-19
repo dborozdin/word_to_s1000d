@@ -4,6 +4,9 @@ and their generated S1000D XML data modules.
 """
 
 import os
+# Force UTF-8 as default encoding on Windows (prevents charmap codec errors)
+os.environ.setdefault('PYTHONUTF8', '1')
+
 import sys
 import configparser
 
@@ -22,7 +25,7 @@ from comparison_app.docx_renderer import (
     CACHE_DIR,
 )
 from comparison_app.s1000d_renderer import render_s1000d_to_html
-from comparison_app.reference_store import get_reference, save_reference, init_reference_from_auto
+from comparison_app.reference_store import get_reference, save_reference, init_reference_from_auto, delete_reference
 from comparison_app.headless_comparator import extract_xml_elements, compare_elements, ElementInfo
 
 app = Flask(__name__)
@@ -37,6 +40,7 @@ config.read(os.path.join(PROJECT_ROOT, 'config.ini'), encoding='utf-8')
 INPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'input_dir', fallback='doc_source'))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
 GRAPHICS_DIR = os.path.join(OUTPUT_DIR, 'graphics')
+ELEMENT_SOURCE = config.get('processing', 'element_source', fallback='docx_only')
 
 # Lazy MS Word availability check (avoids COM issues with Flask reloader)
 _word_available_cache = None
@@ -110,6 +114,7 @@ def compare(dmc_string: str):
                            s1000d_html=s1000d_html,
                            render_mode=render_mode,
                            word_available=word_ok,
+                           element_source=ELEMENT_SOURCE,
                            errors=errors)
 
 
@@ -148,6 +153,48 @@ def get_pdf_blocks(dmc_string: str):
         return jsonify(pages=pages)
     except Exception as e:
         abort(500, f'PDF block extraction failed: {e}')
+
+
+@app.route('/api/hybrid-blocks/<path:dmc_string>')
+def get_hybrid_blocks(dmc_string: str):
+    """Return unified elements: PDF boundaries + DOCX types, matched by text."""
+    from comparison_app.pdf_block_extractor import extract_pdf_blocks_full
+    from docx import Document
+    from parsers.elements_analyzer import analyze_document_elements
+    from parsers.hybrid_matcher import match_pdf_to_docx
+
+    pair = get_pair_by_dmc(dmc_string, INPUT_DIR, OUTPUT_DIR)
+    if not pair or not pair['docx_exists']:
+        abort(404)
+
+    if not _is_word_available():
+        abort(503, 'MS Word not available for PDF rendering')
+
+    try:
+        # Extract PDF blocks (full text, font metadata)
+        pdf_path = render_docx_to_pdf(pair['docx_path'], dmc_string)
+        pdf_pages = extract_pdf_blocks_full(pdf_path)
+
+        # Extract DOCX elements (types, text)
+        doc = Document(pair['docx_path'])
+        docx_elements = analyze_document_elements(doc)
+
+        # Match
+        unified = match_pdf_to_docx(pdf_pages, docx_elements)
+
+        return jsonify(
+            element_source='hybrid',
+            elements=[e.to_dict() for e in unified],
+            pdf_pages=[{
+                'page_num': p['page_num'],
+                'width': p['width'],
+                'height': p['height'],
+            } for p in pdf_pages],
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        abort(500, f'Hybrid block extraction failed: {e}')
 
 
 @app.route('/wordhtml_res/<path:dmc_string>/<path:filename>')
@@ -194,6 +241,13 @@ def init_reference_api(dmc_string: str):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/reference/<path:dmc_string>', methods=['DELETE'])
+def delete_reference_api(dmc_string: str):
+    """Delete stored reference markup for a DMC."""
+    deleted = delete_reference(dmc_string)
+    return jsonify({'deleted': deleted}), 200
+
+
 @app.route('/api/reference/<path:dmc_string>', methods=['POST'])
 def save_reference_api(dmc_string: str):
     """Save user-edited reference markup."""
@@ -226,7 +280,8 @@ def run_verification_api(dmc_string: str):
         xml_elems = extract_xml_elements(pair['xml_path'])
 
         # Convert reference to ElementInfo
-        ref_elems = [ElementInfo.from_dict(e) for e in ref['elements']]
+        ref_elems = [ElementInfo.from_dict(e) for e in ref['elements']
+                     if e.get('type') != '_skip']
 
         # Compare
         report = compare_elements(ref_elems, xml_elems)

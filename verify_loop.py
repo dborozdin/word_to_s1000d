@@ -182,7 +182,8 @@ def run_verification_loop(
     if ref_data is None:
         return [{'cycle': 0, 'error': 'No reference markup saved for this DMC'}]
 
-    ref_elements = [ElementInfo.from_dict(e) for e in ref_data['elements']]
+    ref_elements = [ElementInfo.from_dict(e) for e in ref_data['elements']
+                     if e.get('type') != '_skip']
     if not ref_elements:
         return [{'cycle': 0, 'error': 'Reference has no elements'}]
 
@@ -221,7 +222,10 @@ def run_verification_loop(
             info_name=info_name, graphic_prefix=graphic_prefix, module_type=module_type,
         )
     except Exception as e:
-        return [{'cycle': 1, 'error': f'Conversion failed: {e}'}]
+        import traceback
+        tb = traceback.format_exc()
+        print(f'[verify_loop] Conversion error:\n{tb}')
+        return [{'cycle': 1, 'error': f'Conversion failed: {e}', 'traceback': tb}]
 
     # Find generated XML
     xml_path = _find_xml_for_dmc(output_dir, dmc_string)

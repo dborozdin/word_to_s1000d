@@ -1161,6 +1161,7 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
       - _original_type: the auto-classified type before override (if overridden)
       - _ref_idx: reference element index (if matched)
       - _ref_type_raw: raw reference type string (if matched)
+      - _element_id: stable element identifier from hybrid pipeline (if present in ref)
 
     Falls back to apply_overrides() if no reference markup exists.
     """
@@ -1286,12 +1287,17 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
     cursor = 0
 
     for ref_elem in ref_elements:
+        ref_type = ref_elem.get('type', '')
+        # Skip deleted elements (marked as _skip in UI)
+        if ref_type == '_skip':
+            continue
         ref_text_start = (ref_elem.get('text_start', '') or '').strip()
         ref_text_end = (ref_elem.get('text_end', '') or '').strip()
-        ref_type = ref_elem.get('type', '')
         ref_span = ref_elem.get('span', 1) or 1
         ref_idx = ref_elem.get('idx', 0)
         mapped_type = type_map.get(ref_type, ref_type)
+
+        ref_element_id = ref_elem.get('element_id', '')
 
         best_idx = _find_best_match(cursor, ref_text_start, ref_text_end, used)
 
@@ -1302,6 +1308,8 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             elements[best_idx]['_ref_annotated'] = True
             elements[best_idx]['_ref_idx'] = ref_idx
             elements[best_idx]['_ref_type_raw'] = ref_type
+            if ref_element_id:
+                elements[best_idx]['_element_id'] = ref_element_id
             used.add(best_idx)
             cursor = best_idx + 1
 

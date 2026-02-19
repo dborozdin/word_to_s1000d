@@ -33,6 +33,7 @@
             <div class="ref-controls">
                 <button id="edit-ref-btn" class="anno-btn" title="Загрузить / создать эталонную разметку">Эталон</button>
                 <button id="save-ref-btn" class="anno-btn" style="display:none" title="Сохранить изменения в эталоне">Сохранить</button>
+                <button id="reset-ref-btn" class="anno-btn" style="display:none" title="Удалить эталон и создать заново">Сбросить эталон</button>
                 <button id="run-verify-btn" class="anno-btn" style="display:none" title="Сверить XML с эталоном">Проверить</button>
                 <button id="run-loop-btn" class="anno-btn" style="display:none" title="Применить разбиение и типы элементов из эталона к XML">Форматировать согласно эталону</button>
                 <div id="loop-progress" class="loop-progress" style="display:none">
@@ -135,6 +136,7 @@
         window.RENDER_MODE = '{{ render_mode }}';
         window.PDF_URL = '/pdf/{{ pair.dmc_string }}';
         window.DMC_STRING = '{{ pair.dmc_string }}';
+        window.ELEMENT_SOURCE = '{{ element_source }}';
     </script>
     {% if render_mode == 'pdf' %}
     <script type="module">
@@ -145,11 +147,54 @@
         const panelContent = document.getElementById('content-docx');
 
         try {
-            // Fetch server-side block positions (PyMuPDF) in parallel with PDF loading
-            const blocksPromise = fetch('/api/pdf-blocks/' + window.DMC_STRING)
-                .then(function (r) { return r.json(); })
-                .then(function (data) { window._serverPdfBlocks = data.pages; })
-                .catch(function () { window._serverPdfBlocks = null; });
+            // Fetch server-side block positions in parallel with PDF loading.
+            // In hybrid mode, fetch /api/hybrid-blocks/ (pre-classified types);
+            // otherwise, fetch /api/pdf-blocks/ (raw blocks, JS classifies types).
+            var blocksPromise;
+            if (window.ELEMENT_SOURCE === 'hybrid') {
+                blocksPromise = fetch('/api/hybrid-blocks/' + window.DMC_STRING)
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        // Store raw hybrid elements for reference_store and type lookups
+                        window._hybridElements = data.elements || [];
+                        // Rebuild per-page structure compatible with _buildServerBlocks()
+                        var pdfPages = data.pdf_pages || [];
+                        var byPage = {};
+                        for (var i = 0; i < window._hybridElements.length; i++) {
+                            var el = window._hybridElements[i];
+                            var pg = el.bbox.page;
+                            if (!byPage[pg]) byPage[pg] = [];
+                            byPage[pg].push({
+                                x0: el.bbox.x0, y0: el.bbox.y0,
+                                x1: el.bbox.x1, y1: el.bbox.y1,
+                                text: el.text || '',
+                                max_font_size: (el.font_info && el.font_info.max_size) || 12,
+                                _hybrid_type: el.type,
+                                _hybrid_element_id: el.element_id
+                            });
+                        }
+                        window._serverPdfBlocks = [];
+                        for (var p = 0; p < pdfPages.length; p++) {
+                            var pi = pdfPages[p];
+                            window._serverPdfBlocks.push({
+                                page_num: pi.page_num,
+                                width: pi.width,
+                                height: pi.height,
+                                blocks: byPage[pi.page_num] || []
+                            });
+                        }
+                    })
+                    .catch(function (err) {
+                        console.warn('[hybrid] Fetch failed, falling back to pdf-blocks:', err);
+                        window._serverPdfBlocks = null;
+                        window._hybridElements = null;
+                    });
+            } else {
+                blocksPromise = fetch('/api/pdf-blocks/' + window.DMC_STRING)
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) { window._serverPdfBlocks = data.pages; })
+                    .catch(function () { window._serverPdfBlocks = null; });
+            }
 
             const pdf = await getDocument(window.PDF_URL).promise;
             await blocksPromise;

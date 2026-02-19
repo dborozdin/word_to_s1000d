@@ -204,6 +204,14 @@
     <li class="sub"><a href="#q1">Отображение и редактирование разметки</a></li>
     <li class="sub"><a href="#q2">Генерация XML</a></li>
     <li><a href="#part4">Часть IV. Диаграммы</a></li>
+    <li><a href="#part5">Часть V. Целевая архитектура: гибридный подход</a></li>
+    <li class="sub"><a href="#v1">V.1. Проблема текущей архитектуры</a></li>
+    <li class="sub"><a href="#v2">V.2. Гибридный подход: PDF + DOCX</a></li>
+    <li class="sub"><a href="#v3">V.3. Алгоритм матчинга PDF &harr; DOCX</a></li>
+    <li class="sub"><a href="#v4">V.4. Уникальная идентификация элементов</a></li>
+    <li class="sub"><a href="#v5">V.5. Унифицированная структура данных</a></li>
+    <li class="sub"><a href="#v6">V.6. Таблицы и иллюстрации</a></li>
+    <li class="sub"><a href="#v7">V.7. Fallback и миграция</a></li>
   </ul>
 </div>
 
@@ -876,6 +884,448 @@
     <tr><td><code>verify_loop.py</code></td><td>Оркестрация верификации и XSD-маппинга</td></tr>
     <tr><td><code>xsd/descript.xsd</code></td><td>XSD-схема для описательных модулей</td></tr>
     <tr><td><code>xsd/proced.xsd</code></td><td>XSD-схема для процедурных модулей</td></tr>
+  </table>
+</div>
+
+<!-- ====================================================================== -->
+<h2 id="part5">Часть V. Целевая архитектура: гибридный подход</h2>
+<p>
+  Данная секция описывает целевую архитектуру для автоопределения границ и типов элементов.
+  Текущая реализация (Части I&ndash;IV) используется как отправная точка.
+</p>
+
+<!-- V.1 -->
+<h3 id="v1">V.1. Проблема текущей архитектуры</h3>
+<div class="card">
+  <p>Сейчас существуют два <strong>независимых</strong> pipeline извлечения элементов,
+  которые дают разные результаты и не связаны между собой напрямую:</p>
+
+  <table>
+    <tr>
+      <th>Аспект</th>
+      <th>DOCX pipeline<br><small>(elements_analyzer.py)</small></th>
+      <th>PDF pipeline<br><small>(pdf_block_extractor.py)</small></th>
+    </tr>
+    <tr>
+      <td><strong>Границы элементов</strong></td>
+      <td>Логические (по параграфу OOXML).<br>Один параграф может содержать заголовок + текст.<br>Несколько параграфов могут быть одним визуальным блоком.</td>
+      <td>Визуальные (bounding box).<br>Точные координаты x0, y0, x1, y1.<br>Совпадают с тем, что видит пользователь.</td>
+    </tr>
+    <tr>
+      <td><strong>Порядок элементов</strong></td>
+      <td>По XML-структуре <code>doc.element.body</code>.<br>Обычно правильный, но не гарантирован для сложных layout'ов.</td>
+      <td>Всегда соответствует визуальному порядку (сверху вниз, слева направо, постранично).</td>
+    </tr>
+    <tr>
+      <td><strong>Типы элементов</strong></td>
+      <td><strong>Отличные.</strong> Word Heading styles, OOXML numPr для списков, <code>a:blip</code> для иллюстраций. 20+ эвристик с приоритетами.</td>
+      <td><strong>Отсутствуют.</strong> Только max_font_size. Bold/italic доступны в PyMuPDF spans, но не извлекаются.</td>
+    </tr>
+    <tr>
+      <td><strong>Таблицы</strong></td>
+      <td>Полная структура: ячейки, строки, заголовки, VML textboxes</td>
+      <td>Структура потеряна. Текст рассыпан по строкам.</td>
+    </tr>
+    <tr>
+      <td><strong>Иллюстрации</strong></td>
+      <td>Обнаруживаются (<code>a:blip</code>), извлекаются, нумеруются</td>
+      <td>Полностью пропускаются (<code>block.type != 0</code>)</td>
+    </tr>
+    <tr>
+      <td><strong>Текст</strong></td>
+      <td>Полный, нормализованный</td>
+      <td>Обрезан до 80 символов (настройка). Возможно полное извлечение.</td>
+    </tr>
+  </table>
+
+  <div class="note-red">
+    <strong>Ключевая проблема:</strong> PDF-блоки и XML-элементы &mdash; две независимые проекции одного документа.
+    Их количество не совпадает (PDF: ~50 блоков, XML: ~35 элементов), типы не связаны.
+    Единственный мост &mdash; эталон (reference), который пользователь создаёт вручную.
+    Это приводит к тому, что:
+    <ul style="margin-top:0.3rem">
+      <li>Изначальная автоматическая разметка в PDF не содержит типов</li>
+      <li>Границы элементов в PDF и DOCX не совпадают</li>
+      <li>Пользователю приходится вручную сопоставлять две проекции</li>
+    </ul>
+  </div>
+</div>
+
+<!-- V.2 -->
+<h3 id="v2">V.2. Гибридный подход: PDF + DOCX</h3>
+<div class="card">
+  <p><strong>Принцип:</strong> каждый источник используется для того, что он делает лучше всего.</p>
+
+  <table>
+    <tr><th>Что</th><th>Откуда</th><th>Почему</th></tr>
+    <tr>
+      <td><strong>Границы</strong> (bounding box, порядок)</td>
+      <td>PDF (PyMuPDF)</td>
+      <td>Визуальные координаты точнее логических параграфов. Порядок всегда правильный.</td>
+    </tr>
+    <tr>
+      <td><strong>Типы</strong> (heading, list, para, warning)</td>
+      <td>DOCX (elements_analyzer)</td>
+      <td>OOXML семантика (Heading styles, numPr) надёжнее, чем font-size эвристики.</td>
+    </tr>
+    <tr>
+      <td><strong>Таблицы</strong> (структура + позиция)</td>
+      <td>DOCX (структура) + PDF (позиция)</td>
+      <td>PDF не видит структуру таблиц. Позиция определяется по окружающим PDF-блокам.</td>
+    </tr>
+    <tr>
+      <td><strong>Иллюстрации</strong> (файл + позиция)</td>
+      <td>DOCX (извлечение) + PDF (позиция)</td>
+      <td>PDF полностью пропускает изображения. Позиция &mdash; между соседними PDF-блоками.</td>
+    </tr>
+    <tr>
+      <td><strong>Мостик</strong></td>
+      <td>Текст (text similarity)</td>
+      <td>Одинаковый текст в PDF и DOCX позволяет сопоставить элементы.</td>
+    </tr>
+  </table>
+
+  <div class="note-green">
+    <strong>Результат:</strong> каждый элемент получает точные визуальные границы (из PDF)
+    и правильный семантический тип (из DOCX). Пользователь сразу видит типизированную разметку
+    на PDF без ручного сопоставления.
+  </div>
+</div>
+
+<!-- V.3 -->
+<h3 id="v3">V.3. Алгоритм матчинга PDF &harr; DOCX</h3>
+<div class="card">
+  <h4>Шаг 1. Извлечение данных из двух источников</h4>
+  <table>
+    <tr><th>Источник</th><th>Данные</th><th>Изменения относительно текущего</th></tr>
+    <tr>
+      <td>PDF (PyMuPDF)</td>
+      <td>Блоки: {page, x0, y0, x1, y1, <strong>full_text</strong>, max_font_size, <strong>is_bold</strong>, <strong>is_italic</strong>}</td>
+      <td>Убрать truncation 80 символов. Добавить извлечение bold/italic из spans.</td>
+    </tr>
+    <tr>
+      <td>DOCX (python-docx)</td>
+      <td>Элементы: {type, text, para_idx, OOXML metadata}</td>
+      <td>Без изменений. Используем существующий <code>analyze_document_elements()</code>.</td>
+    </tr>
+  </table>
+
+  <h4>Шаг 2. Матчинг (text similarity)</h4>
+  <p>Для каждого PDF-блока ищем лучший DOCX-элемент:</p>
+  <ol>
+    <li>Нормализация текста: strip, collapse whitespace, lowercase для сравнения</li>
+    <li>Scoring: <code>prefix_score(pdf_text, docx_text) &times; 0.7 + suffix_score &times; 0.3</code></li>
+    <li>Поиск в окне <code>[cursor-5 ... cursor+50]</code> (аналогично текущему <code>apply_reference_markup</code>)</li>
+    <li>Если score &gt; threshold (0.3) &mdash; match найден</li>
+  </ol>
+
+  <h4>Шаг 3. Обработка типов маппинга</h4>
+  <table>
+    <tr><th>Тип маппинга</th><th>Описание</th><th>Обработка</th></tr>
+    <tr>
+      <td><strong>1:1</strong></td>
+      <td>Один PDF-блок &harr; один DOCX-элемент</td>
+      <td>Прямой перенос типа из DOCX на PDF-блок</td>
+    </tr>
+    <tr>
+      <td><strong>N:1</strong></td>
+      <td>Несколько PDF-блоков &harr; один DOCX-элемент<br><small>(например, длинный параграф на стыке страниц)</small></td>
+      <td>Объединение PDF-блоков (span &gt; 1). Тип &mdash; из DOCX. Общий bbox покрывает все блоки.</td>
+    </tr>
+    <tr>
+      <td><strong>1:N</strong></td>
+      <td>Один PDF-блок &harr; несколько DOCX-элементов<br><small>(например, заголовок + первый абзац слились в один блок)</small></td>
+      <td>Тип определяется по первому DOCX-элементу. Или: PDF-блок подразделяется (если есть достаточно данных &mdash; шрифт, отступ).</td>
+    </tr>
+    <tr>
+      <td><strong>0:1</strong></td>
+      <td>DOCX-элемент без PDF-блока<br><small>(illustration, table)</small></td>
+      <td>Элемент вставляется между ближайшими PDF-блоками. Позиция интерполируется.</td>
+    </tr>
+    <tr>
+      <td><strong>1:0</strong></td>
+      <td>PDF-блок без DOCX-элемента<br><small>(header/footer, водяной знак)</small></td>
+      <td>Помечается как &laquo;unmatched&raquo;. Может быть page header/footer (отфильтрован) или артефакт.</td>
+    </tr>
+  </table>
+
+  <h4>Шаг 4. Результат</h4>
+  <p>Унифицированный массив <code>UnifiedElement[]</code> в визуальном порядке,
+  где каждый элемент имеет и границы (из PDF), и тип (из DOCX).</p>
+
+  <div class="diagram">
+  DOCX                              PDF                        Результат
+  ┌──────────┐                 ┌──────────┐              ┌──────────────────┐
+  │ heading   │  ◄── text ──▶  │ блок 1   │    ═══▶      │ element_id: a7f3 │
+  │ "1. Общие │  similarity    │ y:72-88  │              │ type: heading    │
+  │  сведения"│                │ "1. Общие│              │ bbox: {y:72-88}  │
+  └──────────┘                 │  сведения│              │ source: hybrid   │
+                               └──────────┘              └──────────────────┘
+  ┌──────────┐                                           ┌──────────────────┐
+  │ illustr. │  ◄── 0:1 ──▶   (нет блока)    ═══▶      │ element_id: b2e1 │
+  │ GRAPHIC0 │  вставка                                  │ type: illustration│
+  └──────────┘  между блоками                            │ bbox: interpolated│
+                                                         └──────────────────┘
+  ┌──────────┐                 ┌──────────┐              ┌──────────────────┐
+  │ paragraph│  ◄── text ──▶  │ блок 2   │    ═══▶      │ element_id: c4d5 │
+  │ "Данный  │  similarity    │ y:120-148│              │ type: paragraph  │
+  │  раздел" │                │ "Данный  │              │ bbox: {y:120-148}│
+  └──────────┘                │  раздел" │              │ source: hybrid   │
+                              └──────────┘              └──────────────────┘
+                              ┌──────────┐              ┌──────────────────┐
+  (нет элемента) ◄── 1:0 ──▶ │ блок 3   │    ═══▶      │ (отфильтрован)   │
+                              │ "стр. 5" │              │ page footer      │
+                              └──────────┘              └──────────────────┘</div>
+</div>
+
+<!-- V.4 -->
+<h3 id="v4">V.4. Уникальная идентификация элементов</h3>
+<div class="card">
+  <h4>Проблема</h4>
+  <p>Текущая идентификация &mdash; порядковый <code>idx</code> (1, 2, 3, ...).
+  Он нестабилен: при перегенерации PDF блоки могут сместиться, и idx перестанет соответствовать
+  тому же элементу. Кроме того, два элемента с 100% одинаковым текстом неразличимы.</p>
+
+  <h4>Решение: составной element_id</h4>
+  <div class="json-block"><span class="json-comment">// Формула</span>
+element_id = sha256(
+    page_num                          <span class="json-comment">// страница (1-based)</span>
+  + "|" + round(y_position, -1)       <span class="json-comment">// y-позиция, квантованная до 10 единиц</span>
+  + "|" + text[:30].strip().lower()   <span class="json-comment">// первые 30 символов текста (нормализованы)</span>
+)[:12]                                <span class="json-comment">// первые 12 hex-символов для компактности</span></div>
+
+  <h4>Свойства</h4>
+  <table>
+    <tr><th>Свойство</th><th>Обеспечение</th></tr>
+    <tr>
+      <td><strong>Устойчивость к перерендерингу</strong></td>
+      <td><code>y_position</code> квантуется до 10 единиц PDF &mdash; мелкие сдвиги не меняют hash</td>
+    </tr>
+    <tr>
+      <td><strong>Различение одинаковых текстов</strong></td>
+      <td>Разные <code>page_num</code> или <code>y_position</code> &rarr; разный hash</td>
+    </tr>
+    <tr>
+      <td><strong>Обратная совместимость</strong></td>
+      <td>Порядковый <code>idx</code> сохраняется параллельно для работы со старыми reference JSON</td>
+    </tr>
+    <tr>
+      <td><strong>Merge</strong></td>
+      <td><code>element_id</code> первого (верхнего) элемента сохраняется как id объединённого</td>
+    </tr>
+    <tr>
+      <td><strong>Split</strong></td>
+      <td>Новые <code>element_id</code> генерируются для дочерних элементов по их позициям</td>
+    </tr>
+  </table>
+
+  <h4>Матчинг в reference</h4>
+  <ol>
+    <li>Сначала поиск по <code>element_id</code> (точное совпадение)</li>
+    <li>Если не найден &mdash; fallback на <code>idx</code> + <code>text_start</code>/<code>text_end</code> (текущий алгоритм)</li>
+    <li>При следующем сохранении reference &mdash; <code>element_id</code> добавляется автоматически</li>
+  </ol>
+</div>
+
+<!-- V.5 -->
+<h3 id="v5">V.5. Унифицированная структура данных элемента</h3>
+<div class="card">
+  <div class="json-block"><span class="json-comment">// UnifiedElement &mdash; результат гибридного матчинга</span>
+{
+  <span class="json-key">"element_id"</span>: <span class="json-str">"a7f3c2e8b1d4"</span>,     <span class="json-comment">// стабильный hash (V.4)</span>
+  <span class="json-key">"idx"</span>: <span class="json-num">5</span>,                            <span class="json-comment">// порядковый номер (backward compat)</span>
+
+  <span class="json-comment">// Тип &mdash; из DOCX</span>
+  <span class="json-key">"type"</span>: <span class="json-str">"heading"</span>,
+  <span class="json-key">"type_source"</span>: <span class="json-str">"ooxml_style"</span>,        <span class="json-comment">// откуда тип: ooxml_style | heuristic | user_override</span>
+
+  <span class="json-comment">// Границы &mdash; из PDF</span>
+  <span class="json-key">"bbox"</span>: {
+    <span class="json-key">"page"</span>: <span class="json-num">1</span>,
+    <span class="json-key">"x0"</span>: <span class="json-num">72.0</span>,
+    <span class="json-key">"y0"</span>: <span class="json-num">150.3</span>,
+    <span class="json-key">"x1"</span>: <span class="json-num">540.0</span>,
+    <span class="json-key">"y1"</span>: <span class="json-num">168.7</span>
+  },
+
+  <span class="json-comment">// Текст &mdash; полный (из PDF или DOCX)</span>
+  <span class="json-key">"text"</span>: <span class="json-str">"1. Общие сведения об изделии"</span>,
+  <span class="json-key">"text_start"</span>: <span class="json-str">"1. Общие сведения об изделии"</span>,   <span class="json-comment">// первые 60 символов</span>
+  <span class="json-key">"text_end"</span>: <span class="json-str">"об изделии"</span>,                      <span class="json-comment">// последние 40 символов</span>
+  <span class="json-key">"span"</span>: <span class="json-num">1</span>,                            <span class="json-comment">// кол-во PDF-блоков в элементе</span>
+
+  <span class="json-comment">// Связь с DOCX-элементом</span>
+  <span class="json-key">"docx_match"</span>: {
+    <span class="json-key">"para_idx"</span>: <span class="json-num">3</span>,                    <span class="json-comment">// индекс параграфа в docx</span>
+    <span class="json-key">"confidence"</span>: <span class="json-num">0.95</span>                <span class="json-comment">// уверенность матчинга (0.0&ndash;1.0)</span>
+  },
+
+  <span class="json-comment">// Дополнительные метаданные (из PyMuPDF spans)</span>
+  <span class="json-key">"font_info"</span>: {
+    <span class="json-key">"max_size"</span>: <span class="json-num">14.0</span>,
+    <span class="json-key">"is_bold"</span>: true,
+    <span class="json-key">"is_italic"</span>: false
+  }
+}</div>
+
+  <div class="note">
+    <strong>Совместимость:</strong> поля <code>idx</code>, <code>type</code>, <code>text_start</code>,
+    <code>text_end</code>, <code>span</code> сохраняются &mdash; существующий код reference_store,
+    comparison.js и headless_comparator продолжит работать без изменений.
+    Новые поля (<code>element_id</code>, <code>bbox</code>, <code>docx_match</code>, <code>font_info</code>)
+    добавляются инкрементально.
+  </div>
+</div>
+
+<!-- V.6 -->
+<h3 id="v6">V.6. Обработка таблиц и иллюстраций</h3>
+<div class="card">
+  <p>Таблицы и иллюстрации &mdash; особый случай: PDF не содержит их в виде отдельных блоков.</p>
+
+  <h4>Таблицы</h4>
+  <ol>
+    <li><strong>Структура</strong> &mdash; из DOCX: ячейки, строки, заголовки (через <code>table_parser.py</code>)</li>
+    <li><strong>Позиция</strong> &mdash; определяется по окружающим PDF-блокам:
+      <ul>
+        <li>Найти последний PDF-блок перед таблицей (по тексту предыдущего DOCX-элемента)</li>
+        <li>Найти первый PDF-блок после таблицы (по тексту следующего DOCX-элемента)</li>
+        <li><code>bbox.y0</code> = <code>prev_block.y1 + gap</code></li>
+        <li><code>bbox.y1</code> = <code>next_block.y0 - gap</code></li>
+      </ul>
+    </li>
+    <li><strong>Маппинг:</strong> тип <code>0:1</code> &mdash; таблица вставляется между PDF-блоками</li>
+  </ol>
+
+  <h4>Иллюстрации</h4>
+  <ol>
+    <li><strong>Файл</strong> &mdash; из DOCX: <code>a:blip</code> элемент, извлечённый <code>illustration_parser.py</code></li>
+    <li><strong>Позиция</strong> &mdash; аналогично таблицам: интерполяция между соседними PDF-блоками</li>
+    <li><strong>element_id</strong> формируется из page + интерполированной y-позиции + &laquo;IMG:&raquo; + имя файла</li>
+  </ol>
+
+  <div class="diagram">
+  PDF-блоки                      DOCX-элементы               Unified result
+  ────────────                   ─────────────                ──────────────
+  блок "Введение"  ←──match──→  para "Введение"              ✓ heading
+       y: 72-88                                                bbox: 72-88
+  ─ ─ ─ ─ ─ ─ ─                                             ─ ─ ─ ─ ─ ─ ─
+  (нет блока)      ←──0:1────→  illustration GRAPHIC0        ✓ illustration
+                                                               bbox: 90-200 (интерполяция)
+  ─ ─ ─ ─ ─ ─ ─                                             ─ ─ ─ ─ ─ ─ ─
+  блок "Рис. 1"   ←──match──→  illust_ref "Рис. 1..."       ✓ illustration_reference
+       y: 202-215                                              bbox: 202-215
+  ─ ─ ─ ─ ─ ─ ─                                             ─ ─ ─ ─ ─ ─ ─
+  (нет блока)      ←──0:1────→  table (5 строк)              ✓ table
+                                                               bbox: 220-350 (интерполяция)
+  ─ ─ ─ ─ ─ ─ ─                                             ─ ─ ─ ─ ─ ─ ─
+  блок "Далее..."  ←──match──→  para "Далее описано..."      ✓ paragraph
+       y: 355-380                                              bbox: 355-380</div>
+</div>
+
+<!-- V.7 -->
+<h3 id="v7">V.7. Fallback-стратегия и миграция</h3>
+<div class="card">
+  <h4>Fallback</h4>
+  <table>
+    <tr><th>Ситуация</th><th>Поведение</th></tr>
+    <tr>
+      <td>PDF недоступен (нет Word COM)</td>
+      <td>Текущий DOCX-only pipeline. Границы &mdash; логические (start_line/char)</td>
+    </tr>
+    <tr>
+      <td>Матчинг failed для PDF-блока</td>
+      <td>Тип по font-size эвристике (large &rarr; heading, bullet &rarr; list, default &rarr; para). Помечается <code>type_source: "pdf_heuristic"</code></td>
+    </tr>
+    <tr>
+      <td>Матчинг failed для DOCX-элемента</td>
+      <td>Если таблица/иллюстрация &mdash; вставка по интерполяции. Если текст &mdash; пропуск (возможно, page break split)</td>
+    </tr>
+  </table>
+  <p>Управление через <span class="file-ref">config.ini</span>:</p>
+  <div class="json-block"><span class="json-comment">; config.ini &mdash; новая настройка</span>
+[processing]
+element_source = hybrid    <span class="json-comment">; hybrid | docx_only | pdf_only</span></div>
+
+  <h4>Миграция существующих reference JSON</h4>
+  <ol>
+    <li>Существующие файлы <code>_references/{dmc}.json</code> <strong>полностью совместимы</strong>:
+      поля <code>idx</code>, <code>type</code>, <code>text_start</code>, <code>text_end</code>, <code>span</code> сохраняются</li>
+    <li>При следующем открытии/редактировании &mdash; <code>element_id</code> генерируется и дописывается автоматически</li>
+    <li>Матчинг reference &harr; элементы: <strong>сначала</strong> по <code>element_id</code> (если есть),
+      <strong>затем</strong> fallback на <code>idx</code> + text prefix (текущий алгоритм)</li>
+    <li>Никаких breaking changes &mdash; старые reference продолжают работать</li>
+  </ol>
+</div>
+
+<h3>Диаграмма гибридного pipeline</h3>
+<div class="diagram">
+┌──────────────────────────────────────────────────────────────────────────┐
+│              ЦЕЛЕВОЙ PIPELINE: ГИБРИДНЫЙ ПОДХОД                         │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌──────────┐                                                           │
+│  │  .docx   │                                                           │
+│  └────┬─────┘                                                           │
+│       │                                                                  │
+│       ├──────────────────┐                                              │
+│       ▼                  ▼                                              │
+│  ┌──────────────┐  ┌──────────────┐                                    │
+│  │  Word COM    │  │ python-docx  │                                    │
+│  │  → PDF       │  │ → элементы   │                                    │
+│  └──────┬───────┘  └──────┬───────┘                                    │
+│         ▼                 ▼                                              │
+│  ┌──────────────┐  ┌──────────────┐                                    │
+│  │ PyMuPDF      │  │ elements_    │                                    │
+│  │              │  │ analyzer.py  │                                    │
+│  │ ГРАНИЦЫ:     │  │              │                                    │
+│  │ • bbox       │  │ ТИПЫ:        │                                    │
+│  │ • порядок    │  │ • OOXML      │                                    │
+│  │ • полный     │  │ • 20+ правил │                                    │
+│  │   текст      │  │ • numPr      │                                    │
+│  │ • font info  │  │ • a:blip     │                                    │
+│  └──────┬───────┘  └──────┬───────┘                                    │
+│         │                 │                                              │
+│         │    ┌────────────┘                                             │
+│         ▼    ▼                                                          │
+│  ┌───────────────────────────┐                                         │
+│  │   Text Matching Engine    │                                         │
+│  │                           │                                         │
+│  │  PDF block ←→ DOCX elem  │                                         │
+│  │  prefix_score + window   │                                         │
+│  │                           │                                         │
+│  │  Маппинги: 1:1, N:1,     │                                         │
+│  │  1:N, 0:1, 1:0           │                                         │
+│  └────────────┬──────────────┘                                         │
+│               ▼                                                         │
+│  ┌──────────────────────────────┐                                      │
+│  │ UnifiedElement[]              │                                      │
+│  │ {element_id, type, bbox,     │                                      │
+│  │  text, docx_match, font_info}│                                      │
+│  └──────────┬───────────────────┘                                      │
+│             │                                                           │
+│      ┌──────┴──────┐                                                   │
+│      ▼             ▼                                                    │
+│  ┌────────┐  ┌────────────┐                                            │
+│  │Compar. │  │XML Generator│                                           │
+│  │  App   │  │(s1000d_gen) │                                           │
+│  │        │  │             │                                           │
+│  │ PDF +  │  │ Типы →      │                                           │
+│  │ бейджи │  │ S1000D XML  │                                           │
+│  │ с типами│ │             │                                           │
+│  └────────┘  └────────────┘                                            │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘</div>
+
+<h3>Затрагиваемые файлы (при реализации)</h3>
+<div class="card">
+  <table>
+    <tr><th>Файл</th><th>Изменение</th></tr>
+    <tr><td><code>comparison_app/pdf_block_extractor.py</code></td><td>Убрать truncation 80 символов. Добавить извлечение bold/italic из PyMuPDF spans. Новая функция <code>extract_pdf_blocks_full()</code></td></tr>
+    <tr><td><code>parsers/elements_analyzer.py</code></td><td>Новая функция <code>hybrid_match(pdf_blocks, docx_elements)</code> для сопоставления. Без изменения существующего <code>analyze_document_elements()</code></td></tr>
+    <tr><td><code>comparison_app/static/js/comparison.js</code></td><td>Потребление pre-classified блоков (с типами) вместо собственной JS-классификации в <code>_buildServerBlocks()</code></td></tr>
+    <tr><td><code>processing_scripts/descriptive_processor.py</code></td><td>Вызов гибридного matcher'а за feature flag. Конвертация <code>UnifiedElement</code> → legacy element dict через <code>to_legacy_element_dict()</code></td></tr>
+    <tr><td><code>comparison_app/reference_store.py</code></td><td>Добавить поле <code>element_id</code>. Матчинг: сначала по id, fallback на idx + text</td></tr>
+    <tr><td><code>config.ini</code></td><td>Новая настройка: <code>element_source = hybrid | docx_only | pdf_only</code></td></tr>
   </table>
 </div>
 

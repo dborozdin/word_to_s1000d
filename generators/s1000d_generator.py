@@ -673,6 +673,87 @@ class S1000DGenerator:
         except Exception as e:
             return False, f"Validation error: {str(e)}"
 
+    @staticmethod
+    def validate_xml_with_details(xml_file: str, schema_file: str = "xsd/descript.xsd") -> Tuple[bool, List[dict]]:
+        """
+        Validate XML file against XSD schema and return structured error details.
+
+        Unlike validate_xml_against_schema(), this returns structured errors with
+        element-level mapping (tag, text, xpath) for each XSD violation.
+
+        Args:
+            xml_file: Path to XML file to validate
+            schema_file: Path to XSD schema file
+
+        Returns:
+            Tuple of (is_valid, structured_errors) where structured_errors is a list of:
+            [{'line': int, 'column': int, 'message': str,
+              'element_tag': str|None, 'element_text': str|None, 'xpath': str|None}]
+        """
+        try:
+            if not os.path.exists(schema_file):
+                return False, [{'line': 0, 'column': 0, 'message': f'Schema file not found: {schema_file}',
+                                'element_tag': None, 'element_text': None, 'xpath': None}]
+
+            # Parse schema
+            with open(schema_file, 'r', encoding='utf-8') as f:
+                schema_doc = ET.parse(f)
+            schema = ET.XMLSchema(schema_doc)
+
+            # Parse XML (lxml preserves sourceline on elements)
+            with open(xml_file, 'r', encoding='utf-8') as f:
+                xml_doc = ET.parse(f)
+
+            # Strip namespaces (same logic as validate_xml_against_schema)
+            def strip_namespaces(element):
+                ET.strip_elements(element, '{http://www.w3.org/2001/XMLSchema-instance}*', with_tail=False)
+                ET.strip_attributes(element, '{http://www.w3.org/2001/XMLSchema-instance}*')
+                ET.strip_attributes(element, '{http://www.s1000d.org/S1000D_4-1/xml_schema_flat/descript.xsd}*')
+                ET.strip_attributes(element, '{http://www.s1000d.org/S1000D_4-1/xml_schema_flat/proced.xsd}*')
+                for child in element:
+                    strip_namespaces(child)
+                element.tag = element.tag.split('}', 1)[-1] if '}' in element.tag else element.tag
+
+            strip_namespaces(xml_doc.getroot())
+
+            # Build line → element mapping
+            line_map = {}
+            for elem in xml_doc.getroot().iter():
+                if elem.sourceline is not None:
+                    text = (elem.text or '').strip()[:60]
+                    tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
+                    try:
+                        xpath = xml_doc.getpath(elem)
+                    except Exception:
+                        xpath = None
+                    line_map[elem.sourceline] = (tag, text, xpath)
+
+            # Validate
+            is_valid = schema.validate(xml_doc)
+
+            structured = []
+            if not is_valid:
+                for error in schema.error_log:
+                    entry = {
+                        'line': error.line,
+                        'column': error.column,
+                        'message': error.message,
+                        'element_tag': None,
+                        'element_text': None,
+                        'xpath': None,
+                    }
+                    if error.line in line_map:
+                        tag, text, xpath = line_map[error.line]
+                        entry['element_tag'] = tag
+                        entry['element_text'] = text
+                        entry['xpath'] = xpath
+                    structured.append(entry)
+
+            return is_valid, structured
+
+        except Exception as e:
+            return False, [{'line': 0, 'column': 0, 'message': f'Validation error: {str(e)}',
+                            'element_tag': None, 'element_text': None, 'xpath': None}]
 
     @staticmethod
     def validate_generated_modules(output_dir: str) -> Dict[str, Tuple[bool, str]]:

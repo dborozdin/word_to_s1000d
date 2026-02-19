@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Алгоритм генерации S1000D XML из Word</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --card: #fff;
+    --border: #ddd;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --warn: #f59e0b;
+    --warn-light: #fef3c7;
+    --green: #16a34a;
+    --green-light: #dcfce7;
+    --red: #dc2626;
+    --red-light: #fee2e2;
+    --gray: #6b7280;
+    --code-bg: #f3f4f6;
+    --text: #1f2937;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: var(--accent); }
+  h2 {
+    font-size: 1.4rem;
+    margin: 2rem 0 1rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 2px solid var(--accent);
+    color: var(--accent);
+  }
+  h3 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; color: #374151; }
+  h4 { font-size: 1rem; margin: 1rem 0 0.3rem; color: #4b5563; }
+  p, li { margin-bottom: 0.4rem; }
+  ul, ol { padding-left: 1.5rem; }
+  code {
+    background: var(--code-bg);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-family: 'Consolas', 'Fira Code', monospace;
+  }
+  .file-ref {
+    color: var(--accent);
+    font-family: 'Consolas', monospace;
+    font-size: 0.85em;
+    background: var(--accent-light);
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    margin: 1rem 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .step-num {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+    text-align: center;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+  }
+  .step {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+  .step-content { flex: 1; }
+  .step-content strong { display: block; margin-bottom: 0.2rem; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.8rem 0;
+    font-size: 0.9rem;
+  }
+  th, td {
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border);
+    text-align: left;
+  }
+  th { background: var(--accent-light); font-weight: 600; }
+  tr:nth-child(even) { background: #f9fafb; }
+  .note {
+    background: var(--warn-light);
+    border-left: 4px solid var(--warn);
+    padding: 0.7rem 1rem;
+    margin: 0.8rem 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
+  }
+  .note-green {
+    background: var(--green-light);
+    border-left: 4px solid var(--green);
+    padding: 0.7rem 1rem;
+    margin: 0.8rem 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
+  }
+  .note-red {
+    background: var(--red-light);
+    border-left: 4px solid var(--red);
+    padding: 0.7rem 1rem;
+    margin: 0.8rem 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
+  }
+  .diagram {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 1.2rem 1.5rem;
+    border-radius: 8px;
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+    margin: 1rem 0;
+  }
+  .toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin: 1.5rem 0;
+  }
+  .toc h3 { margin-top: 0; }
+  .toc ul { list-style: none; padding-left: 0; }
+  .toc li { padding: 0.2rem 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .toc .sub { padding-left: 1.5rem; }
+  .badge {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    vertical-align: middle;
+  }
+  .badge-current { background: var(--accent-light); color: var(--accent); }
+  .badge-target { background: var(--green-light); color: var(--green); }
+  .badge-gap { background: var(--red-light); color: var(--red); }
+  .subtitle { color: var(--gray); font-size: 0.95rem; margin-bottom: 2rem; }
+  .json-block {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 1rem 1.2rem;
+    border-radius: 8px;
+    font-family: 'Consolas', monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 0.8rem 0;
+  }
+  .json-key { color: #7dd3fc; }
+  .json-str { color: #86efac; }
+  .json-num { color: #fbbf24; }
+  .json-comment { color: #94a3b8; font-style: italic; }
+</style>
+</head>
+<body>
+
+<h1>Алгоритм генерации S1000D XML из документов Word</h1>
+<p class="subtitle">Описание текущей реализации и целевых требований к качеству. Версия: 2026-02-19</p>
+
+<!-- Оглавление -->
+<div class="toc">
+  <h3>Содержание</h3>
+  <ul>
+    <li><a href="#part1">Часть I. Исходная генерация XML</a></li>
+    <li class="sub"><a href="#s1">1. Чтение папки и определение модулей</a></li>
+    <li class="sub"><a href="#s2">2. Конвертация doc &rarr; docx</a></li>
+    <li class="sub"><a href="#s3">3. Парсинг docx</a></li>
+    <li class="sub"><a href="#s4">4. Определение границ и типов элементов</a></li>
+    <li class="sub"><a href="#s5">5. Генерация XML</a></li>
+    <li class="sub"><a href="#s6">6. Валидация по XSD</a></li>
+    <li><a href="#part2">Часть II. Контроль точности и доработка</a></li>
+    <li class="sub"><a href="#s7">7. Генерация PDF и отображение</a></li>
+    <li class="sub"><a href="#s8">8. Разметка в PDF (левая панель)</a></li>
+    <li class="sub"><a href="#s9">9. Разметка в XML (правая панель)</a></li>
+    <li class="sub"><a href="#s10">10. Эталон (Reference)</a></li>
+    <li class="sub"><a href="#s11">11. &laquo;Форматировать согласно эталону&raquo;</a></li>
+    <li><a href="#part3">Часть III. Критерии качества</a></li>
+    <li class="sub"><a href="#q1">Отображение и редактирование разметки</a></li>
+    <li class="sub"><a href="#q2">Генерация XML</a></li>
+    <li><a href="#part4">Часть IV. Диаграммы</a></li>
+  </ul>
+</div>
+
+<!-- ====================================================================== -->
+<h2 id="part1">Часть I. Исходная генерация XML</h2>
+<p>
+  <strong>Конфигурация запуска:</strong> <code>Python Debugger: main.py</code><br>
+  Основной pipeline: чтение папки &rarr; конвертация doc &rarr; парсинг docx &rarr; определение элементов &rarr; генерация XML &rarr; валидация XSD.
+</p>
+
+<!-- Шаг 1 -->
+<h3 id="s1">1. Чтение папки и определение модулей</h3>
+<div class="card">
+  <div class="step">
+    <span class="step-num">1</span>
+    <div class="step-content">
+      <strong>Сканирование input_dir</strong>
+      Путь к папке задаётся в <span class="file-ref">config.ini &rarr; [processing] &rarr; input_dir</span>.
+      Для каждой подпапки извлекается S1000D-код (DMC) из её имени через regex:
+      <code>[modelIdentCode]-[systemDiffCode]-[systemCode]-...</code>
+      <br><br>
+      Функции: <span class="file-ref">main.py:119-145</span> &mdash;
+      <code>find_docx_in_folder()</code>, <code>find_doc_in_folder()</code>.
+      Пропускаются служебные файлы (например, <code>signatureListVED.docx</code>).
+    </div>
+  </div>
+  <div class="step">
+    <span class="step-num">2</span>
+    <div class="step-content">
+      <strong>Определение типа модуля данных</strong>
+      По полю <code>infoCode</code> из DMC:
+      <table>
+        <tr><th>Диапазон infoCode</th><th>Тип модуля</th><th>XSD-схема</th><th>Процессор</th></tr>
+        <tr><td>000&ndash;099</td><td>Описательный (descriptive)</td><td><code>descript.xsd</code></td><td><span class="file-ref">processing_scripts/descriptive_processor.py</span></td></tr>
+        <tr><td>100&ndash;999</td><td>Процедурный (procedure)</td><td><code>proced.xsd</code></td><td><span class="file-ref">processing_scripts/procedure_processor.py</span></td></tr>
+      </table>
+      <span class="file-ref">main.py:178-186</span>
+    </div>
+  </div>
+</div>
+
+<!-- Шаг 2 -->
+<h3 id="s2">2. Конвертация doc &rarr; docx</h3>
+<div class="card">
+  <p>
+    Если исходный файл &mdash; устаревший формат <code>.doc</code>, он конвертируется в <code>.docx</code>
+    через <strong>Win32COM</strong> (MS Word COM Automation):
+  </p>
+  <ul>
+    <li>Открытие Word-инстанса через <code>win32com.client.Dispatch("Word.Application")</code></li>
+    <li>Сохранение: <code>doc.SaveAs2(path, FileFormat=16)</code> (16 = Word 2007 .docx)</li>
+    <li>Пакетная конвертация &mdash; один инстанс Word на все файлы</li>
+  </ul>
+  <p><span class="file-ref">parsers/doc_converter.py</span>, <span class="file-ref">main.py:206-228</span></p>
+</div>
+
+<!-- Шаг 3 -->
+<h3 id="s3">3. Парсинг docx</h3>
+<div class="card">
+  <p>Документ загружается через библиотеку <code>python-docx</code>: <code>Document(doc_path)</code>.
+  Далее запускаются пять параллельных потоков извлечения:</p>
+
+  <h4>3.1. Иллюстрации</h4>
+  <ul>
+    <li>Извлечение embedded-изображений из параграфов и ячеек таблиц</li>
+    <li>Маппинг по порядку появления (<code>reference_order</code>)</li>
+    <li>Нумерация: GRAPHIC0, GRAPHIC1, ...</li>
+    <li>Сохранение в <code>output/graphics/</code> с S1000D-именованием</li>
+  </ul>
+  <p><span class="file-ref">parsers/illustration_parser.py:17-150</span></p>
+
+  <h4>3.2. Списки</h4>
+  <ul>
+    <li><strong>Приоритет:</strong> OOXML-обнаружение &mdash; <code>paragraph.paragraph_format.numPr</code></li>
+    <li><strong>Fallback:</strong> эвристики &mdash; маркеры (<code>&bull; &mdash; &ndash;</code>), окончание на <code>;</code>, шаблон после <code>:</code></li>
+    <li>Типы: <code>numbered_list</code>, <code>unnumbered_list</code></li>
+  </ul>
+  <p><span class="file-ref">parsers/list_parser.py</span></p>
+
+  <h4>3.3. Таблицы</h4>
+  <ul>
+    <li>Обычные таблицы через <code>doc.tables</code></li>
+    <li>VML textboxes (из конвертированных doc): <code>w:pict/v:shape/v:textbox/w:txbxContent/w:tbl</code></li>
+    <li>Расширенное извлечение заголовков для контекста</li>
+  </ul>
+  <p><span class="file-ref">parsers/table_parser.py</span>, <span class="file-ref">parsers/elements_analyzer.py:98-136</span></p>
+
+  <h4>3.4. Секции контента</h4>
+  <ul>
+    <li>Анализ заголовков для модульной структуры</li>
+    <li>Маппинг секций на диапазоны infoCode S1000D</li>
+  </ul>
+  <p><span class="file-ref">parsers/content_analyzer.py</span></p>
+
+  <h4>3.5. Поэлементный анализ (КРИТИЧЕСКИЙ)</h4>
+  <ul>
+    <li>Главная функция: <code>analyze_document_elements()</code></li>
+    <li>Итерация по <code>doc.element.body</code> &mdash; параграфы и таблицы в порядке документа</li>
+    <li>Определение типа и границ каждого элемента</li>
+    <li>Результат: список элементов с <code>type</code>, <code>text</code>, <code>start_line/char</code>, <code>end_line/char</code>, <code>start_para/end_para</code></li>
+  </ul>
+  <p><span class="file-ref">parsers/elements_analyzer.py:29-591</span></p>
+</div>
+
+<!-- Шаг 4 -->
+<h3 id="s4">4. Определение границ и типов элементов</h3>
+<div class="card">
+  <p>Ключевой этап. Применяются 20+ эвристических правил, описанных в <span class="file-ref">parsing_rules.json</span>.
+  Правила имеют приоритеты &mdash; при конфликте побеждает правило с более высоким приоритетом.</p>
+
+  <h4>4.1. Таблица типов элементов</h4>
+  <table>
+    <tr><th>Тип</th><th>Описание</th><th>Способ обнаружения</th></tr>
+    <tr><td><code>header</code></td><td>Заголовок секции</td><td>Word Heading style + короткий текст</td></tr>
+    <tr><td><code>numbered_paragraph_header</code></td><td>Нумерованный заголовок (1. Название)</td><td>numPr + эвристика или regex <code>^\s*\d+\.?\s+</code></td></tr>
+    <tr><td><code>paragraph</code></td><td>Обычный абзац текста</td><td>Default (всё, что не классифицировано иначе)</td></tr>
+    <tr><td><code>numbered_list</code></td><td>Нумерованный список</td><td>OOXML numPr с числовым форматом</td></tr>
+    <tr><td><code>unnumbered_list</code></td><td>Маркированный список</td><td>Маркеры (&bull;, &ndash;), <code>;</code> в конце, после <code>:</code></td></tr>
+    <tr><td><code>table</code></td><td>Таблица</td><td>Тег <code>w:tbl</code> в OOXML</td></tr>
+    <tr><td><code>illustration</code></td><td>Иллюстрация (embedded)</td><td>Наличие элемента <code>a:blip</code> в run</td></tr>
+    <tr><td><code>illustration_reference</code></td><td>Ссылка на рисунок</td><td>Текст: &laquo;Рисунок N&raquo;, &laquo;Fig N&raquo;</td></tr>
+    <tr><td><code>table_reference</code></td><td>Ссылка на таблицу</td><td>Текст: &laquo;Таблица N&raquo;, &laquo;Table N&raquo;</td></tr>
+    <tr><td><code>warning</code> / <code>caution</code></td><td>Предупреждение / предостережение</td><td>Ключевые слова: &laquo;внимание&raquo;, &laquo;осторожно&raquo;</td></tr>
+  </table>
+
+  <h4>4.2. Приоритеты правил</h4>
+  <table>
+    <tr><th>Приоритет</th><th>Правило</th><th>Условие</th></tr>
+    <tr><td>30</td><td>embedded_image</td><td>Наличие <code>a:blip</code></td></tr>
+    <tr><td>25</td><td>main_section_header</td><td>Regex <code>^\s*\d+\.?\s+</code></td></tr>
+    <tr><td>22</td><td>heading_style</td><td>Word Heading style + короткий текст</td></tr>
+    <tr><td>22</td><td>numbered_header_numPr</td><td>numPr + не список + короткий текст</td></tr>
+    <tr><td>20</td><td>list_item_markers</td><td>Начинается с <code>&bull; &mdash; &ndash; &minus;</code></td></tr>
+    <tr><td>20</td><td>quantity_pattern</td><td>Regex <code>^\d+\s*шт\.?\s*[-–—]</code></td></tr>
+    <tr><td>15</td><td>list_item_semicolon</td><td>Текст оканчивается на <code>;</code></td></tr>
+    <tr><td>15</td><td>list_item_after_colon</td><td>Предыдущий параграф оканчивается на <code>:</code></td></tr>
+    <tr><td>12</td><td>list_item_continuation</td><td>Следует за другим list item</td></tr>
+    <tr><td>10</td><td>warning_keywords</td><td>Ключевые слова</td></tr>
+  </table>
+
+  <div class="note">
+    <strong>Важно:</strong> Проверка на list item выполняется ПЕРВОЙ (Phase 1, строки 211-213),
+    чтобы предотвратить ложную классификацию элементов списка как заголовков.
+  </div>
+
+  <h4>4.3. Определение границ элементов</h4>
+  <p>Для каждого элемента отслеживаются позиции в документе:</p>
+  <ul>
+    <li><code>start_line</code>, <code>start_char</code> &mdash; начало элемента</li>
+    <li><code>end_line</code>, <code>end_char</code> &mdash; конец элемента</li>
+    <li><code>start_para</code>, <code>end_para</code> &mdash; индексы параграфов</li>
+  </ul>
+  <p>Особые случаи:</p>
+  <ul>
+    <li><strong>Нумерованные заголовки с &laquo;хвостом&raquo;:</strong> если после заголовка в том же параграфе есть текст (разделённый <code>\n</code>), первая строка &rarr; header, остальное &rarr; paragraph</li>
+    <li><strong>Списки:</strong> начало &mdash; первый элемент; конец обновляется через <code>_update_list_end_para()</code> при завершении списка</li>
+    <li><strong>Таблицы:</strong> число строк аппроксимируется как число &laquo;строк&raquo;; <code>char_position</code> сбрасывается после таблицы</li>
+  </ul>
+  <p><span class="file-ref">parsers/elements_analyzer.py:70-206</span></p>
+</div>
+
+<!-- Шаг 5 -->
+<h3 id="s5">5. Генерация XML</h3>
+<div class="card">
+  <p>Генератор: <span class="file-ref">generators/s1000d_generator.py</span></p>
+
+  <h4>5.1. Базовая структура</h4>
+  <p>Корневой элемент <code>&lt;dmodule&gt;</code> с пространствами имён: <code>xsi</code>, <code>rdf</code>, <code>dc</code>, <code>xlink</code>.
+  Ссылка на XSD-схему через <code>xsi:noNamespaceSchemaLocation</code>.</p>
+
+  <h4>5.2. identAndStatusSection</h4>
+  <ul>
+    <li><code>dmCode</code> &mdash; все компоненты S1000D-кода</li>
+    <li><code>dmTitle</code> &mdash; techName + infoName</li>
+    <li><code>language</code> &mdash; ru/RU</li>
+    <li><code>issueInfo</code> &mdash; 001/00</li>
+    <li><code>dmStatus</code> &mdash; security, logo, companies, brexRef, applic</li>
+  </ul>
+
+  <h4>5.3. Content &mdash; Описательный модуль</h4>
+  <p>Структура: <code>&lt;description&gt; / &lt;levelledPara&gt; / [title + para|table|figure|note|randomList]</code></p>
+  <p><strong>XSD-упорядочивание</strong> (строки 287-340): элементы внутри <code>levelledPara</code> пересортировываются:</p>
+  <ol>
+    <li><code>&lt;title&gt;</code></li>
+    <li><code>&lt;warning&gt;</code></li>
+    <li><code>&lt;caution&gt;</code></li>
+    <li><code>&lt;para&gt;</code> | <code>&lt;table&gt;</code> | <code>&lt;figure&gt;</code> | <code>&lt;note&gt;</code> | <code>&lt;randomList&gt;</code></li>
+    <li>Вложенные <code>&lt;levelledPara&gt;</code></li>
+  </ol>
+
+  <h4>5.4. Content &mdash; Процедурный модуль</h4>
+  <p>Структура: <code>&lt;content&gt; / &lt;procedure&gt;</code></p>
+  <ul>
+    <li><code>&lt;preliminaryRqmts&gt;</code> &mdash; оборудование, расходные материалы, запчасти, требования безопасности</li>
+    <li><code>&lt;mainProcedure&gt;</code> &mdash; рекурсивные процедурные шаги (<code>&lt;proceduralStep&gt;</code>)</li>
+    <li><code>&lt;closeRqmts&gt;</code> &mdash; требования по завершению</li>
+  </ul>
+</div>
+
+<!-- Шаг 6 -->
+<h3 id="s6">6. Валидация по XSD</h3>
+<div class="card">
+  <p>
+    Сгенерированный XML валидируется через <code>lxml</code> против соответствующей XSD-схемы
+    (<span class="file-ref">xsd/descript.xsd</span> или <span class="file-ref">xsd/proced.xsd</span>).
+  </p>
+  <ul>
+    <li>Пространства имён удаляются перед валидацией</li>
+    <li>Результат: список ошибок с номером строки, столбца, сообщением, тегом элемента, XPath</li>
+  </ul>
+  <p><span class="file-ref">generators/s1000d_generator.py:622-674</span></p>
+</div>
+
+<!-- ====================================================================== -->
+<h2 id="part2">Часть II. Контроль точности и доработка</h2>
+<p>
+  <strong>Конфигурация запуска:</strong> <code>Start comparison app</code> (<span class="file-ref">comparison_app/app.py</span>)<br>
+  Flask-приложение для визуального сравнения исходного документа с результатом генерации XML.
+</p>
+
+<!-- Шаг 7 -->
+<h3 id="s7">7. Генерация PDF и отображение</h3>
+<div class="card">
+  <h4>7.1. Генерация PDF из docx</h4>
+  <ul>
+    <li>MS Word COM Automation: <code>doc.SaveAs2(..., FileFormat=17)</code> (17 = PDF)</li>
+    <li>Кэширование в <code>pdf_cache/</code> с отслеживанием mtime</li>
+  </ul>
+  <p><span class="file-ref">comparison_app/docx_renderer.py</span></p>
+
+  <h4>7.2. Двухпанельное отображение</h4>
+  <ul>
+    <li><strong>Левая панель:</strong> PDF через pdf.js &mdash; исходный документ с наложенными аннотациями</li>
+    <li><strong>Правая панель:</strong> XML &rarr; HTML через <code>S1000DHTMLRenderer</code> &mdash; результат генерации</li>
+  </ul>
+</div>
+
+<!-- Шаг 8 -->
+<h3 id="s8">8. Разметка в PDF (левая панель)</h3>
+<div class="card">
+  <p><span class="badge badge-current">Текущая реализация</span></p>
+
+  <h4>8.1. Извлечение текстовых блоков (серверное, PyMuPDF)</h4>
+  <p>Функция <code>extract_pdf_blocks()</code> в <span class="file-ref">comparison_app/pdf_block_extractor.py</span>:</p>
+  <ol>
+    <li>Открытие PDF через <code>fitz</code> (PyMuPDF)</li>
+    <li>Извлечение raw текстовых блоков с bounding boxes (x0, y0, x1, y1)</li>
+    <li>Обнаружение и удаление повторяющихся колонтитулов</li>
+    <li>Разбиение/слияние блоков по эвристикам:
+      <ul>
+        <li>Зазор между строками &gt; 1.6&times; минимальный зазор &rarr; разделить</li>
+        <li>Сдвиг отступа влево или значительный вправо &rarr; разделить</li>
+        <li>Терминальная пунктуация (конец предложения) &rarr; разделить</li>
+        <li>Маркер списка (тире/буллет) в начале строки &rarr; всегда разделить</li>
+        <li>Изменение размера шрифта &gt; 25% &rarr; разделить</li>
+      </ul>
+    </li>
+  </ol>
+  <p>Результат: JSON <code>{page_num, blocks: [{x0, y0, x1, y1, text, max_font_size}, ...]}</code></p>
+  <p>API endpoint: <code>/api/pdf-blocks/&lt;dmc&gt;</code></p>
+
+  <h4>8.2. Клиентский fallback (pdf.js)</h4>
+  <p>Если серверное извлечение недоступно &mdash; pdf.js извлекает текст на клиенте,
+  группирует по Y-позиции, классифицирует по размеру шрифта и паттернам.</p>
+
+  <h4>8.3. Визуализация аннотаций</h4>
+  <ul>
+    <li>Для каждого блока создаётся <code>&lt;div class="anno-marker"&gt;</code> с позицией в % от страницы</li>
+    <li>Цветовая циклическая палитра из 10 цветов (<code>ANNO_COLORS</code>)</li>
+    <li>Метка: аббревиатура типа + индекс (например, &laquo;пар. 5&raquo;)</li>
+    <li>Стиль: скобки-brackets слева от блока</li>
+  </ul>
+
+  <div class="note">
+    <strong>Ключевой момент:</strong> PDF-блоки извлекаются <em>независимо</em> от XML.
+    Они содержат только позиции и текст &mdash; без типов элементов.
+    Количество PDF-блоков и XML-элементов почти никогда не совпадает
+    (например, PDF: 50 блоков, XML: 35 элементов).
+    Мостом между ними служит <strong>эталон</strong> (reference).
+  </div>
+</div>
+
+<!-- Шаг 9 -->
+<h3 id="s9">9. Разметка в XML (правая панель)</h3>
+<div class="card">
+  <p>Рендерер: <span class="file-ref">comparison_app/s1000d_renderer.py</span> &mdash; класс <code>S1000DHTMLRenderer</code></p>
+
+  <h4>9.1. Логика обработки</h4>
+  <ol>
+    <li>Парсинг XML через <code>lxml</code> (без DTD-валидации, для скорости)</li>
+    <li>Извлечение заголовка: <code>dmTitle/techName</code> + <code>dmTitle/infoName</code></li>
+    <li>Определение типа модуля (описательный/процедурный)</li>
+    <li>Рендеринг каждого элемента с аннотациями:
+      <ul>
+        <li><code>data-anno-idx</code> &mdash; инкрементный счётчик</li>
+        <li><code>data-anno-type</code> &mdash; тип элемента из XML-структуры</li>
+      </ul>
+    </li>
+  </ol>
+
+  <h4>9.2. Маппинг XML-тегов на типы</h4>
+  <table>
+    <tr><th>XML-структура</th><th>Тип аннотации</th></tr>
+    <tr><td><code>&lt;levelledPara&gt;</code> с <code>&lt;title&gt;</code></td><td>heading</td></tr>
+    <tr><td><code>&lt;para&gt;</code></td><td>para</td></tr>
+    <tr><td><code>&lt;para&gt;</code> с <code>&lt;randomList&gt;</code></td><td>para + unnumbered_list</td></tr>
+    <tr><td><code>&lt;para&gt;</code> с <code>&lt;sequentialList&gt;</code></td><td>para + numbered_list</td></tr>
+    <tr><td><code>&lt;table&gt;</code></td><td>table</td></tr>
+    <tr><td><code>&lt;figure&gt;</code></td><td>illustration</td></tr>
+    <tr><td><code>&lt;warning&gt;</code></td><td>warning</td></tr>
+    <tr><td><code>&lt;caution&gt;</code></td><td>caution</td></tr>
+    <tr><td><code>&lt;note&gt;</code></td><td>note</td></tr>
+    <tr><td><code>&lt;proceduralStep&gt;</code></td><td>step (с номером)</td></tr>
+  </table>
+</div>
+
+<!-- Шаг 10 -->
+<h3 id="s10">10. Эталон (Reference) &mdash; мост между PDF и XML</h3>
+<div class="card">
+  <p>Эталон &mdash; это &laquo;истинная&raquo; разметка документа, которая определяет,
+  какие элементы и какого типа должны быть в итоговом XML.</p>
+
+  <h4>10.1. Хранение</h4>
+  <p>JSON-файлы в <span class="file-ref">comparison_app/_references/{dmc_string}.json</span></p>
+
+  <div class="json-block"><span class="json-comment">// Пример структуры reference</span>
+{
+  <span class="json-key">"dmc_string"</span>: <span class="json-str">"DMC-S5-A-029-00-00-00A-012A-A_001"</span>,
+  <span class="json-key">"docx_hash"</span>: <span class="json-str">"sha256:9b434fd550f2..."</span>,
+  <span class="json-key">"created_at"</span>: <span class="json-str">"2026-02-16T21:10:55"</span>,
+  <span class="json-key">"modified_at"</span>: <span class="json-str">"2026-02-18T10:30:29"</span>,
+  <span class="json-key">"source"</span>: <span class="json-str">"auto+manual"</span>,
+  <span class="json-key">"elements"</span>: [
+    {
+      <span class="json-key">"idx"</span>: <span class="json-num">1</span>,
+      <span class="json-key">"type"</span>: <span class="json-str">"heading"</span>,
+      <span class="json-key">"text_start"</span>: <span class="json-str">"Первые 60 символов текста..."</span>,
+      <span class="json-key">"text_end"</span>: <span class="json-str">"Последние 40 символов..."</span>,
+      <span class="json-key">"span"</span>: <span class="json-num">1</span>
+    },
+    {
+      <span class="json-key">"idx"</span>: <span class="json-num">2</span>,
+      <span class="json-key">"type"</span>: <span class="json-str">"unnumbered_list"</span>,
+      <span class="json-key">"text_start"</span>: <span class="json-str">"- первый пункт списка..."</span>,
+      <span class="json-key">"text_end"</span>: <span class="json-str">"последний пункт."</span>,
+      <span class="json-key">"span"</span>: <span class="json-num">5</span>  <span class="json-comment">// объединяет 5 DOM-блоков</span>
+    }
+  ]
+}</div>
+
+  <h4>10.2. Инициализация (автоматическая)</h4>
+  <ol>
+    <li>Пользователь нажимает кнопку &laquo;Эталон&raquo;</li>
+    <li>JS вызывает <code>/api/reference/&lt;dmc&gt;/init</code> (POST)</li>
+    <li>Python: <code>init_reference_from_auto()</code> &mdash; извлекает элементы из docx через mammoth HTML-парсер</li>
+    <li>Создаёт список элементов с авто-назначенными типами</li>
+    <li>Сохраняет в <code>_references/</code> с <code>source: "auto"</code></li>
+  </ol>
+  <p><span class="file-ref">comparison_app/reference_store.py</span></p>
+
+  <h4>10.3. Редактирование (ручное)</h4>
+  <p>Пользователь входит в режим редактирования &rarr; на блоках появляются цветные бейджи.
+  Доступные операции через контекстное меню (правый клик):</p>
+  <table>
+    <tr><th>Операция</th><th>Описание</th><th>Эффект на span</th></tr>
+    <tr><td><strong>Смена типа</strong></td><td>Выбор из dropdown: para, heading, table, ...</td><td>Не меняется</td></tr>
+    <tr><td><strong>Объединить с верхним</strong></td><td>Текущий элемент сливается с предыдущим</td><td><code>prev.span += curr.span</code>, curr удаляется</td></tr>
+    <tr><td><strong>Объединить с нижним</strong></td><td>Текущий элемент сливается со следующим</td><td><code>curr.span += next.span</code>, next удаляется</td></tr>
+    <tr><td><strong>Разделить</strong></td><td>Элемент с span&gt;1 разбивается обратно на отдельные</td><td>Создаётся по элементу на каждый DOM-блок</td></tr>
+    <tr><td><strong>Удалить</strong></td><td>Удаление из эталона</td><td>Элемент убирается из массива</td></tr>
+    <tr><td><strong>Создать</strong></td><td>Добавить элемент из неназначенного DOM-блока</td><td>Новый элемент с span=1</td></tr>
+  </table>
+  <p>После каждой операции &mdash; перенумерация (<code>renumberRefElements()</code>), перестроение бейджей (<code>rebuildBadges()</code>).</p>
+
+  <h4>10.4. Синхронизация с DOM</h4>
+  <ul>
+    <li><strong>PDF-режим:</strong> <code>_syncPdfMarkers()</code> &mdash; маппинг ref-элементов на <code>.anno-marker</code> по span.
+      Лишние маркеры скрываются, первый маркер в span показывает метку с расширенной скобкой</li>
+    <li><strong>HTML-режим:</strong> <code>_syncHtmlElements()</code> &mdash; маппинг на top-level блоки с <code>data-anno-idx</code>.
+      Лишние блоки помечаются как <code>data-anno-idx-cleared</code> (доступны для &laquo;Создать&raquo;)</li>
+  </ul>
+
+  <h4>10.5. Сохранение</h4>
+  <p>Кнопка &laquo;Сохранить&raquo; &rarr; POST <code>/api/reference/&lt;dmc&gt;</code> с JSON-телом &rarr;
+  Python записывает в файл с обновлённым <code>modified_at</code> и <code>source: "auto+manual"</code>.</p>
+</div>
+
+<!-- Шаг 11 -->
+<h3 id="s11">11. &laquo;Форматировать согласно эталону&raquo;</h3>
+<div class="card">
+  <p><span class="badge badge-current">Текущая реализация</span>
+  (бывшая кнопка &laquo;Автоулучшение&raquo;, переименована)</p>
+
+  <h4>11.1. Общий workflow</h4>
+  <p>Одно-проходный процесс, управляемый из <span class="file-ref">verify_loop.py</span>:</p>
+  <ol>
+    <li><strong>Загрузка эталона</strong> из <code>_references/{dmc}.json</code></li>
+    <li><strong>Очистка overrides</strong> (для backward compatibility)</li>
+    <li><strong>Конвертация DOCX &rarr; XML</strong> с применением эталонной разметки</li>
+    <li><strong>Сравнение</strong> с эталоном (LCS-алгоритм)</li>
+    <li><strong>Валидация XML</strong> по XSD</li>
+    <li><strong>Маппинг ошибок</strong> XSD обратно на элементы</li>
+  </ol>
+
+  <h4>11.2. Применение эталонной разметки</h4>
+  <p>Функция <code>apply_reference_markup()</code> в <span class="file-ref">parsers/elements_analyzer.py:1151-1329</span>:</p>
+  <ol>
+    <li>Для каждого ref-элемента ищется лучшее совпадение среди авто-извлечённых по сходству текста (prefix scoring)</li>
+    <li>Тип из эталона подставляется <strong>IN-PLACE</strong> (без переупорядочивания элементов)</li>
+    <li>Элемент помечается метаданными:
+      <ul>
+        <li><code>_ref_annotated: True</code> &mdash; тип пришёл из эталона</li>
+        <li><code>_original_type</code> &mdash; исходный авто-определённый тип</li>
+        <li><code>_ref_idx</code> &mdash; индекс в эталоне</li>
+        <li><code>_ref_type_raw</code> &mdash; тип из эталона (сырой)</li>
+      </ul>
+    </li>
+    <li>Если для элемента нет совпадения в эталоне &mdash; остаётся авто-определённый тип</li>
+  </ol>
+
+  <h4>11.3. Сравнение через LCS</h4>
+  <p><span class="file-ref">comparison_app/headless_comparator.py</span></p>
+  <ul>
+    <li>Извлечение последовательности типов элементов из эталона и из XML</li>
+    <li>Вычисление Longest Common Subsequence (LCS) по типам</li>
+    <li>Для совпавших пар &mdash; text similarity через <code>difflib.SequenceMatcher</code></li>
+    <li><strong>Score</strong> = <code>0.7 &times; (matched / max_count) + 0.3 &times; avg_text_similarity</code></li>
+    <li>Диапазон: 0.0 &ndash; 1.0</li>
+  </ul>
+
+  <h4>11.4. Маппинг XSD-ошибок</h4>
+  <p>Функция <code>_map_xsd_to_source_elements()</code> в <span class="file-ref">verify_loop.py:51-95</span>:</p>
+  <ul>
+    <li>Текстовое сопоставление (prefix, 3-20 символов)</li>
+    <li>Для каждой ошибки &mdash; определение:
+      <ul>
+        <li><code>is_user_annotated</code> &mdash; элемент пришёл из эталона?</li>
+        <li><code>user_type</code> &mdash; тип по эталону</li>
+        <li><code>original_type</code> &mdash; авто-определённый тип (до override)</li>
+        <li><code>ref_idx</code> &mdash; индекс для навигации</li>
+      </ul>
+    </li>
+  </ul>
+
+  <h4>11.5. Отображение результатов</h4>
+  <ul>
+    <li>Progress bar во время конвертации (polling <code>/api/verify-loop-progress/</code>)</li>
+    <li>Итоговый бейдж: <strong>Score %</strong> + <strong>XSD: PASS</strong> или количество ошибок</li>
+    <li>Зелёный если score &ge; 95%, жёлтый если ниже</li>
+    <li>При XSD-ошибках &mdash; панель &laquo;XSD Issues&raquo; со списком, кликабельная навигация к ref-элементу</li>
+    <li>Правая панель обновляется свежим S1000D HTML (<code>/api/s1000d-html/</code>)</li>
+  </ul>
+</div>
+
+<!-- ====================================================================== -->
+<h2 id="part3">Часть III. Критерии качества</h2>
+
+<h3 id="q1">Отображение и редактирование разметки</h3>
+<div class="card">
+  <table>
+    <tr><th>ID</th><th>Требование</th><th>Статус</th><th>Комментарий</th></tr>
+    <tr>
+      <td>11.1</td>
+      <td>Для всех элементов в PDF должна быть разметка, и она должна соответствовать тому, что отображается в XML (а не вычисляться заново для PDF)</td>
+      <td><span class="badge badge-gap">Расхождение</span></td>
+      <td><strong>Текущее:</strong> PDF-блоки извлекаются независимо через PyMuPDF и не связаны с XML-элементами.
+      Число блоков и типы не совпадают. Мостом служит эталон (reference), но автоматической синхронизации &laquo;PDF-блоков &harr; XML-элементов&raquo; нет.<br>
+      <strong>Целевое:</strong> Разметка в PDF должна отражать структуру, заданную в XML (или в эталоне как его прообразе).</td>
+    </tr>
+    <tr>
+      <td>11.2</td>
+      <td>Нет &laquo;бесхозных&raquo; элементов &mdash; удаление подразумевает возврат к автоматической разметке</td>
+      <td><span class="badge badge-target">Целевое</span></td>
+      <td>При удалении пользовательской разметки элемент должен получить автоматически определённый тип, а не исчезнуть</td>
+    </tr>
+    <tr>
+      <td>11.3</td>
+      <td>Визуальное различие между пользовательской и автоматической разметкой</td>
+      <td><span class="badge badge-target">Целевое</span></td>
+      <td>Например: пользовательская &mdash; сплошная рамка, автоматическая &mdash; пунктирная; или цветовое кодирование</td>
+    </tr>
+    <tr>
+      <td>11.4</td>
+      <td>При merge/split/change type &mdash; перерисовка разметки всей страницы или документа</td>
+      <td><span class="badge badge-current">Частично реализовано</span></td>
+      <td><code>rebuildBadges()</code> перестраивает бейджи после операций. Требуется проверка полноты перерисовки</td>
+    </tr>
+  </table>
+</div>
+
+<h3 id="q2">Генерация XML</h3>
+<div class="card">
+  <table>
+    <tr><th>ID</th><th>Требование</th><th>Статус</th><th>Комментарий</th></tr>
+    <tr>
+      <td>12.1</td>
+      <td>XML валиден относительно соответствующей XSD-схемы</td>
+      <td><span class="badge badge-current">Реализовано</span></td>
+      <td>Валидация через lxml в <span class="file-ref">s1000d_generator.py:622-674</span>.
+      Ошибки маппятся обратно на элементы через <code>_map_xsd_to_source_elements()</code></td>
+    </tr>
+    <tr>
+      <td>12.2</td>
+      <td>Порядок следования текста/иллюстраций в XML соответствует порядку в docx</td>
+      <td><span class="badge badge-current">Реализовано</span></td>
+      <td>Элементы обрабатываются в порядке <code>doc.element.body</code> и не переупорядочиваются при применении эталона (<code>apply_reference_markup</code> работает IN-PLACE)</td>
+    </tr>
+    <tr>
+      <td>12.3</td>
+      <td>Порядок чередования элементов разметки в XML соответствует исходному docx</td>
+      <td><span class="badge badge-current">Частично</span></td>
+      <td>Общий порядок сохраняется. <strong>Исключение:</strong> XSD требует, чтобы <code>&lt;warning&gt;</code> и <code>&lt;caution&gt;</code>
+      внутри <code>&lt;levelledPara&gt;</code> шли перед <code>&lt;para&gt;</code>/<code>&lt;table&gt;</code>/<code>&lt;figure&gt;</code>.
+      Эти элементы перемещаются в начало секции при XSD-упорядочивании (строки 287-340).
+      Нумерация остальных элементов не сбивается &mdash; точкой отсчёта остаётся исходный документ</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ====================================================================== -->
+<h2 id="part4">Часть IV. Диаграммы</h2>
+
+<h3>Общий pipeline генерации</h3>
+<div class="diagram">
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    ЧАСТЬ I: ГЕНЕРАЦИЯ XML                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌─────────┐     ┌──────────┐     ┌──────────────────┐                  │
+│  │  Папка   │────▶│ doc→docx │────▶│   Парсинг docx   │                  │
+│  │ input_dir│     │ Win32COM │     │   python-docx    │                  │
+│  └─────────┘     └──────────┘     └────────┬─────────┘                  │
+│                                             │                            │
+│            ┌────────────────────────────────┼────────────────────┐       │
+│            ▼                ▼               ▼          ▼        ▼       │
+│   ┌──────────────┐ ┌────────────┐ ┌──────────────┐ ┌──────┐ ┌──────┐  │
+│   │ Иллюстрации  │ │   Списки   │ │  Элементы    │ │Табл. │ │Секции│  │
+│   │illustration_ │ │list_parser │ │elements_     │ │table_│ │cont_ │  │
+│   │parser.py     │ │.py         │ │analyzer.py   │ │pars. │ │anal. │  │
+│   └──────┬───────┘ └─────┬──────┘ └──────┬───────┘ └──┬───┘ └──┬───┘  │
+│          │               │               │             │        │       │
+│          └───────────────┴───────┬───────┴─────────────┴────────┘       │
+│                                  ▼                                       │
+│                    ┌─────────────────────────┐                           │
+│                    │ Определение типов и      │   parsing_rules.json     │
+│                    │ границ элементов         │   (20+ эвристик)         │
+│                    └────────────┬────────────┘                           │
+│                                 ▼                                        │
+│        ┌───────────────────────────────────────────────┐                │
+│        │         Генерация S1000D XML                   │                │
+│        │  ┌──────────────┐     ┌──────────────────┐    │                │
+│        │  │ Описательный │     │   Процедурный    │    │                │
+│        │  │ description/ │     │ procedure/       │    │                │
+│        │  │ levelledPara │     │ mainProcedure    │    │                │
+│        │  └──────────────┘     └──────────────────┘    │                │
+│        └───────────────────────┬───────────────────────┘                │
+│                                ▼                                        │
+│                    ┌───────────────────────┐                            │
+│                    │ Валидация по XSD       │                            │
+│                    │ descript.xsd/proced.xsd│                            │
+│                    └───────────────────────┘                            │
+└──────────────────────────────────────────────────────────────────────────┘</div>
+
+<h3>Взаимодействие компонентов comparison app</h3>
+<div class="diagram">
+┌──────────────────────────────────────────────────────────────────────────┐
+│               ЧАСТЬ II: КОНТРОЛЬ ТОЧНОСТИ                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌──────────────────────┐          ┌──────────────────────┐             │
+│  │    ЛЕВАЯ ПАНЕЛЬ      │          │   ПРАВАЯ ПАНЕЛЬ      │             │
+│  │                      │          │                      │             │
+│  │  docx ──▶ PDF        │          │  XML ──▶ HTML        │             │
+│  │  (Word COM→pdf.js)   │          │  (s1000d_renderer)   │             │
+│  │                      │          │                      │             │
+│  │  PDF-блоки           │          │  XML-элементы        │             │
+│  │  (PyMuPDF эвристики) │          │  (data-anno-idx/type)│             │
+│  │  ◄─ только позиции   │          │  ◄─ типы из тегов    │             │
+│  │     и текст          │          │                      │             │
+│  └──────────┬───────────┘          └──────────┬───────────┘             │
+│             │                                  │                         │
+│             │        ┌──────────────────┐      │                         │
+│             │        │                  │      │                         │
+│             └───────▶│   ЭТАЛОН         │◄─────┘                         │
+│                      │  (Reference)     │                                │
+│                      │                  │                                │
+│                      │  _references/    │                                │
+│                      │  {dmc}.json      │                                │
+│                      │                  │                                │
+│                      │  ┌────────────┐  │                                │
+│                      │  │ idx        │  │                                │
+│                      │  │ type       │  │                                │
+│                      │  │ text_start │  │                                │
+│                      │  │ text_end   │  │                                │
+│                      │  │ span       │  │                                │
+│                      │  └────────────┘  │                                │
+│                      └────────┬─────────┘                                │
+│                               │                                          │
+│                               ▼                                          │
+│          ┌─────────────────────────────────────────┐                    │
+│          │  «Форматировать согласно эталону»        │                    │
+│          │                                          │                    │
+│          │  1. apply_reference_markup()             │                    │
+│          │     (text similarity → IN-PLACE override)│                    │
+│          │  2. Генерация XML с ref-типами           │                    │
+│          │  3. LCS-сравнение ref ↔ XML              │                    │
+│          │  4. XSD-валидация + маппинг ошибок       │                    │
+│          │  5. Score: 0.7·match + 0.3·text_sim      │                    │
+│          └─────────────────────────────────────────┘                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘</div>
+
+<h3>Жизненный цикл эталона (Reference lifecycle)</h3>
+<div class="diagram">
+ ┌──────────────┐     ┌───────────────────┐     ┌──────────────────┐
+ │ Кнопка       │────▶│ init_reference_   │────▶│ _references/     │
+ │ «Эталон»     │     │ from_auto()       │     │ {dmc}.json       │
+ └──────────────┘     │                   │     │ source: "auto"   │
+                      │ docx → mammoth →  │     └────────┬─────────┘
+                      │ авто-типы         │              │
+                      └───────────────────┘              ▼
+                                               ┌──────────────────┐
+                                               │ Пользователь     │
+                                               │ редактирует:     │
+                                               │ • смена типа     │
+                                               │ • merge (span++) │
+                                               │ • split          │
+                                               │ • delete/create  │
+                                               └────────┬─────────┘
+                                                        ▼
+                      ┌───────────────────┐     ┌──────────────────┐
+                      │ save_reference()  │◄────│ Кнопка           │
+                      │                   │     │ «Сохранить»      │
+                      │ source:           │     └──────────────────┘
+                      │ "auto+manual"     │
+                      └────────┬──────────┘
+                               │
+                               ▼
+                      ┌───────────────────┐     ┌──────────────────┐
+                      │ apply_reference_  │────▶│ Обновлённый XML  │
+                      │ markup()          │     │ + Score + XSD    │
+                      │                   │     └──────────────────┘
+                      │ Кнопка            │
+                      │ «Форматировать    │
+                      │  согласно эталону»│
+                      └───────────────────┘</div>
+
+<h3>Ключевые файлы проекта</h3>
+<div class="card">
+  <table>
+    <tr><th>Файл</th><th>Назначение</th></tr>
+    <tr><td><code>main.py</code></td><td>Точка входа, оркестрация batch-обработки</td></tr>
+    <tr><td><code>config.ini</code></td><td>Конфигурация: пути, режим split, LLM, verification</td></tr>
+    <tr><td><code>parsing_rules.json</code></td><td>Описание 20+ эвристических правил классификации</td></tr>
+    <tr><td><code>parsers/elements_analyzer.py</code></td><td>Поэлементный анализ docx: типы, границы, reference markup</td></tr>
+    <tr><td><code>parsers/list_parser.py</code></td><td>Классификация списков (OOXML + эвристики)</td></tr>
+    <tr><td><code>parsers/illustration_parser.py</code></td><td>Извлечение иллюстраций</td></tr>
+    <tr><td><code>parsers/table_parser.py</code></td><td>Извлечение таблиц (включая VML textboxes)</td></tr>
+    <tr><td><code>parsers/content_analyzer.py</code></td><td>Анализ секций по заголовкам</td></tr>
+    <tr><td><code>parsers/doc_converter.py</code></td><td>Конвертация doc → docx через Word COM</td></tr>
+    <tr><td><code>generators/s1000d_generator.py</code></td><td>Генерация S1000D XML + XSD-валидация</td></tr>
+    <tr><td><code>processing_scripts/descriptive_processor.py</code></td><td>Оркестрация описательных модулей</td></tr>
+    <tr><td><code>processing_scripts/procedure_processor.py</code></td><td>Оркестрация процедурных модулей</td></tr>
+    <tr><td><code>comparison_app/app.py</code></td><td>Flask-приложение comparison</td></tr>
+    <tr><td><code>comparison_app/docx_renderer.py</code></td><td>Рендеринг docx → PDF / HTML</td></tr>
+    <tr><td><code>comparison_app/pdf_block_extractor.py</code></td><td>Извлечение текстовых блоков из PDF (PyMuPDF)</td></tr>
+    <tr><td><code>comparison_app/s1000d_renderer.py</code></td><td>Рендеринг XML → HTML с аннотациями</td></tr>
+    <tr><td><code>comparison_app/reference_store.py</code></td><td>CRUD для эталонной разметки (JSON)</td></tr>
+    <tr><td><code>comparison_app/headless_comparator.py</code></td><td>LCS-сравнение эталона и XML</td></tr>
+    <tr><td><code>verify_loop.py</code></td><td>Оркестрация верификации и XSD-маппинга</td></tr>
+    <tr><td><code>xsd/descript.xsd</code></td><td>XSD-схема для описательных модулей</td></tr>
+    <tr><td><code>xsd/proced.xsd</code></td><td>XSD-схема для процедурных модулей</td></tr>
+  </table>
+</div>
+
+<p style="text-align:center; color:var(--gray); margin-top:3rem; font-size:0.85rem;">
+  Документ сгенерирован: 2026-02-19 | Проект: Word to S1000D Converter
+</p>
+
+</body>
+</html>

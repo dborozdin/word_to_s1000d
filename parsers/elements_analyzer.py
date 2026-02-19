@@ -8,7 +8,7 @@ Parsing heuristics are documented in parsing_rules.json at project root.
 import os
 import re
 import json
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any
 from docx import Document
 from docx.shared import Inches
 import datetime
@@ -1139,24 +1139,30 @@ def apply_overrides(elements: List[Dict[str, Any]], dmc_string: str) -> List[Dic
     return elements
 
 
+# Module-level cache for last markup result (used by verify_loop for XSD mapping)
+_last_markup_result: Dict[str, List[Dict[str, Any]]] = {}
+
+
+def get_last_markup_result(dmc_string: str) -> Optional[List[Dict[str, Any]]]:
+    """Return cached elements from last apply_reference_markup() call for XSD mapping."""
+    return _last_markup_result.get(dmc_string)
+
+
 def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> List[Dict[str, Any]]:
     """
     Apply user reference markup directly to classified elements.
 
-    Instead of the indirect text-patch override system, this loads the user's
-    ground-truth annotation and uses it to:
-    1. Reclassify element types to match user annotations
-    2. Reorder elements to match user-defined order
-    3. Handle span-based grouping (reference span=N → N auto elements get same type)
+    For each reference element, finds the matching auto-extracted element by text
+    similarity and overrides its type IN PLACE (no reordering). Elements not
+    covered by reference keep their auto-classified type.
+
+    Each element is tagged with:
+      - _ref_annotated: True if type was set from user reference, False otherwise
+      - _original_type: the auto-classified type before override (if overridden)
+      - _ref_idx: reference element index (if matched)
+      - _ref_type_raw: raw reference type string (if matched)
 
     Falls back to apply_overrides() if no reference markup exists.
-
-    Args:
-        elements: List of element dicts from analyze_document_elements()
-        dmc_string: DMC identifier to look up reference
-
-    Returns:
-        Modified elements list with reference types and ordering applied.
     """
     # Try to load reference markup
     try:
@@ -1166,7 +1172,7 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
         ref_data = None
 
     if not ref_data or not ref_data.get('elements'):
-        # No reference — fall back to overrides
+        # No reference — fall back to overrides only
         return apply_overrides(elements, dmc_string)
 
     ref_elements = ref_data['elements']
@@ -1204,77 +1210,123 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             return 0.0
         return prefix_len / max(len(a), 1)
 
-    # Build result by matching reference elements to auto elements in order
-    result = []
-    cursor = 0  # approximate position in auto elements list
-    used = set()
+    def _combined_score(ref_text_start, ref_text_end, content):
+        """Score using both text_start and text_end for better disambiguation."""
+        content_start = content[:60].strip()
+        content_end = content[-40:].strip() if len(content) > 40 else content.strip()
+        start_score = _prefix_score(ref_text_start, content_start)
+        if not ref_text_end or not ref_text_end.strip():
+            return start_score
+        end_score = _prefix_score(ref_text_end, content_end)
+        return start_score * 0.7 + end_score * 0.3
 
-    for ref_elem in ref_elements:
-        ref_text_start = (ref_elem.get('text_start', '') or '').strip()
-        ref_type = ref_elem.get('type', '')
-        ref_span = ref_elem.get('span', 1) or 1
-        mapped_type = type_map.get(ref_type, ref_type)
-
+    def _find_best_match(cursor, ref_text_start, ref_text_end, used):
+        """Find best matching auto element by text similarity."""
         if not ref_text_start:
-            continue
+            return None
 
-        # Search forward from cursor for best match (window: cursor-3 .. cursor+30)
+        min_threshold = 0.2 if len(ref_text_start) < 10 else 0.3
         best_idx = None
-        best_score = 0.3  # minimum threshold
+        best_score = min_threshold
 
-        search_start = max(0, cursor - 3)
-        search_end = min(len(elements), cursor + 30)
+        # Search forward from cursor (window: cursor-5 .. cursor+50)
+        search_start = max(0, cursor - 5)
+        search_end = min(len(elements), cursor + 50)
 
         for i in range(search_start, search_end):
             if i in used:
                 continue
             content = elements[i].get('content', '')
-            score = _prefix_score(ref_text_start, content[:60])
+            score = _combined_score(ref_text_start, ref_text_end, content)
             if score > best_score:
                 best_score = score
                 best_idx = i
 
-        # Fallback: search entire list (handles reordered elements)
+        # Fallback: search entire list
         if best_idx is None:
             for i in range(len(elements)):
                 if i in used:
                     continue
                 content = elements[i].get('content', '')
-                score = _prefix_score(ref_text_start, content[:60])
+                score = _combined_score(ref_text_start, ref_text_end, content)
                 if score > best_score:
                     best_score = score
                     best_idx = i
 
+        return best_idx
+
+    def _apply_span_forward(start_idx, ref_span, ref_text_end, mapped_type, ref_idx, ref_type_raw, used):
+        """For span>1 refs, scan forward from start_idx overriding types.
+
+        Scans forward up to ref_span * 1.5 auto elements (to account for
+        granularity difference between DOM blocks and auto elements) until:
+        - An element containing ref_text_end is found (inclusive)
+        - Or max scan limit is reached
+        - Or an already-used element is encountered
+        """
+        max_scan = min(len(elements), start_idx + 1 + int(ref_span * 1.5))
+        for i in range(start_idx + 1, max_scan):
+            if i in used:
+                break
+            elements[i]['_original_type'] = elements[i]['type']
+            elements[i]['type'] = mapped_type
+            elements[i]['_ref_annotated'] = True
+            elements[i]['_ref_idx'] = ref_idx
+            elements[i]['_ref_type_raw'] = ref_type_raw
+            used.add(i)
+
+            # Stop if this element contains ref_text_end
+            if ref_text_end:
+                content_end = elements[i].get('content', '')[-40:].strip()
+                if content_end and _prefix_score(ref_text_end, content_end) > 0.3:
+                    break
+
+    # --- Main matching loop: modify elements IN PLACE, no reordering ---
+    used = set()
+    cursor = 0
+
+    for ref_elem in ref_elements:
+        ref_text_start = (ref_elem.get('text_start', '') or '').strip()
+        ref_text_end = (ref_elem.get('text_end', '') or '').strip()
+        ref_type = ref_elem.get('type', '')
+        ref_span = ref_elem.get('span', 1) or 1
+        ref_idx = ref_elem.get('idx', 0)
+        mapped_type = type_map.get(ref_type, ref_type)
+
+        best_idx = _find_best_match(cursor, ref_text_start, ref_text_end, used)
+
         if best_idx is not None:
-            # Match found — apply reference type and add to result
-            elem = elements[best_idx].copy()
-            if mapped_type:
-                elem['type'] = mapped_type
-            result.append(elem)
+            # Override type in place
+            elements[best_idx]['_original_type'] = elements[best_idx]['type']
+            elements[best_idx]['type'] = mapped_type
+            elements[best_idx]['_ref_annotated'] = True
+            elements[best_idx]['_ref_idx'] = ref_idx
+            elements[best_idx]['_ref_type_raw'] = ref_type
             used.add(best_idx)
             cursor = best_idx + 1
 
-            # Handle span > 1: next (span-1) consecutive auto elements get same type
+            # For span > 1: override subsequent auto elements
             if ref_span > 1:
-                for s in range(1, ref_span):
-                    next_idx = best_idx + s
-                    if next_idx < len(elements) and next_idx not in used:
-                        next_elem = elements[next_idx].copy()
-                        if mapped_type:
-                            next_elem['type'] = mapped_type
-                        result.append(next_elem)
-                        used.add(next_idx)
-                        cursor = next_idx + 1
+                _apply_span_forward(best_idx, ref_span, ref_text_end,
+                                    mapped_type, ref_idx, ref_type, used)
+                # Advance cursor past all span-covered elements
+                cursor = max(cursor, best_idx + ref_span)
 
-    # Append unmatched auto elements at the end (content the reference doesn't cover)
-    unmatched = [elements[i] for i in range(len(elements)) if i not in used]
-    if unmatched:
-        result.extend(unmatched)
+    # Mark unannotated elements
+    for i, elem in enumerate(elements):
+        if i not in used:
+            elem['_ref_annotated'] = False
 
-    print(f'[apply_reference_markup] {len(used)}/{len(elements)} auto elements matched '
-          f'({len(ref_elements)} ref elements, {len(unmatched)} unmatched appended)')
+    matched = len(used)
+    unmatched = len(elements) - matched
+    print(f'[apply_reference_markup] {matched}/{len(elements)} auto elements matched '
+          f'by reference ({len(ref_elements)} ref elements, {unmatched} uncovered)')
 
-    return result
+    # Cache for XSD error mapping
+    _last_markup_result[dmc_string] = elements
+
+    # Document order preserved — return elements as-is
+    return elements
 
 
 def generate_elements_log(document_path: str, elements: List[Dict[str, Any]], output_path: str) -> str:

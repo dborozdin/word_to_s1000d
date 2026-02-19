@@ -34,7 +34,7 @@
                 <button id="edit-ref-btn" class="anno-btn" title="Загрузить / создать эталонную разметку">Эталон</button>
                 <button id="save-ref-btn" class="anno-btn" style="display:none" title="Сохранить изменения в эталоне">Сохранить</button>
                 <button id="run-verify-btn" class="anno-btn" style="display:none" title="Сверить XML с эталоном">Проверить</button>
-                <button id="run-loop-btn" class="anno-btn" style="display:none" title="Запустить цикл автоулучшения">Автоулучшение</button>
+                <button id="run-loop-btn" class="anno-btn" style="display:none" title="Применить разбиение и типы элементов из эталона к XML">Форматировать согласно эталону</button>
                 <div id="loop-progress" class="loop-progress" style="display:none">
                     <div class="loop-progress-bar" id="loop-progress-bar"></div>
                     <span class="loop-progress-text" id="loop-progress-text"></span>
@@ -120,6 +120,15 @@
             <button id="ctx-save" class="ctx-btn ctx-btn-save" title="Сохранить эталон">&#128190; Сохранить</button>
         </div>
         <div class="ctx-preview" id="ctx-preview"></div>
+    </div>
+
+    <!-- XSD issues panel -->
+    <div id="xsd-issues-panel" class="xsd-issues-panel" style="display:none">
+        <div class="xsd-issues-header">
+            <span>XSD ошибки</span>
+            <button id="xsd-issues-close" class="ctx-btn" title="Закрыть">&times;</button>
+        </div>
+        <div id="xsd-issues-list" class="xsd-issues-list"></div>
     </div>
 
     <script>

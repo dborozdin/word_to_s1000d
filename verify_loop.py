@@ -1,6 +1,7 @@
 """
 Verification loop orchestrator.
-Runs N cycles of: convert → compare with reference → generate overrides → repeat.
+Single-pass system: apply user reference markup → generate XML → compare → XSD validate.
+Reports XSD issues mapped to source elements (user-annotated vs auto-classified).
 Can be invoked as CLI or imported by the Flask app.
 """
 
@@ -26,7 +27,7 @@ from comparison_app.pair_resolver import get_pair_by_dmc
 
 
 # ======================================================================
-# Overrides I/O
+# Overrides I/O (kept for backward compat, clear on each run)
 # ======================================================================
 
 OVERRIDES_DIR = os.path.join(PROJECT_ROOT, 'comparison_app', '_overrides')
@@ -34,23 +35,6 @@ OVERRIDES_DIR = os.path.join(PROJECT_ROOT, 'comparison_app', '_overrides')
 
 def _overrides_path(dmc_string: str) -> str:
     return os.path.join(OVERRIDES_DIR, f'{dmc_string}.json')
-
-
-def load_overrides(dmc_string: str) -> Optional[dict]:
-    """Load overrides JSON for a DMC. Returns None if no overrides exist."""
-    path = _overrides_path(dmc_string)
-    if not os.path.isfile(path):
-        return None
-    with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
-
-
-def save_overrides(dmc_string: str, overrides: dict):
-    """Persist overrides JSON for a DMC."""
-    os.makedirs(OVERRIDES_DIR, exist_ok=True)
-    path = _overrides_path(dmc_string)
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(overrides, f, ensure_ascii=False, indent=2)
 
 
 def clear_overrides(dmc_string: str):
@@ -61,74 +45,54 @@ def clear_overrides(dmc_string: str):
 
 
 # ======================================================================
-# Override generation from comparison report
+# XSD error → source element mapping
 # ======================================================================
 
-def generate_overrides(report: ComparisonReport,
-                       ref_elements: List[ElementInfo],
-                       xml_elements: List[ElementInfo]) -> dict:
+def _map_xsd_to_source_elements(
+    xsd_errors: List[dict],
+    source_elements: List[dict],
+) -> List[dict]:
+    """Map XSD validation errors to source elements via text matching.
+
+    For each XSD error, finds the source element whose content matches
+    the error's element_text and reports whether it was user-annotated.
     """
-    Produce an overrides dict from a comparison report.
+    mapped = []
+    for error in xsd_errors:
+        error_text = (error.get('element_text') or '').strip()
+        source_idx = None
+        is_user = False
+        user_type = None
+        original_type = None
+        ref_idx = None
 
-    Rules:
-        - left_unmatched  → force_include (element present in reference, missing in XML)
-        - right_unmatched → skip_rules    (extra element in XML, not in reference)
-        - type_mismatches → reclassify_rules (correct type from reference)
-        - If counts differ significantly → preserve_document_order
+        # Find source element by text prefix match
+        if error_text:
+            for i, elem in enumerate(source_elements):
+                content_start = elem.get('content', '')[:60].strip()
+                if not content_start:
+                    continue
+                prefix = min(20, len(error_text), len(content_start))
+                if prefix >= 3 and error_text[:prefix] == content_start[:prefix]:
+                    source_idx = i
+                    is_user = elem.get('_ref_annotated', False)
+                    user_type = elem.get('_ref_type_raw')
+                    original_type = elem.get('_original_type')
+                    ref_idx = elem.get('_ref_idx')
+                    break
 
-    Uses text-based matching (text_start snippets) instead of index-based
-    to avoid mismatch between XML element indices and source element indices.
-    """
-    overrides: dict = {
-        'reclassify': {},           # legacy (kept for compat, unused)
-        'reclassify_rules': [],     # text-based reclassification
-        'force_include': {},
-        'skip_elements': [],        # legacy (kept for compat, unused)
-        'skip_rules': [],           # text-based skip rules
-        'preserve_document_order': False,
-    }
-
-    # Build quick lookup: idx → ElementInfo
-    ref_by_idx = {e.idx: e for e in ref_elements}
-    xml_by_idx = {e.idx: e for e in xml_elements}
-
-    # Type mismatches → reclassify_rules (text-based)
-    for l_idx, r_idx, l_type, r_type in report.type_mismatches:
-        xml_elem = xml_by_idx.get(r_idx)
-        if xml_elem:
-            overrides['reclassify_rules'].append({
-                'text_start': xml_elem.text_start,
-                'text_end': xml_elem.text_end,
-                'from_type': r_type,
-                'to_type': l_type,
-            })
-
-    # Left unmatched → force_include
-    for idx in report.left_unmatched:
-        elem = ref_by_idx.get(idx)
-        if elem:
-            overrides['force_include'][str(idx)] = {
-                'type': elem.type,
-                'text_start': elem.text_start,
-            }
-
-    # Right unmatched → skip_rules (text-based)
-    for idx in report.right_unmatched:
-        xml_elem = xml_by_idx.get(idx)
-        if xml_elem:
-            overrides['skip_rules'].append({
-                'text_start': xml_elem.text_start,
-                'text_end': xml_elem.text_end,
-                'type': xml_elem.type,
-            })
-
-    # Preserve document order if count difference is significant
-    if report.left_count > 0 and report.right_count > 0:
-        ratio = min(report.left_count, report.right_count) / max(report.left_count, report.right_count)
-        if ratio < 0.5:
-            overrides['preserve_document_order'] = True
-
-    return overrides
+        mapped.append({
+            'source_idx': source_idx,
+            'ref_idx': ref_idx,
+            'text_preview': error_text[:50] if error_text else '',
+            'user_type': user_type,
+            'original_type': original_type,
+            'xsd_error': error.get('message', ''),
+            'is_user_annotated': is_user,
+            'element_tag': error.get('element_tag'),
+            'xpath': error.get('xpath'),
+        })
+    return mapped
 
 
 # ======================================================================
@@ -168,8 +132,6 @@ def _run_conversion(docx_path: str, output_dir: str, dmc_string: str,
 
 def _find_xml_for_dmc(output_dir: str, dmc_string: str) -> Optional[str]:
     """Find the generated XML file for a DMC string in the output directory."""
-    # The file is named like DMC-S5-A-029-00-..._001_ru-RU.xml
-    # The dmc_string already has the DMC- prefix and _001 suffix
     expected = f'{dmc_string}_ru-RU.xml'
     path = os.path.join(output_dir, expected)
     if os.path.isfile(path):
@@ -182,7 +144,7 @@ def _find_xml_for_dmc(output_dir: str, dmc_string: str) -> Optional[str]:
 
 
 # ======================================================================
-# Main verification loop
+# Main verification loop (single pass)
 # ======================================================================
 
 def run_verification_loop(
@@ -195,27 +157,25 @@ def run_verification_loop(
     progress_callback=None,
 ) -> List[dict]:
     """
-    Run the verification loop for a single DMC.
+    Single-pass verification for a single DMC.
 
-    Steps per cycle:
-        1. Load overrides (if any from previous cycle)
-        2. Run conversion (docx → XML)
-        3. Extract elements from generated XML
-        4. Compare with reference
-        5. If score >= threshold → stop
-        6. Generate overrides from comparison report → save
-        7. Repeat
+    1. Clear overrides
+    2. Convert DOCX → XML (apply_reference_markup sets user types in-place)
+    3. Compare XML elements against reference
+    4. Validate XSD with structured error details
+    5. Map XSD errors to source elements (user-annotated vs auto)
 
     Args:
         dmc_string: DMC identifier
         input_dir: Path to doc_source directory
         output_dir: Path to output suite directory
-        max_cycles: Maximum number of improvement cycles
+        max_cycles: Unused (kept for API compat)
         threshold: Convergence score threshold
         llm_config: Optional LLM configuration
+        progress_callback: Optional callback(cycle, total, status)
 
     Returns:
-        List of cycle result dicts with keys: cycle, score, report
+        List with single result dict: cycle, score, report, xsd_valid, xsd_element_issues
     """
     # Load reference
     ref_data = get_reference(dmc_string)
@@ -245,96 +205,84 @@ def run_verification_loop(
     if dm_code and is_procedure_info_code(dm_code.get('infoCode', '')):
         module_type = 'procedure'
 
-    results = []
+    # ── Single pass: reference markup → conversion → compare → XSD ──
+    clear_overrides(dmc_string)
 
-    for cycle_num in range(1, max_cycles + 1):
-        print(f'\n[verify_loop] Cycle {cycle_num}/{max_cycles} for {dmc_string}')
+    print(f'\n[verify_loop] Single pass (reference markup) for {dmc_string}')
 
-        if progress_callback:
-            progress_callback(cycle_num, max_cycles, 'converting')
+    if progress_callback:
+        progress_callback(1, 1, 'converting')
 
-        # Step 1: Run conversion
-        try:
-            _run_conversion(
-                docx_path=docx_path,
-                output_dir=output_dir,
-                dmc_string=dmc_string,
-                llm_config=llm_config,
-                dm_code=dm_code,
-                tech_name=tech_name,
-                info_name=info_name,
-                graphic_prefix=graphic_prefix,
-                module_type=module_type,
-            )
-        except Exception as e:
-            results.append({'cycle': cycle_num, 'error': f'Conversion failed: {e}'})
-            break
+    # Convert
+    try:
+        _run_conversion(
+            docx_path=docx_path, output_dir=output_dir, dmc_string=dmc_string,
+            llm_config=llm_config, dm_code=dm_code, tech_name=tech_name,
+            info_name=info_name, graphic_prefix=graphic_prefix, module_type=module_type,
+        )
+    except Exception as e:
+        return [{'cycle': 1, 'error': f'Conversion failed: {e}'}]
 
-        # Step 2: Find generated XML
-        xml_path = _find_xml_for_dmc(output_dir, dmc_string)
-        if not xml_path:
-            results.append({'cycle': cycle_num, 'error': 'Generated XML not found after conversion'})
-            break
+    # Find generated XML
+    xml_path = _find_xml_for_dmc(output_dir, dmc_string)
+    if not xml_path:
+        return [{'cycle': 1, 'error': 'Generated XML not found after conversion'}]
 
-        # Step 3: Extract XML elements
-        try:
-            xml_elements = extract_xml_elements(xml_path)
-        except Exception as e:
-            results.append({'cycle': cycle_num, 'error': f'XML extraction failed: {e}'})
-            break
+    # Extract XML elements
+    xml_elements = extract_xml_elements(xml_path)
 
-        # Step 4: Compare
-        if progress_callback:
-            progress_callback(cycle_num, max_cycles, 'comparing')
+    # Compare with reference
+    if progress_callback:
+        progress_callback(1, 1, 'comparing')
 
-        report = compare_elements(ref_elements, xml_elements)
-        cycle_result = {
-            'cycle': cycle_num,
-            'score': report.score,
-            'report': report.to_dict(),
-        }
-        results.append(cycle_result)
+    report = compare_elements(ref_elements, xml_elements)
 
-        print(f'[verify_loop]   Score: {report.score:.3f}  '
-              f'(matched={len(report.matched_pairs)}, '
-              f'left_unmatched={len(report.left_unmatched)}, '
-              f'right_unmatched={len(report.right_unmatched)})')
+    print(f'[verify_loop]   Score: {report.score:.3f}  '
+          f'(matched={len(report.matched_pairs)}, '
+          f'left_unmatched={len(report.left_unmatched)}, '
+          f'right_unmatched={len(report.right_unmatched)})')
 
-        # Step 4b: Validate generated XML against XSD
-        xsd_valid = True
-        xsd_message = ''
-        try:
-            from generators.s1000d_generator import S1000DGenerator
-            schema = 'xsd/proced.xsd' if module_type == 'procedure' else 'xsd/descript.xsd'
-            xsd_valid, xsd_message = S1000DGenerator.validate_xml_against_schema(
-                xml_path, schema_file=schema)
-        except Exception as e:
-            xsd_message = f'XSD validation error: {e}'
-            xsd_valid = False
+    # XSD validation with structured errors
+    xsd_valid = True
+    xsd_structured = []
+    xsd_element_issues = []
 
-        cycle_result['xsd_valid'] = xsd_valid
-        if not xsd_valid:
-            print(f'[verify_loop]   XSD validation: FAILED')
-            # Log first few errors
-            for line in xsd_message.split('\n')[:5]:
-                print(f'[verify_loop]     {line}')
-        else:
-            print(f'[verify_loop]   XSD validation: PASSED')
+    try:
+        from generators.s1000d_generator import S1000DGenerator
+        schema = 'xsd/proced.xsd' if module_type == 'procedure' else 'xsd/descript.xsd'
+        xsd_valid, xsd_structured = S1000DGenerator.validate_xml_with_details(
+            xml_path, schema_file=schema)
+    except Exception as e:
+        xsd_structured = [{'line': 0, 'column': 0, 'message': f'XSD validation error: {e}',
+                           'element_tag': None, 'element_text': None, 'xpath': None}]
+        xsd_valid = False
 
-        # Step 5: Check convergence
-        if report.score >= threshold:
-            print(f'[verify_loop]   Converged at cycle {cycle_num}!')
-            break
+    if not xsd_valid:
+        print(f'[verify_loop]   XSD validation: FAILED ({len(xsd_structured)} errors)')
+        for err in xsd_structured[:5]:
+            print(f'[verify_loop]     Line {err["line"]}: {err["message"][:80]}')
 
-        # Step 6: Generate and save overrides
-        overrides = generate_overrides(report, ref_elements, xml_elements)
-        save_overrides(dmc_string, overrides)
-        print(f'[verify_loop]   Overrides saved: '
-              f'reclassify_rules={len(overrides.get("reclassify_rules", []))}, '
-              f'force_include={len(overrides["force_include"])}, '
-              f'skip_rules={len(overrides.get("skip_rules", []))}')
+        # Map XSD errors to source elements
+        from parsers.elements_analyzer import get_last_markup_result
+        source_elements = get_last_markup_result(dmc_string)
+        if source_elements:
+            xsd_element_issues = _map_xsd_to_source_elements(xsd_structured, source_elements)
+            user_issues = [i for i in xsd_element_issues if i['is_user_annotated']]
+            auto_issues = [i for i in xsd_element_issues if not i['is_user_annotated']]
+            print(f'[verify_loop]   XSD issues: {len(user_issues)} from user markup, '
+                  f'{len(auto_issues)} from auto-classification')
+    else:
+        print(f'[verify_loop]   XSD validation: PASSED')
 
-    return results
+    result = {
+        'cycle': 1,
+        'score': report.score,
+        'report': report.to_dict(),
+        'xsd_valid': xsd_valid,
+        'xsd_element_issues': xsd_element_issues,
+    }
+
+    return [result]
 
 
 # ======================================================================
@@ -342,13 +290,11 @@ def run_verification_loop(
 # ======================================================================
 
 def main():
-    """CLI: python verify_loop.py <dmc_string> [--cycles N] [--threshold T]"""
+    """CLI: python verify_loop.py <dmc_string> [--threshold T]"""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Run verification loop for a DMC')
+    parser = argparse.ArgumentParser(description='Run verification for a DMC')
     parser.add_argument('dmc_string', help='DMC string identifier')
-    parser.add_argument('--cycles', type=int, default=None,
-                        help='Max improvement cycles (overrides config.ini)')
     parser.add_argument('--threshold', type=float, default=None,
                         help='Convergence threshold (overrides config.ini)')
     args = parser.parse_args()
@@ -361,7 +307,6 @@ def main():
                              config.get('processing', 'input_dir', fallback='doc_source'))
     output_dir = os.path.join(PROJECT_ROOT,
                               config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
-    max_cycles = args.cycles or config.getint('verification', 'max_cycles', fallback=3)
     threshold = args.threshold or config.getfloat('verification', 'convergence_threshold', fallback=0.95)
 
     llm_config = {
@@ -374,29 +319,34 @@ def main():
         'cache_dir': config.get('llm', 'cache_dir', fallback='.llm_cache'),
     }
 
-    print(f'Running verification loop for {args.dmc_string}')
+    print(f'Running verification for {args.dmc_string}')
     print(f'  Input dir:  {input_dir}')
     print(f'  Output dir: {output_dir}')
-    print(f'  Max cycles: {max_cycles}')
     print(f'  Threshold:  {threshold}')
 
     results = run_verification_loop(
         dmc_string=args.dmc_string,
         input_dir=input_dir,
         output_dir=output_dir,
-        max_cycles=max_cycles,
         threshold=threshold,
         llm_config=llm_config,
     )
 
     # Print summary
     print('\n' + '=' * 60)
-    print('Verification loop results:')
+    print('Verification results:')
     for r in results:
         if 'error' in r:
-            print(f"  Cycle {r['cycle']}: ERROR - {r['error']}")
+            print(f"  ERROR: {r['error']}")
         else:
-            print(f"  Cycle {r['cycle']}: score={r['score']:.3f}")
+            xsd_status = 'PASS' if r.get('xsd_valid') else 'FAIL'
+            issues = r.get('xsd_element_issues', [])
+            user_issues = [i for i in issues if i.get('is_user_annotated')]
+            print(f"  Score: {r['score']:.3f}  XSD: {xsd_status}")
+            if user_issues:
+                print(f"  XSD issues from user markup: {len(user_issues)}")
+                for iss in user_issues[:5]:
+                    print(f"    - [{iss['user_type']}] \"{iss['text_preview']}\" — {iss['xsd_error'][:60]}")
     print('=' * 60)
 
     # Return exit code based on final score

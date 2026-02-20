@@ -633,15 +633,51 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
     current_list_items = []
     current_list_type = None
 
+    def _build_nested_list_xml(items, prefix):
+        """Build nested <randomList> XML from items with nesting levels.
+
+        items: list of (content, level) tuples
+        S1000D structure: listItem -> para -> (text + optional nested randomList)
+        """
+        def _build_items(item_list):
+            parts = []
+            i = 0
+            while i < len(item_list):
+                content, level = item_list[i]
+                # Collect nested items (items with level > current)
+                nested = []
+                j = i + 1
+                while j < len(item_list) and item_list[j][1] > level:
+                    nested.append(item_list[j])
+                    j += 1
+
+                if nested:
+                    # Parent item with nested sub-list inside <para>
+                    nested_xml = _build_items(nested)
+                    nested_list = f'<randomList listItemPrefix="{prefix}">{nested_xml}</randomList>'
+                    parts.append(f'<listItem><para>{content}{nested_list}</para></listItem>')
+                else:
+                    parts.append(f'<listItem><para>{content}</para></listItem>')
+                i = j
+            return ''.join(parts)
+
+        items_xml = _build_items(items)
+        return f'<randomList listItemPrefix="{prefix}">{items_xml}</randomList>'
+
     def flush_current_list():
         nonlocal current_list_items, current_list_type, xml_parts, current_levelled_para, in_levelled_para
         if current_list_items:
-            # Generate randomList XML wrapped in <para> — per XSD, <randomList> is
-            # only valid inside <para>, not as a direct child of <levelledPara>.
-            # levelledPara allows: title?, warning*, caution*, (para|note|table|figure)*, levelledPara*
-            items_xml = ''.join([f"<listItem><para>{item}</para></listItem>" for item in current_list_items])
             prefix = 'pf02' if current_list_type == 'unnumbered_list' else 'pf01'
-            list_xml = f'<para><randomList listItemPrefix="{prefix}">{items_xml}</randomList></para>'
+
+            # Normalize levels: convert absolute values (EMU, ilvl) to relative 0, 1, 2...
+            # e.g. [539750, 648335, 648335, 539750] → [0, 1, 1, 0]
+            raw_levels = sorted(set(lvl for _, lvl in current_list_items))
+            level_map = {v: i for i, v in enumerate(raw_levels)}
+            current_list_items = [(c, level_map[l]) for c, l in current_list_items]
+
+            # Generate randomList XML (with nesting support) wrapped in <para>
+            # per XSD: <randomList> is only valid inside <para>
+            list_xml = f'<para>{_build_nested_list_xml(current_list_items, prefix)}</para>'
 
             if in_levelled_para:
                 current_levelled_para.append(list_xml)
@@ -788,14 +824,15 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
 
         elif elem_type in ['numbered_list', 'unnumbered_list']:
             # DON'T flush current_levelled_para - lists should be inside the current section
-            # Check if this continues the current list
+            # Store (content, list_level) tuples for nested list support
+            elem_level = elem.get('list_level', 0)
             if elem_type == current_list_type:
-                current_list_items.append(content)
+                current_list_items.append((content, elem_level))
             else:
                 # Flush previous list (will be added to current_levelled_para if inside one)
                 flush_current_list()
                 current_list_type = elem_type
-                current_list_items = [content]
+                current_list_items = [(content, elem_level)]
 
         elif elem_type == 'paragraph':
             # Flush any pending list before adding paragraph (preserve document order)

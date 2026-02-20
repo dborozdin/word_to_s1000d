@@ -424,8 +424,10 @@ class S1000DHTMLRenderer:
         parts.append('</div>')
         return ''.join(parts)
 
-    def _render_random_list(self, rlist) -> str:
-        """Render <randomList> — pf01 as numbered <ol>, pf02 as bulleted <ul>."""
+    def _render_random_list(self, rlist, nested=False) -> str:
+        """Render <randomList> — pf01 as numbered <ol>, pf02 as bulleted <ul>.
+        When nested=True, skip annotation to avoid creating extra elements
+        that shift type-grouped matching in _syncS1000dElements()."""
         prefix = rlist.get('listItemPrefix', 'pf02')
         if prefix == 'pf01':
             tag = 'ol'
@@ -435,24 +437,39 @@ class S1000DHTMLRenderer:
             tag = 'ul'
             anno_type = 'unnumbered_list'
             css_class = 'random-list'
-        parts = [f'<{tag} class="{css_class}" {self._anno(anno_type)}>']
+        anno_attr = '' if nested else (' ' + self._anno(anno_type))
+        parts = [f'<{tag} class="{css_class}"{anno_attr}>']
         for item in rlist.findall('listItem'):
             item_html = ''
             for child in item:
                 if _local_tag(child) == 'para':
                     item_html += self._get_para_html(child)
+                    # Recursively render nested lists inside <para>
+                    for sub in child:
+                        if _local_tag(sub) == 'randomList':
+                            item_html += self._render_random_list(sub, nested=True)
+                        elif _local_tag(sub) == 'sequentialList':
+                            item_html += self._render_sequenced_list(sub, nested=True)
             parts.append(f'<li>{item_html}</li>')
         parts.append(f'</{tag}>')
         return ''.join(parts)
 
-    def _render_sequenced_list(self, slist) -> str:
-        """Render <sequentialList> as <ol>."""
-        parts = [f'<ol class="sequenced-list" {self._anno("numbered_list")}>']
+    def _render_sequenced_list(self, slist, nested=False) -> str:
+        """Render <sequentialList> as <ol>.
+        When nested=True, skip annotation to avoid extra elements."""
+        anno_attr = '' if nested else (' ' + self._anno("numbered_list"))
+        parts = [f'<ol class="sequenced-list"{anno_attr}>']
         for item in slist.findall('listItem'):
             item_html = ''
             for child in item:
                 if _local_tag(child) == 'para':
                     item_html += self._get_para_html(child)
+                    # Recursively render nested lists inside <para>
+                    for sub in child:
+                        if _local_tag(sub) == 'randomList':
+                            item_html += self._render_random_list(sub, nested=True)
+                        elif _local_tag(sub) == 'sequentialList':
+                            item_html += self._render_sequenced_list(sub, nested=True)
             parts.append(f'<li>{item_html}</li>')
         parts.append('</ol>')
         return ''.join(parts)

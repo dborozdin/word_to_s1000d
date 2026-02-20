@@ -676,8 +676,11 @@ body.show-anno-frame [data-anno-idx].anno-highlight {
 }
 
 body.show-anno-frame .anno-marker.anno-highlight {
+    /* Extend to full text width across the PDF page */
+    width: 100% !important;
     border-left-width: 5px;
-    background: color-mix(in srgb, var(--anno-clr, #e67e22) 15%, transparent);
+    border-right: 3px solid var(--anno-clr, #e67e22);
+    background: color-mix(in srgb, var(--anno-clr, #e67e22) 10%, transparent);
     box-shadow: 0 0 8px rgba(0,0,0,0.15);
 }
 

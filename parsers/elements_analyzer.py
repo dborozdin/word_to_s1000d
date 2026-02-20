@@ -467,7 +467,8 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 'end_para': para_idx,  # Will be updated when list ends
                 'content': clean_text,
                 'xml_example': xml_example,
-                'details': f'Элемент списка ({list_type})'
+                'details': f'Элемент списка ({list_type})',
+                'list_level': _get_list_level(paragraph)
             }
             elements.append(element_info)
             continue
@@ -768,6 +769,47 @@ def _is_main_section_header(text: str) -> bool:
     """Check if text is a main section header (1., 2., 3., etc.)."""
     pattern = r'^\s*\d+\.?\s+'
     return bool(re.match(pattern, text))
+
+
+def _get_list_level(paragraph) -> int:
+    """Get list nesting level from DOCX.
+
+    Tries in order: numPr.ilvl, raw XML ilvl, style left_indent,
+    paragraph left_indent. Returns a numeric value where higher = more nested.
+    The processor normalizes these to relative 0/1/2... levels.
+    """
+    try:
+        numPr = getattr(paragraph.paragraph_format, 'numPr', None)
+        if numPr is not None:
+            ilvl = getattr(numPr, 'ilvl', None)
+            if ilvl is not None and hasattr(ilvl, 'val'):
+                return ilvl.val
+        # Fallback: check raw XML for ilvl
+        ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+        pPr = paragraph._element.find('.//w:pPr', ns)
+        if pPr is not None:
+            numPr_elem = pPr.find('.//w:numPr', ns)
+            if numPr_elem is not None:
+                ilvl_elem = numPr_elem.find('.//w:ilvl', ns)
+                if ilvl_elem is not None:
+                    return int(ilvl_elem.get(f'{{{ns["w"]}}}val', '0'))
+    except Exception:
+        pass
+
+    # Fallback: use effective left indent (paragraph-level, then style-level).
+    # Returns raw EMU value — the processor normalizes relative levels.
+    try:
+        li = paragraph.paragraph_format.left_indent
+        if li is not None and li > 0:
+            return li
+        if paragraph.style:
+            style_li = paragraph.style.paragraph_format.left_indent
+            if style_li is not None and style_li > 0:
+                return style_li
+    except Exception:
+        pass
+
+    return 0
 
 
 def _get_list_type(paragraph, para_idx: int = None) -> str:

@@ -668,6 +668,19 @@ body.show-annotations .anno-marker {
     transform-origin: left top;
 }
 
+/* Optional frame for current element (checkbox toggle) */
+body.show-anno-frame [data-anno-idx].anno-highlight {
+    outline: 3px solid var(--anno-clr, #e67e22);
+    outline-offset: 2px;
+    background: color-mix(in srgb, var(--anno-clr, #e67e22) 10%, transparent);
+}
+
+body.show-anno-frame .anno-marker.anno-highlight {
+    border-left-width: 5px;
+    background: color-mix(in srgb, var(--anno-clr, #e67e22) 15%, transparent);
+    box-shadow: 0 0 8px rgba(0,0,0,0.15);
+}
+
 /* ==========================================================================
    Mismatch indicator badge (header)
    ========================================================================== */

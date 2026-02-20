@@ -526,6 +526,28 @@
     <tr><td><code>&lt;note&gt;</code></td><td>note</td></tr>
     <tr><td><code>&lt;proceduralStep&gt;</code></td><td>step (с номером)</td></tr>
   </table>
+
+  <h4>9.3. Синхронизация индексов с эталоном</h4>
+  <p>Рендерер назначает <code>data-anno-idx</code> последовательно (1, 2, 3&hellip;),
+  но в эталоне индексы могут иметь разрывы из-за элементов с типом <code>_skip</code>.
+  Функция <code>_syncS1000dElements()</code> (в <span class="file-ref">comparison.js</span>)
+  переназначает индексы правой панели по эталону:</p>
+  <ul>
+    <li>Перебирает элементы эталона в порядке <code>idx</code></li>
+    <li>Пропускает <code>_skip</code> элементы <strong>без потребления</strong> DOM-слотов
+        (в XML они удалены)</li>
+    <li>K-му DOM-элементу правой панели назначается <code>idx</code> K-го не-skip элемента
+        эталона</li>
+  </ul>
+  <p>Это обеспечивает совпадение <code>data-anno-idx</code> между панелями,
+  что делает навигацию (<code>&laquo;</code> / <code>&raquo;</code>) корректной &mdash;
+  обе панели прокручиваются к одному и тому же сопоставленному элементу.</p>
+
+  <h4>9.4. Составная нумерация элементов</h4>
+  <p>Формат метки элемента: <code>&lt;тип&gt;&lt;номер_типа&gt; [абсолютный_индекс]</code></p>
+  <p>Пример: <code>пар.3 [5]</code> &mdash; 3-й параграф в документе, абсолютный индекс 5.</p>
+  <p>Per-type счётчики ведутся отдельно для каждой панели, что позволяет визуально
+  сравнить количество элементов каждого типа между PDF-разметкой и сгенерированным XML.</p>
 </div>
 
 <!-- Шаг 10 -->
@@ -698,6 +720,30 @@
       <td>При merge/split/change type &mdash; перерисовка разметки всей страницы или документа</td>
       <td><span class="badge badge-current">Частично реализовано</span></td>
       <td><code>rebuildBadges()</code> перестраивает бейджи после операций. Требуется проверка полноты перерисовки</td>
+    </tr>
+    <tr>
+      <td>11.5</td>
+      <td>Составная нумерация элементов: <code>&lt;тип&gt;&lt;N&gt; [абс]</code> для сравнения количества по типам</td>
+      <td><span class="badge badge-current">Реализовано</span></td>
+      <td>Формат метки: <code>пар.3 [5]</code> &mdash; 3-й параграф, абсолютный индекс 5.
+      Per-type счётчики в <code>_syncPdfMarkers()</code> и <code>injectBadges()</code>.
+      Позволяет сравнить количество параграфов, списков и т.д. между панелями</td>
+    </tr>
+    <tr>
+      <td>11.6</td>
+      <td>Навигация <code>&laquo;</code> / <code>&raquo;</code> прокручивает обе панели до сопоставленного элемента</td>
+      <td><span class="badge badge-current">Реализовано</span></td>
+      <td>Функция <code>_syncS1000dElements()</code> переназначает <code>data-anno-idx</code>
+      на правой панели по эталону, пропуская <code>_skip</code> без потребления DOM-слотов.
+      После этого <code>navigateTo()</code> прокручивает обе панели к элементу с одинаковым idx</td>
+    </tr>
+    <tr>
+      <td>11.7</td>
+      <td>Опциональная рамка текущего выбранного элемента на обеих панелях</td>
+      <td><span class="badge badge-current">Реализовано</span></td>
+      <td>Чекбокс &laquo;Рамка элемента&raquo; добавляет CSS-класс <code>show-anno-frame</code>
+      на <code>&lt;body&gt;</code>, который усиливает <code>outline</code> на <code>.anno-highlight</code>
+      элементах обеих панелей</td>
     </tr>
   </table>
 </div>

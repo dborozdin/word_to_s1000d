@@ -537,16 +537,23 @@ def compare_elements(left: List[ElementInfo], right: List[ElementInfo]) -> Compa
     for li, elem in enumerate(left):
         if li in left_matched:
             continue
-        l_text = _norm_text(elem.text_start + ' ' + elem.text_end)
-        if not l_text:
+        l_start = _norm_text(elem.text_start)
+        l_full = _norm_text(elem.text_start + ' ' + elem.text_end)
+        if not l_start and not l_full:
             continue
         for ri, r_elem in enumerate(right):
             if ri in right_matched:
                 continue
-            r_text = _norm_text(r_elem.text_start + ' ' + r_elem.text_end)
-            if not r_text:
+            r_start = _norm_text(r_elem.text_start)
+            r_full = _norm_text(r_elem.text_start + ' ' + r_elem.text_end)
+            if not r_start and not r_full:
                 continue
-            sim = difflib.SequenceMatcher(None, l_text, r_text).ratio()
+            # Use max of text_start similarity and full text similarity.
+            # This handles span>1 elements where text_end may diverge
+            # while text_start (the beginning) matches well.
+            sim_start = difflib.SequenceMatcher(None, l_start, r_start).ratio() if l_start and r_start else 0
+            sim_full = difflib.SequenceMatcher(None, l_full, r_full).ratio() if l_full and r_full else 0
+            sim = max(sim_start, sim_full)
             if sim >= 0.35:
                 candidates.append((sim, li, ri))
 

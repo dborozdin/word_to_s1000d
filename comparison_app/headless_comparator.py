@@ -454,6 +454,33 @@ def _compute_lcs(a: list, b: list) -> Tuple[dict, dict]:
     return left_matched, right_matched
 
 
+def _norm_type(t: str) -> str:
+    """Normalize element type for comparison (reduces false type mismatches)."""
+    if t in ('paragraph', 'para'):
+        return 'para'
+    if t in ('illustration', 'figure', 'illustration_reference'):
+        return 'figure'
+    if t in ('numbered_list', 'unnumbered_list'):
+        return 'list'
+    if t in ('nested_numbered_list', 'nested_unnumbered_list'):
+        return 'nested_list'
+    return t
+
+
+_NUM_PREFIX_RE = re.compile(r'^[\d]+(?:\.[\d]+)*\s+')
+_FIGURE_PREFIX_RE = re.compile(r'^рисунок\s+\d+\s*[–—\-]\s*', re.IGNORECASE)
+_DASH_PREFIX_RE = re.compile(r'^[–—\-]\s*')
+
+
+def _norm_text(text: str) -> str:
+    """Normalize text for matching: lowercase, strip numbering/figure prefixes."""
+    text = text.strip().lower()
+    text = _NUM_PREFIX_RE.sub('', text)
+    text = _FIGURE_PREFIX_RE.sub('', text)
+    text = _DASH_PREFIX_RE.sub('', text)
+    return text
+
+
 def compare_elements(left: List[ElementInfo], right: List[ElementInfo]) -> ComparisonReport:
     """
     Compare two element lists using content-based matching.
@@ -501,34 +528,41 @@ def compare_elements(left: List[ElementInfo], right: List[ElementInfo]) -> Compa
                     break
 
     # --- Phase 2: Content-based matching for remaining ---
+    # Uses normalized text (lowercase, stripped numbering/figure prefixes)
+    # to handle cases like "1 МЕРЫ БЕЗОПАСНОСТИ" ↔ "Меры безопасности".
+    # Global best-first approach: collect all candidate pairs, sort by
+    # similarity descending, and greedily assign best matches first.
+    # This prevents earlier elements from "stealing" good matches.
+    candidates = []
     for li, elem in enumerate(left):
         if li in left_matched:
             continue
-        l_text = (elem.text_start + ' ' + elem.text_end).strip()
+        l_text = _norm_text(elem.text_start + ' ' + elem.text_end)
         if not l_text:
             continue
-        best_ri = None
-        best_sim = 0.4  # minimum threshold
         for ri, r_elem in enumerate(right):
             if ri in right_matched:
                 continue
-            r_text = (r_elem.text_start + ' ' + r_elem.text_end).strip()
+            r_text = _norm_text(r_elem.text_start + ' ' + r_elem.text_end)
             if not r_text:
                 continue
             sim = difflib.SequenceMatcher(None, l_text, r_text).ratio()
-            if sim > best_sim:
-                best_sim = sim
-                best_ri = ri
-        if best_ri is not None:
-            left_matched[li] = best_ri
-            right_matched[best_ri] = li
+            if sim >= 0.35:
+                candidates.append((sim, li, ri))
 
-    # --- Phase 3: LCS fallback for remaining unmatched (by type) ---
+    candidates.sort(key=lambda x: -x[0])  # best similarity first
+    for sim, li, ri in candidates:
+        if li in left_matched or ri in right_matched:
+            continue
+        left_matched[li] = ri
+        right_matched[ri] = li
+
+    # --- Phase 3: LCS fallback for remaining unmatched (by normalized type) ---
     unmatched_left = [i for i in range(len(left)) if i not in left_matched]
     unmatched_right = [i for i in range(len(right)) if i not in right_matched]
     if unmatched_left and unmatched_right:
-        ul_types = [left[i].type for i in unmatched_left]
-        ur_types = [right[i].type for i in unmatched_right]
+        ul_types = [_norm_type(left[i].type) for i in unmatched_left]
+        ur_types = [_norm_type(right[i].type) for i in unmatched_right]
         lcs_l, lcs_r = _compute_lcs(ul_types, ur_types)
         for ul_pos, ur_pos in lcs_l.items():
             li = unmatched_left[ul_pos]
@@ -540,16 +574,16 @@ def compare_elements(left: List[ElementInfo], right: List[ElementInfo]) -> Compa
     for li, ri in sorted(left_matched.items()):
         report.matched_pairs.append((left[li].idx, right[ri].idx))
 
-        # Track type mismatches
+        # Track type mismatches (using raw types for reporting)
         if left[li].type != right[ri].type:
             report.type_mismatches.append((
                 left[li].idx, right[ri].idx,
                 left[li].type, right[ri].type
             ))
 
-        # Text similarity
-        l_text = left[li].text_start + left[li].text_end
-        r_text = right[ri].text_start + right[ri].text_end
+        # Text similarity (on normalized text for fair comparison)
+        l_text = _norm_text(left[li].text_start + ' ' + left[li].text_end)
+        r_text = _norm_text(right[ri].text_start + ' ' + right[ri].text_end)
         if l_text and r_text:
             sim = difflib.SequenceMatcher(None, l_text, r_text).ratio()
             report.text_similarities.append((left[li].idx, right[ri].idx, round(sim, 3)))
@@ -561,8 +595,9 @@ def compare_elements(left: List[ElementInfo], right: List[ElementInfo]) -> Compa
     max_count = max(len(left), len(right))
     match_ratio = len(report.matched_pairs) / max_count if max_count > 0 else 0
 
+    # Use normalized types for scoring: paragraph=para, illustration=figure, etc.
     type_correct = sum(1 for li, ri in left_matched.items()
-                       if left[li].type == right[ri].type)
+                       if _norm_type(left[li].type) == _norm_type(right[ri].type))
     type_ratio = type_correct / len(left_matched) if left_matched else 0
 
     avg_text_sim = 0.0

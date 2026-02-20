@@ -8,10 +8,22 @@ Parsing heuristics are documented in parsing_rules.json at project root.
 import os
 import re
 import json
+import hashlib
 from typing import Dict, List, Optional, Tuple, Any
 from docx import Document
 from docx.shared import Inches
 import datetime
+
+
+def compute_stable_id(seq_index: int, element_type: str, text: str) -> str:
+    """Generate a stable 12-hex element identifier from DOCX parsing.
+
+    Uses sequential index + type + text prefix to ensure uniqueness
+    even for duplicate/similar paragraphs.
+    """
+    prefix = text[:80].strip().lower() if text else ""
+    raw = f"{seq_index}|{element_type}|{prefix}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
 
 def get_parsing_rules() -> dict:
@@ -687,6 +699,12 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
 
         processed_elements.append(elem)
         i += 1
+
+    # Assign stable_id to every element based on final position, type, and content
+    for idx, elem in enumerate(processed_elements):
+        elem['stable_id'] = compute_stable_id(
+            idx, elem.get('type', ''), elem.get('content', '')
+        )
 
     return processed_elements
 

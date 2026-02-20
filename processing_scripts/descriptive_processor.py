@@ -210,6 +210,100 @@ def map_heading_to_info_code(heading: str, component_index: int = 0) -> Dict:
     return base_dm_code
 
 
+def _save_element_map_sidecar(xml_filepath: str, elements: List[Dict]) -> None:
+    """Save element map sidecar JSON alongside the generated XML.
+
+    The sidecar maps sequential element positions (in XML tree order,
+    matching the renderer's annotation counter) to stable_id values
+    from DOCX analysis.
+
+    Algorithm:
+    1. Parse the generated XML with extract_xml_elements() to get elements
+       in the exact same order as the S1000D renderer walks the tree.
+    2. For each XML element, find the best matching DOCX element by text
+       similarity and assign its stable_id.
+    3. Save the mapping so the renderer can emit data-element-id attributes.
+
+    This approach is necessary because XSD reordering (warnings/cautions
+    before paragraphs, figure repositioning) changes element order in XML
+    relative to the original DOCX document order.
+    """
+    import json as _json
+    from difflib import SequenceMatcher
+
+    # Step 1: Extract elements from final XML in renderer's traversal order
+    from comparison_app.headless_comparator import extract_xml_elements
+    try:
+        xml_elements = extract_xml_elements(xml_filepath)
+    except Exception as e:
+        print(f"  [sidecar] Failed to extract XML elements: {e}")
+        return
+
+    if not xml_elements:
+        return
+
+    # Step 2: Build lookup from DOCX elements (those that have stable_id)
+    docx_candidates = []
+    for elem in elements:
+        sid = elem.get('stable_id', '')
+        if not sid or elem.get('type', '') == '_skip':
+            continue
+        text = (elem.get('content', '') or '').strip().lower()
+        docx_candidates.append({
+            'stable_id': sid,
+            'type': elem.get('type', ''),
+            'text': text,
+            'used': False,
+        })
+
+    # Step 3: Match each XML element to best DOCX element by text
+    element_map = []
+    for xml_el in xml_elements:
+        xml_text = ((xml_el.text_start or '') + ' ' + (xml_el.text_end or '')).strip().lower()
+
+        best_idx = -1
+        best_score = -1.0
+
+        for i, cand in enumerate(docx_candidates):
+            if cand['used']:
+                continue
+
+            # Prefer type match
+            type_bonus = 0.1 if cand['type'] == xml_el.type else 0.0
+
+            if not xml_text and not cand['text']:
+                score = 0.5 + type_bonus
+            elif not xml_text or not cand['text']:
+                score = type_bonus
+            else:
+                score = SequenceMatcher(None, xml_text[:120], cand['text'][:120]).ratio() + type_bonus
+
+            if score > best_score:
+                best_score = score
+                best_idx = i
+
+        stable_id = ''
+        if best_idx >= 0 and best_score >= 0.3:
+            stable_id = docx_candidates[best_idx]['stable_id']
+            docx_candidates[best_idx]['used'] = True
+
+        element_map.append({
+            'seq': xml_el.idx,
+            'stable_id': stable_id,
+            'type': xml_el.type,
+            'text_start': (xml_el.text_start or '')[:60],
+        })
+
+    if not element_map:
+        return
+
+    sidecar_path = os.path.splitext(xml_filepath)[0] + '_element_map.json'
+    with open(sidecar_path, 'w', encoding='utf-8') as f:
+        _json.dump({'element_map': element_map}, f, ensure_ascii=False, indent=2)
+    matched = sum(1 for e in element_map if e['stable_id'])
+    print(f"  Element map sidecar: {os.path.basename(sidecar_path)} ({len(element_map)} elements, {matched} matched)")
+
+
 def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dict = None,
                                  dm_code_override: Dict = None, tech_name_override: str = None,
                                  info_name_override: str = None, skip_pmc: bool = False,
@@ -392,6 +486,9 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
         # Generate XML file
         filepath = generator.generate_data_module(dm_config, output_dir, illustrations, figure_info)
         generated_files.append(filepath)
+
+        # Generate element map sidecar JSON for stable ID matching
+        _save_element_map_sidecar(filepath, elements)
 
         # Generate placeholder images for missing illustrations
         ensure_missing_placeholders(figure_info, output_dir)

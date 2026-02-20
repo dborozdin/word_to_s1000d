@@ -10,15 +10,21 @@ from html import escape
 class S1000DHTMLRenderer:
     """Renders S1000D XML data modules to HTML."""
 
-    def __init__(self, graphics_base_url: str = '/graphics'):
+    def __init__(self, graphics_base_url: str = '/graphics', element_map: list = None):
         self.graphics_base_url = graphics_base_url
         self._section_counter = 0
         self._anno_counter = 0
+        self._element_map = element_map or []
 
     def _anno(self, anno_type: str) -> str:
-        """Return data-anno-idx and data-anno-type attributes string."""
+        """Return data-anno-idx, data-anno-type, and data-element-id attributes."""
         self._anno_counter += 1
-        return f'data-anno-idx="{self._anno_counter}" data-anno-type="{anno_type}"'
+        eid_attr = ''
+        if self._anno_counter <= len(self._element_map):
+            eid = self._element_map[self._anno_counter - 1].get('stable_id', '')
+            if eid:
+                eid_attr = f' data-element-id="{eid}"'
+        return f'data-anno-idx="{self._anno_counter}" data-anno-type="{anno_type}"{eid_attr}'
 
     def render(self, xml_path: str) -> str:
         """Parse XML file and render to HTML string."""
@@ -530,7 +536,23 @@ def _text_content_before_child(parent, child_elem) -> str:
     return parent.text or ''
 
 
+def _load_element_map(xml_path: str) -> list:
+    """Load element map sidecar JSON for an XML file (if it exists)."""
+    import json as _json
+    import os as _os
+    sidecar_path = _os.path.splitext(xml_path)[0] + '_element_map.json'
+    if _os.path.isfile(sidecar_path):
+        try:
+            with open(sidecar_path, 'r', encoding='utf-8') as f:
+                data = _json.load(f)
+            return data.get('element_map', [])
+        except Exception:
+            pass
+    return []
+
+
 def render_s1000d_to_html(xml_path: str, graphics_base_url: str = '/graphics') -> str:
     """Convenience function to render an S1000D XML file to HTML."""
-    renderer = S1000DHTMLRenderer(graphics_base_url=graphics_base_url)
+    element_map = _load_element_map(xml_path)
+    renderer = S1000DHTMLRenderer(graphics_base_url=graphics_base_url, element_map=element_map)
     return renderer.render(xml_path)

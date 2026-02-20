@@ -101,8 +101,11 @@ def _init_reference_hybrid(dmc_string: str, docx_path: str) -> list:
     docx_elements = analyze_document_elements(doc)
     unified = match_pdf_to_docx(pdf_pages, docx_elements)
 
+    from parsers.elements_analyzer import compute_stable_id
+
     element_dicts = []
     for ue in unified:
+        text_for_id = (ue.text_start or '') + (ue.text_end or '')
         d = {
             'idx': ue.idx,
             'type': ue.type,
@@ -111,6 +114,7 @@ def _init_reference_hybrid(dmc_string: str, docx_path: str) -> list:
             'text_end': ue.text_end,
             'span': ue.span,
             'element_id': ue.element_id,
+            'stable_id': compute_stable_id(ue.idx, ue.type, text_for_id),
         }
         element_dicts.append(d)
 
@@ -145,12 +149,24 @@ def init_reference_from_auto(dmc_string: str, docx_path: str) -> dict:
         except Exception as e:
             print(f'[reference_store] Hybrid init failed ({e}), falling back to docx_only')
             from comparison_app.headless_comparator import extract_docx_elements
+            from parsers.elements_analyzer import compute_stable_id
             elements = extract_docx_elements(docx_path)
-            element_dicts = [e.to_dict() for e in elements]
+            element_dicts = []
+            for e in elements:
+                d = e.to_dict()
+                text_for_id = (d.get('text_start', '') + d.get('text_end', ''))
+                d['stable_id'] = compute_stable_id(d['idx'], d['type'], text_for_id)
+                element_dicts.append(d)
     else:
         from comparison_app.headless_comparator import extract_docx_elements
+        from parsers.elements_analyzer import compute_stable_id
         elements = extract_docx_elements(docx_path)
-        element_dicts = [e.to_dict() for e in elements]
+        element_dicts = []
+        for e in elements:
+            d = e.to_dict()
+            text_for_id = (d.get('text_start', '') + d.get('text_end', ''))
+            d['stable_id'] = compute_stable_id(d['idx'], d['type'], text_for_id)
+            element_dicts.append(d)
 
     _ensure_dir()
     now = datetime.now().isoformat(timespec='seconds')

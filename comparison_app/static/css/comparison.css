@@ -582,6 +582,13 @@ body.show-annotations [data-anno-idx].anno-mismatch {
     background: rgba(231, 76, 60, 0.08);
 }
 
+/* Type mismatch highlight (content matches but type differs) */
+body.show-annotations [data-anno-idx].anno-type-mismatch {
+    outline: 2px dashed #f39c12;
+    outline-offset: 1px;
+    background: rgba(243, 156, 18, 0.08);
+}
+
 /* ==========================================================================
    PDF overlay markers (annotations on canvas pages)
    ========================================================================== */

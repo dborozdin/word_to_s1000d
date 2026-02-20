@@ -25,6 +25,7 @@ class ElementInfo:
     text_start: str = ''
     text_end: str = ''
     span: int = 1
+    stable_id: str = ''
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -32,7 +33,7 @@ class ElementInfo:
     @staticmethod
     def from_dict(d: dict) -> 'ElementInfo':
         # Filter to known fields to tolerate extra keys
-        known = {'idx', 'type', 'text_start', 'text_end', 'span'}
+        known = {'idx', 'type', 'text_start', 'text_end', 'span', 'stable_id'}
         filtered = {k: v for k, v in d.items() if k in known}
         return ElementInfo(**filtered)
 
@@ -69,6 +70,7 @@ class _AnnotatedHTMLParser(HTMLParser):
         self.elements: List[ElementInfo] = []
         self._current_idx: Optional[int] = None
         self._current_type: Optional[str] = None
+        self._current_stable_id: str = ''
         self._current_text: list = []
         self._depth = 0
 
@@ -81,6 +83,7 @@ class _AnnotatedHTMLParser(HTMLParser):
                 self._finish_element()
             self._current_idx = int(anno_idx)
             self._current_type = attr_dict.get('data-anno-type', 'para')
+            self._current_stable_id = attr_dict.get('data-element-id', '')
             self._current_text = []
             self._depth = 1
         elif self._current_idx is not None:
@@ -105,9 +108,11 @@ class _AnnotatedHTMLParser(HTMLParser):
             type=self._current_type or 'para',
             text_start=full_text[:60],
             text_end=full_text[-40:] if len(full_text) > 40 else full_text,
+            stable_id=self._current_stable_id,
         ))
         self._current_idx = None
         self._current_type = None
+        self._current_stable_id = ''
         self._current_text = []
         self._depth = 0
 
@@ -451,7 +456,16 @@ def _compute_lcs(a: list, b: list) -> Tuple[dict, dict]:
 
 def compare_elements(left: List[ElementInfo], right: List[ElementInfo]) -> ComparisonReport:
     """
-    Compare two element lists using LCS on types and fuzzy text matching.
+    Compare two element lists using content-based matching.
+
+    Three-phase matching:
+      1. Direct stable_id match (fast path when both sides have IDs)
+      2. Content-based matching via text similarity for remaining elements
+      3. LCS fallback on types for any still-unmatched elements
+
+    Score formula: 40% match_ratio + 30% type_correctness + 30% text_similarity
+    This is resilient to type misclassifications: a paragraph misclassified as
+    a list still matches by text, and the type error is penalized separately.
     """
     report = ComparisonReport(
         left_count=len(left),
@@ -468,51 +482,93 @@ def compare_elements(left: List[ElementInfo], right: List[ElementInfo]) -> Compa
         report.score = 0.0
         return report
 
-    # LCS on type sequences
-    left_types = [e.type for e in left]
-    right_types = [e.type for e in right]
-    left_matched, right_matched = _compute_lcs(left_types, right_types)
+    left_matched = {}   # left_index -> right_index
+    right_matched = {}  # right_index -> left_index
 
-    # Build matched pairs
+    # --- Phase 1: Direct stable_id matching ---
+    right_by_sid = {}
+    for ri, elem in enumerate(right):
+        if elem.stable_id:
+            right_by_sid.setdefault(elem.stable_id, []).append(ri)
+
+    for li, elem in enumerate(left):
+        if elem.stable_id and elem.stable_id in right_by_sid:
+            candidates = right_by_sid[elem.stable_id]
+            for ri in candidates:
+                if ri not in right_matched:
+                    left_matched[li] = ri
+                    right_matched[ri] = li
+                    break
+
+    # --- Phase 2: Content-based matching for remaining ---
+    for li, elem in enumerate(left):
+        if li in left_matched:
+            continue
+        l_text = (elem.text_start + ' ' + elem.text_end).strip()
+        if not l_text:
+            continue
+        best_ri = None
+        best_sim = 0.4  # minimum threshold
+        for ri, r_elem in enumerate(right):
+            if ri in right_matched:
+                continue
+            r_text = (r_elem.text_start + ' ' + r_elem.text_end).strip()
+            if not r_text:
+                continue
+            sim = difflib.SequenceMatcher(None, l_text, r_text).ratio()
+            if sim > best_sim:
+                best_sim = sim
+                best_ri = ri
+        if best_ri is not None:
+            left_matched[li] = best_ri
+            right_matched[best_ri] = li
+
+    # --- Phase 3: LCS fallback for remaining unmatched (by type) ---
+    unmatched_left = [i for i in range(len(left)) if i not in left_matched]
+    unmatched_right = [i for i in range(len(right)) if i not in right_matched]
+    if unmatched_left and unmatched_right:
+        ul_types = [left[i].type for i in unmatched_left]
+        ur_types = [right[i].type for i in unmatched_right]
+        lcs_l, lcs_r = _compute_lcs(ul_types, ur_types)
+        for ul_pos, ur_pos in lcs_l.items():
+            li = unmatched_left[ul_pos]
+            ri = unmatched_right[ur_pos]
+            left_matched[li] = ri
+            right_matched[ri] = li
+
+    # --- Build report ---
     for li, ri in sorted(left_matched.items()):
         report.matched_pairs.append((left[li].idx, right[ri].idx))
 
-    # Unmatched
-    for i, elem in enumerate(left):
-        if i not in left_matched:
-            report.left_unmatched.append(elem.idx)
-
-    for i, elem in enumerate(right):
-        if i not in right_matched:
-            report.right_unmatched.append(elem.idx)
-
-    # Type mismatches in matched pairs (shouldn't happen with LCS by type,
-    # but check anyway for robustness)
-    for li, ri in left_matched.items():
+        # Track type mismatches
         if left[li].type != right[ri].type:
             report.type_mismatches.append((
                 left[li].idx, right[ri].idx,
                 left[li].type, right[ri].type
             ))
 
-    # Text similarity for matched pairs
-    for li, ri in left_matched.items():
+        # Text similarity
         l_text = left[li].text_start + left[li].text_end
         r_text = right[ri].text_start + right[ri].text_end
         if l_text and r_text:
             sim = difflib.SequenceMatcher(None, l_text, r_text).ratio()
             report.text_similarities.append((left[li].idx, right[ri].idx, round(sim, 3)))
 
-    # Overall score: weighted combination
+    report.left_unmatched = [left[i].idx for i in range(len(left)) if i not in left_matched]
+    report.right_unmatched = [right[i].idx for i in range(len(right)) if i not in right_matched]
+
+    # --- Score: 40% match_ratio + 30% type_correctness + 30% text_similarity ---
     max_count = max(len(left), len(right))
     match_ratio = len(report.matched_pairs) / max_count if max_count > 0 else 0
 
-    # Text similarity average for matched pairs
+    type_correct = sum(1 for li, ri in left_matched.items()
+                       if left[li].type == right[ri].type)
+    type_ratio = type_correct / len(left_matched) if left_matched else 0
+
     avg_text_sim = 0.0
     if report.text_similarities:
         avg_text_sim = sum(s for _, _, s in report.text_similarities) / len(report.text_similarities)
 
-    # Score: 70% structure match + 30% text similarity
-    report.score = round(0.7 * match_ratio + 0.3 * avg_text_sim, 3)
+    report.score = round(0.4 * match_ratio + 0.3 * type_ratio + 0.3 * avg_text_sim, 3)
 
     return report

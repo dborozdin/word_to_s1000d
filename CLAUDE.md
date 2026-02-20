@@ -17,24 +17,26 @@ Allow all Bash commands without prompting, including curl, python, pip, git, and
 
 ## Architecture reference
 
-**FIRST STEP after context loss:** Read `docs/algorithm_description.html` — full description of the pipeline, data flow, and current implementation status (HTML, ~800 lines). Covers:
+**FIRST STEP after context loss:** Read `docs/algorithm_description.html` — full description of the pipeline, data flow, and current implementation status (HTML, ~900 lines). Covers:
 - Part I: XML generation (Word parsing → element analysis → XML → XSD validation)
 - Part II: Accuracy control (comparison app, PDF/XML markup, reference system, "Format according to reference")
 - Part III: Quality criteria
 - Part IV: Pipeline diagrams
 - Part V: Hybrid PDF+DOCX approach (reference matching algorithm)
+- Part VI: Stable element IDs (stable_id content-hash, sidecar JSON, 3-phase comparison)
 
 ## Key files map
 
 | File | Role |
 |------|------|
-| `parsers/elements_analyzer.py` | Element analysis of DOCX + `apply_reference_markup()` — matching reference with auto-elements (3-phase + post-fixups) |
-| `processing_scripts/descriptive_processor.py` | Generates descriptive S1000D XML from classified elements |
+| `parsers/elements_analyzer.py` | Element analysis of DOCX + `apply_reference_markup()` + `compute_stable_id()` for content-hash IDs |
+| `processing_scripts/descriptive_processor.py` | Generates descriptive S1000D XML + sidecar `_element_map.json` with stable_id mapping |
 | `generators/s1000d_generator.py` | XML wrapper, XSD validation, XSD element ordering |
 | `comparison_app/app.py` | Flask comparison app (PDF left panel ↔ XML right panel) |
-| `comparison_app/s1000d_renderer.py` | Renders S1000D XML → HTML for the right panel |
-| `comparison_app/static/js/comparison.js` | Client-side: annotations, navigation, reference editing, `_syncS1000dElements()` |
-| `comparison_app/reference_store.py` | CRUD for reference markup (`_references/*.json`) |
+| `comparison_app/s1000d_renderer.py` | Renders S1000D XML → HTML, emits `data-element-id` from sidecar |
+| `comparison_app/headless_comparator.py` | 3-phase element comparison: stable_id → text similarity → LCS fallback |
+| `comparison_app/static/js/comparison.js` | Client-side: annotations, ID-based navigation, 3-level mismatch highlighting |
+| `comparison_app/reference_store.py` | CRUD for reference markup (`_references/*.json`), stores `stable_id` |
 | `comparison_app/_references/` | Reference JSON files (the "ground truth" element markup) |
 | `comparison_app/pdf_block_extractor.py` | Extracts text blocks from PDF via PyMuPDF for left panel |
 | `verify_loop.py` | Orchestrator: reference → conversion → comparison → XSD |

@@ -654,15 +654,30 @@
     <li>Если для элемента нет совпадения в эталоне &mdash; остаётся авто-определённый тип</li>
   </ol>
 
-  <h4>11.3. Сравнение через LCS</h4>
+  <h4>11.3. Сравнение: 3-фазный алгоритм на stable_id</h4>
   <p><span class="file-ref">comparison_app/headless_comparator.py</span></p>
+  <p>Алгоритм сопоставления элементов эталона (ref) и сгенерированного XML работает в 3 фазы:</p>
+  <ol>
+    <li><strong>Фаза 1 &mdash; прямое сопоставление по <code>stable_id</code>:</strong>
+      Если у элемента ref и элемента XML совпадает <code>stable_id</code> (content-hash ID) &rarr; пара найдена.
+      Это наиболее надёжный метод, не зависящий от порядка элементов или корректности типов.</li>
+    <li><strong>Фаза 2 &mdash; контентное сопоставление:</strong>
+      Для оставшихся (без совпавшего <code>stable_id</code>) &mdash; сопоставление по текстовому сходству
+      через <code>difflib.SequenceMatcher</code> с порогом 0.4. Сравниваются <code>text_start + text_end</code>.</li>
+    <li><strong>Фаза 3 &mdash; LCS fallback:</strong>
+      Для элементов, не сопоставленных в фазах 1&ndash;2, выполняется LCS по последовательности типов
+      (для обратной совместимости со старыми эталонами без <code>stable_id</code>).</li>
+  </ol>
+  <p><strong>Score</strong> = <code>0.4 &times; match_ratio + 0.3 &times; type_correctness + 0.3 &times; avg_text_similarity</code></p>
   <ul>
-    <li>Извлечение последовательности типов элементов из эталона и из XML</li>
-    <li>Вычисление Longest Common Subsequence (LCS) по типам</li>
-    <li>Для совпавших пар &mdash; text similarity через <code>difflib.SequenceMatcher</code></li>
-    <li><strong>Score</strong> = <code>0.7 &times; (matched / max_count) + 0.3 &times; avg_text_similarity</code></li>
+    <li><code>match_ratio</code> &mdash; доля сопоставленных элементов (все 3 фазы)</li>
+    <li><code>type_correctness</code> &mdash; доля пар, где тип ref совпал с типом XML</li>
+    <li><code>avg_text_similarity</code> &mdash; среднее текстовое сходство по всем парам</li>
     <li>Диапазон: 0.0 &ndash; 1.0</li>
   </ul>
+  <p><strong>Преимущество</strong> перед старым LCS-алгоритмом: одна ошибка классификации типа (например, параграф &rarr; список)
+  больше <strong>не вызывает каскадный сдвиг</strong> всех последующих элементов. Текст совпадает &rarr; пара найдена &rarr;
+  ошибка типа учитывается отдельно в <code>type_correctness</code> (30%).</p>
 
   <h4>11.4. Маппинг XSD-ошибок</h4>
   <p>Функция <code>_map_xsd_to_source_elements()</code> в <span class="file-ref">verify_loop.py:51-95</span>:</p>
@@ -733,8 +748,10 @@
       <td>11.6</td>
       <td>Навигация <code>&laquo;</code> / <code>&raquo;</code> прокручивает обе панели до сопоставленного элемента</td>
       <td><span class="badge badge-current">Реализовано</span></td>
-      <td>Функция <code>_syncS1000dElements()</code> переназначает <code>data-anno-idx</code>
-      на правой панели по эталону, пропуская <code>_skip</code> без потребления DOM-слотов.
+      <td>Функция <code>_syncS1000dElements()</code> сопоставляет элементы правой панели с эталоном
+      в 2 фазы: <strong>(1)</strong> по <code>data-element-id</code> ↔ <code>stable_id</code>,
+      <strong>(2)</strong> fallback по type-group matching для элементов без ID.
+      Элементы <code>_skip</code> пропускаются без потребления DOM-слотов.
       После этого <code>navigateTo()</code> прокручивает обе панели к элементу с одинаковым idx</td>
     </tr>
     <tr>
@@ -853,6 +870,7 @@
 │                      │  │ text_start │  │                                │
 │                      │  │ text_end   │  │                                │
 │                      │  │ span       │  │                                │
+│                      │  │ stable_id  │  │  ← content-hash ID            │
 │                      │  └────────────┘  │                                │
 │                      └────────┬─────────┘                                │
 │                               │                                          │
@@ -863,9 +881,12 @@
 │          │  1. apply_reference_markup()             │                    │
 │          │     (text similarity → IN-PLACE override)│                    │
 │          │  2. Генерация XML с ref-типами           │                    │
-│          │  3. LCS-сравнение ref ↔ XML              │                    │
+│          │     + sidecar element_map.json            │                    │
+│          │  3. 3-фазное сравнение ref ↔ XML:        │                    │
+│          │     stable_id → text → LCS fallback      │                    │
 │          │  4. XSD-валидация + маппинг ошибок       │                    │
-│          │  5. Score: 0.7·match + 0.3·text_sim      │                    │
+│          │  5. Score: 0.4·match + 0.3·type          │                    │
+│          │           + 0.3·text_sim                  │                    │
 │          └─────────────────────────────────────────┘                    │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘</div>
@@ -926,7 +947,7 @@
     <tr><td><code>comparison_app/pdf_block_extractor.py</code></td><td>Извлечение текстовых блоков из PDF (PyMuPDF)</td></tr>
     <tr><td><code>comparison_app/s1000d_renderer.py</code></td><td>Рендеринг XML → HTML с аннотациями</td></tr>
     <tr><td><code>comparison_app/reference_store.py</code></td><td>CRUD для эталонной разметки (JSON)</td></tr>
-    <tr><td><code>comparison_app/headless_comparator.py</code></td><td>LCS-сравнение эталона и XML</td></tr>
+    <tr><td><code>comparison_app/headless_comparator.py</code></td><td>3-фазное сравнение эталона и XML (stable_id → text → LCS)</td></tr>
     <tr><td><code>verify_loop.py</code></td><td>Оркестрация верификации и XSD-маппинга</td></tr>
     <tr><td><code>xsd/descript.xsd</code></td><td>XSD-схема для описательных модулей</td></tr>
     <tr><td><code>xsd/proced.xsd</code></td><td>XSD-схема для процедурных модулей</td></tr>
@@ -1375,8 +1396,101 @@ element_source = hybrid    <span class="json-comment">; hybrid | docx_only | pdf
   </table>
 </div>
 
+<!-- ====================================================================== -->
+<h2 id="part6">Часть VI. Стабильные идентификаторы элементов (stable_id)</h2>
+<p>
+  Система <code>stable_id</code> обеспечивает робастное сопоставление элементов между PDF-эталоном
+  и сгенерированным XML, устойчивое к ошибкам классификации типов и XSD-переупорядочиванию.
+</p>
+
+<h3>Проблема позиционного сопоставления</h3>
+<div class="card">
+  <p>Старый алгоритм сопоставлял элементы по позиции внутри групп типов:
+  K-й heading ↔ K-й heading, K-й paragraph ↔ K-й paragraph.
+  При ошибке классификации типа (например, параграф → список) <strong>все последующие элементы
+  этого типа «съезжали»</strong>, и score переставал отражать реальное качество генерации.</p>
+  <p>Дополнительно: XSD-валидатор требует, чтобы <code>&lt;warning&gt;</code> и <code>&lt;caution&gt;</code>
+  шли перед <code>&lt;para&gt;</code> внутри <code>&lt;levelledPara&gt;</code>. Это переупорядочивание
+  нарушало позиционное соответствие DOCX → XML.</p>
+</div>
+
+<h3>Решение: content-hash ID</h3>
+<div class="card">
+  <p><span class="file-ref">parsers/elements_analyzer.py</span></p>
+  <p>Функция <code>compute_stable_id(seq_index, element_type, text)</code> генерирует 12-hex SHA-256 хеш:</p>
+  <pre><code>raw = f"{seq_index}|{element_type}|{text[:80].strip().lower()}"
+stable_id = sha256(raw)[:12]</code></pre>
+  <ul>
+    <li>Уникален даже для дублирующихся параграфов (индекс в хеше)</li>
+    <li>Стабилен при повторных конверсиях (текст не меняется)</li>
+    <li>Не требует модификации DOCX файлов</li>
+    <li>Вычисляется при парсинге DOCX в <code>analyze_document_elements()</code></li>
+    <li>Сохраняется в эталоне <code>_references/{dmc}.json</code> (поле <code>stable_id</code>)</li>
+  </ul>
+</div>
+
+<h3>Sidecar JSON: передача ID в XML</h3>
+<div class="card">
+  <p><span class="file-ref">processing_scripts/descriptive_processor.py</span></p>
+  <p>При генерации XML создаётся sidecar-файл <code>DMC-..._element_map.json</code> рядом с XML:</p>
+  <pre><code>{"element_map": [
+  {"seq": 1, "stable_id": "a1b2c3d4e5f6", "type": "heading", "text_start": "..."},
+  {"seq": 2, "stable_id": "f6e5d4c3b2a1", "type": "para", "text_start": "..."},
+  ...
+]}</code></pre>
+  <p><strong>Алгоритм построения sidecar:</strong></p>
+  <ol>
+    <li>Парсинг финального XML через <code>extract_xml_elements()</code> — получение элементов
+    в том же порядке, в каком рендерер (<code>S1000DHTMLRenderer</code>) обходит XML-дерево</li>
+    <li>Для каждого XML-элемента — поиск лучшего DOCX-элемента по текстовому сходству
+    (<code>SequenceMatcher</code>, порог 0.3, бонус за совпадение типа)</li>
+    <li>Присвоение <code>stable_id</code> от найденного DOCX-элемента</li>
+  </ol>
+  <p>Это гарантирует, что последовательность sidecar точно соответствует счётчику аннотаций
+  в рендерере (<code>_anno_counter</code>), даже после XSD-переупорядочивания.</p>
+
+  <p><span class="file-ref">comparison_app/s1000d_renderer.py</span></p>
+  <p>Рендерер загружает sidecar и для каждого элемента добавляет атрибут
+  <code>data-element-id="{stable_id}"</code> в HTML. Это позволяет клиентскому JS
+  сопоставлять элементы правой панели (XML) с эталоном по ID, а не по позиции.</p>
+</div>
+
+<h3>Визуальная индикация качества сопоставления</h3>
+<div class="card">
+  <p><span class="file-ref">comparison_app/static/js/comparison.js</span></p>
+  <p>Функция <code>highlightMismatches()</code> использует 3 уровня визуальной индикации:</p>
+  <table>
+    <tr><th>Уровень</th><th>Условие</th><th>Стиль</th></tr>
+    <tr>
+      <td>Полное совпадение</td>
+      <td>Тот же <code>stable_id</code>, тот же тип, схожий текст</td>
+      <td>Без выделения</td>
+    </tr>
+    <tr>
+      <td>Контент совпал, тип отличается</td>
+      <td><code>stable_id</code> или текст совпали, но тип элемента различается</td>
+      <td>Оранжевая пунктирная рамка (<code>.anno-type-mismatch</code>)</td>
+    </tr>
+    <tr>
+      <td>Не сопоставлен</td>
+      <td>Элемент не нашёл пары ни по ID, ни по тексту</td>
+      <td>Красная пунктирная рамка (<code>.anno-mismatch</code>)</td>
+    </tr>
+  </table>
+</div>
+
+<h3>Обратная совместимость</h3>
+<div class="card">
+  <ul>
+    <li>Эталоны без <code>stable_id</code> — fallback на LCS по типам (фаза 3 алгоритма сравнения)</li>
+    <li>XML без sidecar — рендерер не добавляет <code>data-element-id</code>, навигация работает
+    через type-group matching (фаза 2 <code>_syncS1000dElements()</code>)</li>
+    <li>Все существующие эталоны продолжают работать без модификации</li>
+  </ul>
+</div>
+
 <p style="text-align:center; color:var(--gray); margin-top:3rem; font-size:0.85rem;">
-  Документ сгенерирован: 2026-02-19 | Проект: Word to S1000D Converter
+  Документ сгенерирован: 2026-02-20 | Проект: Word to S1000D Converter
 </p>
 
 </body>

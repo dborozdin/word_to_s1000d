@@ -1212,6 +1212,19 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             return 0.0
         return prefix_len / max(len(a), 1)
 
+    def _collapse_spaced_letters(text):
+        """Collapse spaced-out letters back to words.
+
+        PDF sometimes renders 'Примечание' as 'П р и м е ч а н и е'
+        (each letter separated by space). Collapse these back to normal words.
+        """
+        import re
+        # Match runs of: single-char + space + single-char + space ...
+        # At least 3 letters with spaces between them
+        def _collapse(m):
+            return m.group(0).replace(' ', '')
+        return re.sub(r'(?<!\S)\S(?:\s\S){2,}(?!\S)', _collapse, text)
+
     def _strip_list_prefix(text):
         """Strip leading numbering and list markers for better matching.
 
@@ -1239,9 +1252,25 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             alt_score = _prefix_score(stripped_ref, stripped_content)
             start_score = max(start_score, alt_score)
 
+        # Fallback: try with collapsed spaced-out letters
+        # PDF renders "Примечание" as "П р и м е ч а н и е"
+        collapsed_ref = _collapse_spaced_letters(ref_text_start)
+        if collapsed_ref != ref_text_start:
+            alt_score = _prefix_score(collapsed_ref, content_start)
+            start_score = max(start_score, alt_score)
+            # Also try collapsed + stripped
+            stripped_collapsed = _strip_list_prefix(collapsed_ref)
+            if stripped_collapsed:
+                alt_score = _prefix_score(stripped_collapsed, stripped_content or content_start)
+                start_score = max(start_score, alt_score)
+
         if not ref_text_end or not ref_text_end.strip():
             return start_score
         end_score = _prefix_score(ref_text_end, content_end)
+        # Also try collapsed ref_text_end
+        collapsed_end = _collapse_spaced_letters(ref_text_end)
+        if collapsed_end != ref_text_end:
+            end_score = max(end_score, _prefix_score(collapsed_end, content_end))
         return start_score * 0.7 + end_score * 0.3
 
     def _find_best_match(cursor, ref_text_start, ref_text_end, used):
@@ -1299,15 +1328,26 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             elements[i]['_ref_type_raw'] = ref_type_raw
             used.add(i)
 
-            # Stop if this element contains ref_text_end
+            # Stop if this element contains ref_text_end (with prefix normalization)
             if ref_text_end:
                 content_end = elements[i].get('content', '')[-40:].strip()
-                if content_end and _prefix_score(ref_text_end, content_end) > 0.3:
-                    break
+                if content_end:
+                    score = _prefix_score(ref_text_end, content_end)
+                    # Also try with stripped list prefixes
+                    stripped_ref_end = _strip_list_prefix(ref_text_end)
+                    stripped_content_end = _strip_list_prefix(content_end)
+                    if stripped_ref_end and stripped_content_end:
+                        score = max(score, _prefix_score(stripped_ref_end, stripped_content_end))
+                    if score > 0.3:
+                        break
 
     # --- Main matching loop: modify elements IN PLACE, no reordering ---
+    # Process _skip elements AFTER all other types to avoid consuming auto
+    # elements that a non-skip ref could match (e.g., "Меры безопасности" as
+    # both _skip and numbered_list — the numbered_list should win).
     used = set()
     cursor = 0
+    skip_refs = []  # Deferred _skip processing
 
     for ref_elem in ref_elements:
         ref_type = ref_elem.get('type', '')
@@ -1316,22 +1356,9 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
         ref_span = ref_elem.get('span', 1) or 1
         ref_idx = ref_elem.get('idx', 0)
 
-        # Handle _skip elements: find matching auto element and mark it for deletion
+        # Defer _skip elements to second pass
         if ref_type == '_skip':
-            best_idx = _find_best_match(cursor, ref_text_start, ref_text_end, used)
-            if best_idx is not None:
-                orig_type = elements[best_idx]['type']
-                orig_content = elements[best_idx].get('content', '')[:60]
-                print(f'[ref_markup] ref[{ref_idx}] _skip '
-                      f'matched auto[{best_idx}] (was {orig_type}) '
-                      f'"{ref_text_start[:30]}" ↔ "{orig_content[:30]}"')
-                elements[best_idx]['_original_type'] = elements[best_idx]['type']
-                elements[best_idx]['type'] = '_skip'
-                elements[best_idx]['_ref_annotated'] = True
-                elements[best_idx]['_ref_idx'] = ref_idx
-                elements[best_idx]['_ref_type_raw'] = '_skip'
-                used.add(best_idx)
-                cursor = best_idx + 1
+            skip_refs.append(ref_elem)
             continue
 
         mapped_type = type_map.get(ref_type, ref_type)
@@ -1365,6 +1392,11 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
                 already_complete = False
                 if ref_text_end and first_content_end:
                     end_score = _prefix_score(ref_text_end, first_content_end)
+                    # Also try with stripped list prefixes
+                    stripped_end = _strip_list_prefix(ref_text_end)
+                    stripped_content = _strip_list_prefix(first_content_end)
+                    if stripped_end and stripped_content:
+                        end_score = max(end_score, _prefix_score(stripped_end, stripped_content))
                     if end_score > 0.3:
                         already_complete = True
                 if not already_complete:
@@ -1372,6 +1404,24 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
                                         mapped_type, ref_idx, ref_type, used)
                     # Advance cursor past all span-covered elements
                     cursor = max(cursor, best_idx + ref_span)
+
+    # --- Second pass: process _skip elements on remaining unused auto elements ---
+    for ref_elem in skip_refs:
+        ref_text_start = (ref_elem.get('text_start', '') or '').strip()
+        ref_text_end = (ref_elem.get('text_end', '') or '').strip()
+        ref_idx = ref_elem.get('idx', 0)
+        best_idx = _find_best_match(0, ref_text_start, ref_text_end, used)
+        if best_idx is not None:
+            orig_type = elements[best_idx]['type']
+            orig_content = elements[best_idx].get('content', '')[:60]
+            print(f'[ref_markup] _skip matched auto[{best_idx}] (was {orig_type}) '
+                  f'"{ref_text_start[:30]}" ↔ "{orig_content[:30]}"')
+            elements[best_idx]['_original_type'] = elements[best_idx]['type']
+            elements[best_idx]['type'] = '_skip'
+            elements[best_idx]['_ref_annotated'] = True
+            elements[best_idx]['_ref_idx'] = ref_idx
+            elements[best_idx]['_ref_type_raw'] = '_skip'
+            used.add(best_idx)
 
     # Mark unannotated elements
     for i, elem in enumerate(elements):

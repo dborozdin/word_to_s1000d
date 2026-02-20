@@ -425,15 +425,24 @@ class S1000DHTMLRenderer:
         return ''.join(parts)
 
     def _render_random_list(self, rlist) -> str:
-        """Render <randomList> as <ul>."""
-        parts = [f'<ul class="random-list" {self._anno("unnumbered_list")}>']
+        """Render <randomList> — pf01 as numbered <ol>, pf02 as bulleted <ul>."""
+        prefix = rlist.get('listItemPrefix', 'pf02')
+        if prefix == 'pf01':
+            tag = 'ol'
+            anno_type = 'numbered_list'
+            css_class = 'random-list numbered'
+        else:
+            tag = 'ul'
+            anno_type = 'unnumbered_list'
+            css_class = 'random-list'
+        parts = [f'<{tag} class="{css_class}" {self._anno(anno_type)}>']
         for item in rlist.findall('listItem'):
             item_html = ''
             for child in item:
                 if _local_tag(child) == 'para':
                     item_html += self._get_para_html(child)
             parts.append(f'<li>{item_html}</li>')
-        parts.append('</ul>')
+        parts.append(f'</{tag}>')
         return ''.join(parts)
 
     def _render_sequenced_list(self, slist) -> str:

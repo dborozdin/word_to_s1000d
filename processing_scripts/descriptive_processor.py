@@ -745,6 +745,26 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
     current_levelled_para = []
     in_levelled_para = False
     is_first_paragraph = True
+    pending_table_title = None  # Table title to inject into next <table>
+
+    # Pre-merge consecutive elements with the same _ref_idx.
+    # Phase 4a (extend) in apply_reference_markup assigns the same _ref_idx
+    # to multiple DOCX elements when one PDF block spans them. These should
+    # be output as a single <para> / list item, not separate elements.
+    _merged_elements = []
+    for elem in processed_elements:
+        if (_merged_elements and
+                elem.get('_ref_idx') is not None and
+                _merged_elements[-1].get('_ref_idx') == elem.get('_ref_idx') and
+                elem.get('type') == _merged_elements[-1].get('type') and
+                elem.get('type') == 'paragraph'):
+            _merged_elements[-1] = dict(_merged_elements[-1])  # shallow copy
+            _merged_elements[-1]['content'] = (
+                _merged_elements[-1].get('content', '') + '\n' +
+                elem.get('content', ''))
+        else:
+            _merged_elements.append(elem)
+    processed_elements = _merged_elements
 
     for elem in processed_elements:
         elem_type = elem.get('type', 'paragraph')
@@ -822,16 +842,35 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             current_levelled_para = [f'<title>{title_text}</title>']
             in_levelled_para = True
 
-        elif elem_type in ['numbered_list', 'unnumbered_list']:
+        elif elem_type in ['numbered_list', 'unnumbered_list',
+                           'nested_numbered_list', 'nested_unnumbered_list']:
             # DON'T flush current_levelled_para - lists should be inside the current section
             # Store (content, list_level) tuples for nested list support
-            elem_level = elem.get('list_level', 0)
-            if elem_type == current_list_type:
+            is_nested = elem_type.startswith('nested_')
+            # Use explicit levels: 0 = top-level, 1 = nested.
+            # Don't use raw list_level (EMU values) — they conflict with
+            # the forced level=1 during normalization.
+            elem_level = 1 if is_nested else 0
+            # Base type for grouping: nested_unnumbered_list → unnumbered_list
+            base_type = elem_type.replace('nested_', '') if is_nested else elem_type
+
+            if is_nested and current_list_items:
+                # Nested: continue accumulating into the current (parent) list
                 current_list_items.append((content, elem_level))
+            elif base_type == current_list_type:
+                # Same base type — but if returning from nested back to
+                # top level, flush first so each reference element group
+                # produces its own <randomList> for 1:1 comparison
+                if current_list_items and any(lvl > 0 for _, lvl in current_list_items):
+                    flush_current_list()
+                    current_list_type = base_type
+                    current_list_items = [(content, elem_level)]
+                else:
+                    current_list_items.append((content, elem_level))
             else:
                 # Flush previous list (will be added to current_levelled_para if inside one)
                 flush_current_list()
-                current_list_type = elem_type
+                current_list_type = base_type
                 current_list_items = [(content, elem_level)]
 
         elif elem_type == 'paragraph':
@@ -842,7 +881,21 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 current_levelled_para = []
                 in_levelled_para = True
 
-            current_levelled_para.append(f'<para>{content}</para>')
+            # Handle split_points: one DOCX paragraph maps to multiple PDF blocks
+            split_points = elem.get('_split_points', [])
+            if split_points:
+                split_points.sort(key=lambda sp: sp['position'])
+                prev_pos = 0
+                for sp in split_points:
+                    part = content[prev_pos:sp['position']].strip()
+                    if part:
+                        current_levelled_para.append(f'<para>{part}</para>')
+                    prev_pos = sp['position']
+                remainder = content[prev_pos:].strip()
+                if remainder:
+                    current_levelled_para.append(f'<para>{remainder}</para>')
+            else:
+                current_levelled_para.append(f'<para>{content}</para>')
 
         elif elem_type == 'title':
             # Handle standalone title elements by wrapping them in levelledPara
@@ -870,9 +923,25 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
 
             if elem_type == 'table':
                 # Use the enhanced table XML from element analysis
+                # Validate xml_example actually contains a <table> — when reference
+                # markup reclassifies a list/paragraph as table (e.g. via span_forward),
+                # xml_example may still hold stale <randomList> or <para> from auto-detection.
                 table_xml = elem.get('xml_example', '')
-                if table_xml:
+                if table_xml and table_xml.strip().startswith('<table'):
+                    # Inject pending table title as <title> inside <table>
+                    if pending_table_title:
+                        title_xml = f'<title>{pending_table_title}</title>'
+                        # Insert <title> right after <table ...>
+                        insert_pos = table_xml.find('>') + 1
+                        if insert_pos > 0:
+                            table_xml = table_xml[:insert_pos] + title_xml + table_xml[insert_pos:]
+                        pending_table_title = None
                     add_to_current_section(table_xml)
+                elif content:
+                    # Table-typed element with text but no <table> XML — likely a
+                    # table title (e.g. "Таблица 201 – ..."). Store it and inject
+                    # as <title> into the next actual <table> element.
+                    pending_table_title = content
             elif elem_type == 'illustration':
                 # Check if this is a multi-sheet illustration
                 if elem.get('is_multi_sheet'):
@@ -956,10 +1025,10 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 if not elem.get('skip_output', False):
                     add_to_current_section(f'<para>{content}</para>')
 
-    # Flush any remaining content
+    # Flush any remaining content (list first, then levelled para — same order as other flush points)
+    flush_current_list()
     if current_levelled_para:
         xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
-    flush_current_list()
 
     return {
         "xml_parts": xml_parts,

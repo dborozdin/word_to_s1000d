@@ -61,6 +61,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
     # Track list state
     current_list = None
     list_start_para = 0
+    list_base_level = 0  # Base indentation of current list (for nested detection)
 
     # Track numbering state for numbered paragraph headers
     # This tracks the actual numbering sequence as it appears in the document
@@ -442,6 +443,8 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
         # Detect lists
         list_type = _get_list_type(paragraph, para_idx)
         if list_type:
+            item_level = _get_list_level(paragraph)
+
             if current_list != list_type:
                 # End previous list if any
                 if current_list:
@@ -451,6 +454,13 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 # Start new list
                 current_list = list_type
                 list_start_para = para_idx
+                list_base_level = item_level  # Track base indentation of this list
+
+            # Auto-detect nested list: if item level is greater than the
+            # base level of the current list, mark as nested type
+            effective_type = list_type
+            if item_level > list_base_level:
+                effective_type = 'nested_' + list_type
 
             # Add list item
             clean_text = _clean_list_item_text(paragraph, list_type)
@@ -458,7 +468,7 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
             xml_example = f'<randomList listItemPrefix="{xml_prefix}"><listItem><para>{clean_text}</para></listItem></randomList>'
 
             element_info = {
-                'type': list_type,
+                'type': effective_type,
                 'start_line': para_start_line,
                 'start_char': para_start_char,
                 'end_line': para_end_line,
@@ -467,8 +477,8 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 'end_para': para_idx,  # Will be updated when list ends
                 'content': clean_text,
                 'xml_example': xml_example,
-                'details': f'Элемент списка ({list_type})',
-                'list_level': _get_list_level(paragraph)
+                'details': f'Элемент списка ({effective_type})',
+                'list_level': item_level
             }
             elements.append(element_info)
             continue
@@ -1357,11 +1367,15 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
         granularity difference between DOM blocks and auto elements) until:
         - An element containing ref_text_end is found (inclusive)
         - Or max scan limit is reached
-        - Or an already-used element is encountered
+        - Or an already-used element is encountered (except _skip elements,
+          which are skipped over without consuming them)
         """
         max_scan = min(len(elements), start_idx + 1 + int(ref_span * 1.5))
         for i in range(start_idx + 1, max_scan):
             if i in used:
+                # Skip over _skip elements — they don't block span_forward
+                if elements[i].get('type') == '_skip':
+                    continue
                 break
             elements[i]['_original_type'] = elements[i]['type']
             elements[i]['type'] = mapped_type
@@ -1384,12 +1398,17 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
                         break
 
     # --- Main matching loop: modify elements IN PLACE, no reordering ---
-    # Process _skip elements AFTER all other types to avoid consuming auto
-    # elements that a non-skip ref could match (e.g., "Меры безопасности" as
-    # both _skip and numbered_list — the numbered_list should win).
+    # Three-phase approach:
+    #   1. Match each non-skip ref to its best single auto element (ignore span)
+    #   2. Match _skip refs on remaining unused elements
+    #   3. Apply deferred span_forward calls on remaining unused elements
+    # This prevents span_forward from consuming elements that a later ref
+    # could match individually (e.g., ref[36] span=4 would grab elements
+    # that ref[37..40] should claim).
     used = set()
     cursor = 0
-    skip_refs = []  # Deferred _skip processing
+    skip_refs = []       # Deferred _skip processing
+    span_deferred = []   # Deferred span_forward calls
 
     for ref_elem in ref_elements:
         ref_type = ref_elem.get('type', '')
@@ -1412,9 +1431,9 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
         if best_idx is not None:
             orig_type = elements[best_idx]['type']
             orig_content = elements[best_idx].get('content', '')[:60]
-            print(f'[ref_markup] ref[{ref_idx}] {ref_type}→{mapped_type} '
+            print(f'[ref_markup] ref[{ref_idx}] {ref_type}->{mapped_type} '
                   f'matched auto[{best_idx}] (was {orig_type}) '
-                  f'"{ref_text_start[:30]}" ↔ "{orig_content[:30]}"')
+                  f'"{ref_text_start[:30]}" <-> "{orig_content[:30]}"')
             # Override type in place
             elements[best_idx]['_original_type'] = elements[best_idx]['type']
             elements[best_idx]['type'] = mapped_type
@@ -1426,15 +1445,12 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             used.add(best_idx)
             cursor = best_idx + 1
 
-            # For span > 1: override subsequent auto elements, BUT only if
-            # the first matched element doesn't already contain the full text
-            # (PDF spans can be larger than DOCX paragraph boundaries)
+            # Defer span_forward to phase 3 (after all single-element matching)
             if ref_span > 1:
                 first_content_end = elements[best_idx].get('content', '')[-40:].strip()
                 already_complete = False
                 if ref_text_end and first_content_end:
                     end_score = _prefix_score(ref_text_end, first_content_end)
-                    # Also try with stripped list prefixes
                     stripped_end = _strip_list_prefix(ref_text_end)
                     stripped_content = _strip_list_prefix(first_content_end)
                     if stripped_end and stripped_content:
@@ -1442,12 +1458,12 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
                     if end_score > 0.3:
                         already_complete = True
                 if not already_complete:
-                    _apply_span_forward(best_idx, ref_span, ref_text_end,
-                                        mapped_type, ref_idx, ref_type, used)
-                    # Advance cursor past all span-covered elements
+                    span_deferred.append((best_idx, ref_span, ref_text_end,
+                                         mapped_type, ref_idx, ref_type))
+                    # Advance cursor past expected span range
                     cursor = max(cursor, best_idx + ref_span)
 
-    # --- Second pass: process _skip elements on remaining unused auto elements ---
+    # --- Phase 2: process _skip elements on remaining unused auto elements ---
     for ref_elem in skip_refs:
         ref_text_start = (ref_elem.get('text_start', '') or '').strip()
         ref_text_end = (ref_elem.get('text_end', '') or '').strip()
@@ -1457,13 +1473,120 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             orig_type = elements[best_idx]['type']
             orig_content = elements[best_idx].get('content', '')[:60]
             print(f'[ref_markup] _skip matched auto[{best_idx}] (was {orig_type}) '
-                  f'"{ref_text_start[:30]}" ↔ "{orig_content[:30]}"')
+                  f'"{ref_text_start[:30]}" <-> "{orig_content[:30]}"')
             elements[best_idx]['_original_type'] = elements[best_idx]['type']
             elements[best_idx]['type'] = '_skip'
             elements[best_idx]['_ref_annotated'] = True
             elements[best_idx]['_ref_idx'] = ref_idx
             elements[best_idx]['_ref_type_raw'] = '_skip'
             used.add(best_idx)
+
+    # --- Phase 3: apply deferred span_forward on remaining unused elements ---
+    for args in span_deferred:
+        _apply_span_forward(*args, used)
+
+    # --- Phase 4: post-match fixups for granularity mismatches ---
+    # Build ref_idx -> matched_auto_idx lookup
+    matched_by_ref = {}  # ref_idx -> auto_idx
+    for i, elem in enumerate(elements):
+        if elem.get('_ref_annotated') and '_ref_idx' in elem:
+            matched_by_ref[elem['_ref_idx']] = i
+
+    # 4a. Extend: if a matched ref's text_end falls in an adjacent unused element,
+    #     include that element in the match (PDF block covers multiple DOCX elements)
+    def _ends_match(ref_end, content_tail):
+        """Check if ref text_end matches content tail using prefix + suffix fallback."""
+        if not ref_end or not content_tail:
+            return False
+        score = _prefix_score(ref_end, content_tail)
+        sr = _strip_list_prefix(ref_end)
+        sc = _strip_list_prefix(content_tail)
+        if sr and sc:
+            score = max(score, _prefix_score(sr, sc))
+        if score > 0.3:
+            return True
+        # Fallback: suffix matching (content[-40:] truncation can shift prefix)
+        norm_ref = ref_end.lower().replace('\n', ' ').replace('\r', ' ').strip()
+        norm_ct = content_tail.lower().replace('\n', ' ').replace('\r', ' ').strip()
+        suffix_len = min(15, len(norm_ref), len(norm_ct))
+        if suffix_len >= 8 and norm_ref[-suffix_len:] == norm_ct[-suffix_len:]:
+            return True
+        return False
+
+    for ref_elem in ref_elements:
+        ref_type = ref_elem.get('type', '')
+        if ref_type == '_skip':
+            continue
+        ref_text_end = (ref_elem.get('text_end', '') or '').strip()
+        ref_idx = ref_elem.get('idx', 0)
+        if not ref_text_end:
+            continue
+
+        matched_idx = matched_by_ref.get(ref_idx)
+        if matched_idx is None:
+            continue
+
+        # Check if matched element's content already covers text_end
+        content_end = elements[matched_idx].get('content', '')[-40:].strip()
+        if _ends_match(ref_text_end, content_end):
+            continue  # Already complete
+
+        # text_end not covered — check adjacent unused elements
+        mapped_type = elements[matched_idx]['type']
+        for j in range(matched_idx + 1, min(len(elements), matched_idx + 5)):
+            if j in used:
+                break  # Stop at used element
+            next_content_end = elements[j].get('content', '')[-40:].strip()
+            if not next_content_end:
+                continue
+            if _ends_match(ref_text_end, next_content_end):
+                # Extend: include elements [matched_idx+1 .. j] in this match
+                for k in range(matched_idx + 1, j + 1):
+                    if k not in used:
+                        elements[k]['_original_type'] = elements[k]['type']
+                        elements[k]['type'] = mapped_type
+                        elements[k]['_ref_annotated'] = True
+                        elements[k]['_ref_idx'] = ref_idx
+                        elements[k]['_ref_type_raw'] = ref_type
+                        used.add(k)
+                        print(f'[ref_markup] extend ref[{ref_idx}] -> auto[{k}] '
+                              f'(was {elements[k]["_original_type"]})')
+                break
+
+    # 4b. Split: if an unmatched ref's text_start is found WITHIN a matched element's
+    #     content, add split metadata so the processor generates separate <para> elements
+    #     (one DOCX paragraph contains text from multiple PDF blocks)
+    for ref_elem in ref_elements:
+        ref_type = ref_elem.get('type', '')
+        if ref_type == '_skip':
+            continue
+        ref_idx = ref_elem.get('idx', 0)
+        ref_text_start = (ref_elem.get('text_start', '') or '').strip()
+        if not ref_text_start or ref_idx in matched_by_ref:
+            continue  # Already matched
+
+        # Search matched elements for one containing this text
+        search_prefix = ref_text_start[:30].lower()
+        for i, elem in enumerate(elements):
+            if not elem.get('_ref_annotated') or elem.get('type') == '_skip':
+                continue
+            content = elem.get('content', '')
+            content_lower = content.lower()
+            pos = content_lower.find(search_prefix)
+            if pos > 5:  # Found as substring, not at the start
+                mapped_type = type_map.get(ref_type, ref_type)
+                if '_split_points' not in elem:
+                    elem['_split_points'] = []
+                elem['_split_points'].append({
+                    'position': pos,
+                    'type': mapped_type,
+                    'ref_idx': ref_idx,
+                    'ref_type_raw': ref_type,
+                })
+                matched_by_ref[ref_idx] = i  # Mark as handled
+                print(f'[ref_markup] split auto[{i}] at pos {pos} for ref[{ref_idx}] '
+                      f'{ref_type} "{ref_text_start[:30]}"')
+                break
 
     # Mark unannotated elements
     for i, elem in enumerate(elements):

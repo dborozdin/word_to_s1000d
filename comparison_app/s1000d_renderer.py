@@ -360,6 +360,11 @@ class S1000DHTMLRenderer:
         table_id = table.get('id', '')
         parts = [f'<table class="s1000d-table" {self._anno("table")} id="{escape(table_id)}">']
 
+        # Render <title> as <caption> if present
+        title_el = table.find('title')
+        if title_el is not None and title_el.text:
+            parts.append(f'<caption>{escape(title_el.text.strip())}</caption>')
+
         for tgroup in table.findall('tgroup'):
             cols = int(tgroup.get('cols', '1'))
 

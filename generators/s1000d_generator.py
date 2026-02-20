@@ -139,7 +139,8 @@ class S1000DGenerator:
         """Create content section.
 
         XSD ordering rules for levelledPara:
-            title? → warning* → caution* → (para|table|figure|note|randomList)* → levelledPara*
+            title? → warning* → caution* → (para|note|table|figure)* → levelledPara*
+        Note: <randomList> is only valid inside <para>, not as direct child of <levelledPara>.
         Warnings/cautions MUST come before para/table/figure/note within a levelledPara.
         """
         content = ET.Element("content")
@@ -170,7 +171,7 @@ class S1000DGenerator:
                             current_levelled_para = part_elem
                             # Check if it already has content children
                             lp_has_content = any(
-                                child.tag in ('para', 'table', 'figure', 'note', 'randomList')
+                                child.tag in ('para', 'table', 'figure', 'note')
                                 for child in part_elem
                             )
                         elif part_elem.tag == 'para':
@@ -196,11 +197,12 @@ class S1000DGenerator:
                                 description.append(part_elem)
                             lp_has_content = True
                         elif part_elem.tag == 'randomList':
-                            # Add list to current levelledPara if exists, otherwise to description
-                            if current_levelled_para is not None:
-                                current_levelled_para.append(part_elem)
-                            else:
-                                description.append(part_elem)
+                            # XSD: <randomList> must be inside <para>, not direct child of <levelledPara>
+                            wrapper_para = ET.SubElement(
+                                current_levelled_para if current_levelled_para is not None else description,
+                                'para'
+                            )
+                            wrapper_para.append(part_elem)
                             lp_has_content = True
                         elif part_elem.tag == 'figure':
                             # Fix figure and graphic IDs to be unique
@@ -287,7 +289,7 @@ class S1000DGenerator:
     def _reorder_levelled_para_children(lp_elem):
         """Reorder children of a levelledPara to comply with XSD.
 
-        XSD order: title? → warning* → caution* → (para|table|figure|note|...)* → levelledPara*
+        XSD order: title? → warning* → caution* → (para|note|table|figure)* → levelledPara*
         Move warning/caution before any para/table/figure/note children.
         Also converts <para> inside warning/caution to <warningAndCautionPara>.
         """
@@ -721,6 +723,15 @@ class S1000DGenerator:
             for elem in xml_doc.getroot().iter():
                 if elem.sourceline is not None:
                     text = (elem.text or '').strip()[:60]
+                    # If element has no direct text, grab text from first descendant
+                    if not text:
+                        for desc in elem.iter():
+                            if desc is elem:
+                                continue
+                            desc_text = (desc.text or '').strip()
+                            if desc_text:
+                                text = desc_text[:60]
+                                break
                     tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
                     try:
                         xpath = xml_doc.getpath(elem)

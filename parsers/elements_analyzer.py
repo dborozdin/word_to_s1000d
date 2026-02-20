@@ -1178,26 +1178,27 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
 
     ref_elements = ref_data['elements']
 
-    # Type mapping: reference types → analyzer types
+    # Type mapping: reference types → analyzer types used by descriptive_processor
     type_map = {
-        'heading': 'numbered_paragraph_header',
+        'heading': 'header',
         'para': 'paragraph',
+        'paragraph': 'paragraph',
         'numbered_list': 'numbered_list',
         'unnumbered_list': 'unnumbered_list',
         'list': 'unnumbered_list',
         'table': 'table',
         'figure': 'illustration',
         'warning': 'warning',
-        'caution': 'warning',
-        'note': 'paragraph',
+        'caution': 'caution',
+        'note': 'note',
     }
 
     def _prefix_score(ref_text, content_text):
-        """Compute prefix-based similarity score."""
+        """Compute prefix-based similarity score (case-insensitive)."""
         if not ref_text or not content_text:
             return 0.0
-        a = ref_text.strip()
-        b = content_text.strip()
+        a = ref_text.strip().lower()
+        b = content_text.strip().lower()
         min_len = min(len(a), len(b))
         if min_len == 0:
             return 0.0
@@ -1211,11 +1212,33 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             return 0.0
         return prefix_len / max(len(a), 1)
 
+    def _strip_list_prefix(text):
+        """Strip leading numbering and list markers for better matching.
+
+        PDF text often has section numbers ('1 TEXT', '3.1 TEXT') and
+        dash bullets ('– text') that DOCX auto-extraction removes.
+        """
+        import re
+        t = text.strip()
+        # Strip leading section numbers: "1 TEXT" → "TEXT", "3.1.4 TEXT" → "TEXT"
+        t = re.sub(r'^\d+(?:\.\d+)*[\.\)]*\s*', '', t)
+        # Strip leading dashes/bullets: "– TEXT" → "TEXT", "- TEXT" → "TEXT"
+        t = re.sub(r'^[–\-•]\s*', '', t)
+        return t
+
     def _combined_score(ref_text_start, ref_text_end, content):
         """Score using both text_start and text_end for better disambiguation."""
         content_start = content[:60].strip()
         content_end = content[-40:].strip() if len(content) > 40 else content.strip()
         start_score = _prefix_score(ref_text_start, content_start)
+
+        # Fallback: try with stripped list/number prefixes
+        stripped_ref = _strip_list_prefix(ref_text_start)
+        stripped_content = _strip_list_prefix(content_start)
+        if stripped_ref and stripped_content:
+            alt_score = _prefix_score(stripped_ref, stripped_content)
+            start_score = max(start_score, alt_score)
+
         if not ref_text_end or not ref_text_end.strip():
             return start_score
         end_score = _prefix_score(ref_text_end, content_end)
@@ -1288,13 +1311,29 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
 
     for ref_elem in ref_elements:
         ref_type = ref_elem.get('type', '')
-        # Skip deleted elements (marked as _skip in UI)
-        if ref_type == '_skip':
-            continue
         ref_text_start = (ref_elem.get('text_start', '') or '').strip()
         ref_text_end = (ref_elem.get('text_end', '') or '').strip()
         ref_span = ref_elem.get('span', 1) or 1
         ref_idx = ref_elem.get('idx', 0)
+
+        # Handle _skip elements: find matching auto element and mark it for deletion
+        if ref_type == '_skip':
+            best_idx = _find_best_match(cursor, ref_text_start, ref_text_end, used)
+            if best_idx is not None:
+                orig_type = elements[best_idx]['type']
+                orig_content = elements[best_idx].get('content', '')[:60]
+                print(f'[ref_markup] ref[{ref_idx}] _skip '
+                      f'matched auto[{best_idx}] (was {orig_type}) '
+                      f'"{ref_text_start[:30]}" ↔ "{orig_content[:30]}"')
+                elements[best_idx]['_original_type'] = elements[best_idx]['type']
+                elements[best_idx]['type'] = '_skip'
+                elements[best_idx]['_ref_annotated'] = True
+                elements[best_idx]['_ref_idx'] = ref_idx
+                elements[best_idx]['_ref_type_raw'] = '_skip'
+                used.add(best_idx)
+                cursor = best_idx + 1
+            continue
+
         mapped_type = type_map.get(ref_type, ref_type)
 
         ref_element_id = ref_elem.get('element_id', '')
@@ -1302,6 +1341,11 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
         best_idx = _find_best_match(cursor, ref_text_start, ref_text_end, used)
 
         if best_idx is not None:
+            orig_type = elements[best_idx]['type']
+            orig_content = elements[best_idx].get('content', '')[:60]
+            print(f'[ref_markup] ref[{ref_idx}] {ref_type}→{mapped_type} '
+                  f'matched auto[{best_idx}] (was {orig_type}) '
+                  f'"{ref_text_start[:30]}" ↔ "{orig_content[:30]}"')
             # Override type in place
             elements[best_idx]['_original_type'] = elements[best_idx]['type']
             elements[best_idx]['type'] = mapped_type
@@ -1313,12 +1357,21 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             used.add(best_idx)
             cursor = best_idx + 1
 
-            # For span > 1: override subsequent auto elements
+            # For span > 1: override subsequent auto elements, BUT only if
+            # the first matched element doesn't already contain the full text
+            # (PDF spans can be larger than DOCX paragraph boundaries)
             if ref_span > 1:
-                _apply_span_forward(best_idx, ref_span, ref_text_end,
-                                    mapped_type, ref_idx, ref_type, used)
-                # Advance cursor past all span-covered elements
-                cursor = max(cursor, best_idx + ref_span)
+                first_content_end = elements[best_idx].get('content', '')[-40:].strip()
+                already_complete = False
+                if ref_text_end and first_content_end:
+                    end_score = _prefix_score(ref_text_end, first_content_end)
+                    if end_score > 0.3:
+                        already_complete = True
+                if not already_complete:
+                    _apply_span_forward(best_idx, ref_span, ref_text_end,
+                                        mapped_type, ref_idx, ref_type, used)
+                    # Advance cursor past all span-covered elements
+                    cursor = max(cursor, best_idx + ref_span)
 
     # Mark unannotated elements
     for i, elem in enumerate(elements):

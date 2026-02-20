@@ -34,8 +34,10 @@ class S1000DHTMLRenderer:
         self._anno_counter = 0
         parts = []
 
-        # Render header (techName + infoName)
-        parts.append(self._render_header(root))
+        # dmTitle (techName + infoName) is S1000D metadata from folder name.
+        # Content headings come from <levelledPara><title> — no need to render
+        # dmTitle as a comparison element (it causes false mismatches with the
+        # user reference which starts from actual content headings).
 
         # Detect module type and render content
         content = root.find('.//content')
@@ -87,12 +89,23 @@ class S1000DHTMLRenderer:
 
         parts = [f'<div class="levelled-para level-{level}" data-section-id="{sec_id}">']
 
+        has_title = False
         first_para = True
         for child in lp:
             tag = _local_tag(child)
-            if tag == 'para':
-                if first_para and level <= 4:
-                    # First para in a levelledPara is often a section heading
+            if tag == 'title':
+                # Explicit <title> inside levelledPara → render as heading
+                text = child.text or ''
+                for sub in child:
+                    text += (sub.text or '') + (sub.tail or '')
+                text = escape(text.strip())
+                if text:
+                    parts.append(f'<h{level} {self._anno("heading")} data-section-id="{sec_id}">{text}</h{level}>')
+                    has_title = True
+                    first_para = False
+            elif tag == 'para':
+                if first_para and not has_title and level <= 4:
+                    # First para in a levelledPara without <title> is often a section heading
                     text = self._get_para_html(child)
                     if text.strip() and not child.find('.//randomList') is not None:
                         parts.append(f'<h{level} {self._anno("heading")} data-section-id="{sec_id}">{text}</h{level}>')

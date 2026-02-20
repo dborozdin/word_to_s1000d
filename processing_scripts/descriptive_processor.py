@@ -231,7 +231,7 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
 
     # Read configuration
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read('config.ini', encoding='utf-8')
     split_into_modules = config.getboolean('processing', 'split_into_modules', fallback=False)
     print(f"Split into modules: {split_into_modules}")
 
@@ -636,16 +636,17 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
     def flush_current_list():
         nonlocal current_list_items, current_list_type, xml_parts, current_levelled_para, in_levelled_para
         if current_list_items:
-            # Generate randomList XML — bare <randomList> is a valid child of <levelledPara>
+            # Generate randomList XML wrapped in <para> — per XSD, <randomList> is
+            # only valid inside <para>, not as a direct child of <levelledPara>.
+            # levelledPara allows: title?, warning*, caution*, (para|note|table|figure)*, levelledPara*
             items_xml = ''.join([f"<listItem><para>{item}</para></listItem>" for item in current_list_items])
             prefix = 'pf02' if current_list_type == 'unnumbered_list' else 'pf01'
-            list_xml = f'<randomList listItemPrefix="{prefix}">{items_xml}</randomList>'
+            list_xml = f'<para><randomList listItemPrefix="{prefix}">{items_xml}</randomList></para>'
 
-            # Add list to current levelledPara if we're inside one, otherwise to xml_parts
             if in_levelled_para:
                 current_levelled_para.append(list_xml)
             else:
-                xml_parts.append(list_xml)
+                xml_parts.append(f'<levelledPara>{list_xml}</levelledPara>')
 
             current_list_items = []
             current_list_type = None
@@ -713,11 +714,19 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
         elem_type = elem.get('type', 'paragraph')
         content = elem.get('content', '')
 
+        # Skip elements marked for deletion by user reference markup
+        if elem_type == '_skip':
+            continue
+
+        # Any non-skip, non-paragraph element means the title block has passed
+        if elem_type != 'paragraph' and is_first_paragraph:
+            is_first_paragraph = False
+
         # Check if this is the first paragraph and contains both techName and infoName
         if elem_type == 'paragraph' and is_first_paragraph:
             # If user explicitly annotated this element as non-paragraph in reference,
             # respect the annotation and don't apply the techName skip logic
-            ref_type = elem.get('ref_type', '')
+            ref_type = elem.get('_ref_type_raw', '')
             if ref_type and ref_type not in ('paragraph', 'para', ''):
                 is_first_paragraph = False
                 # Fall through to normal element processing below
@@ -900,7 +909,11 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 # Skip outputting table references as they are redundant when table is present
                 pass
             elif elem_type == 'warning':
-                add_to_current_section(f'<warning><para>{content}</para></warning>')
+                add_to_current_section(f'<warning><warningAndCautionPara>{content}</warningAndCautionPara></warning>')
+            elif elem_type == 'caution':
+                add_to_current_section(f'<caution><warningAndCautionPara>{content}</warningAndCautionPara></caution>')
+            elif elem_type == 'note':
+                add_to_current_section(f'<note><notePara>{content}</notePara></note>')
             else:
                 # Default paragraph - skip if marked for skipping
                 if not elem.get('skip_output', False):

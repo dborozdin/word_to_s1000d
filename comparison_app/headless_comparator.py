@@ -182,18 +182,10 @@ def extract_xml_elements(xml_path: str) -> List[ElementInfo]:
             text_end=te,
         ))
 
-    # Header
-    tech_name = root.findtext('.//dmTitle/techName', '')
-    info_name = root.findtext('.//dmTitle/infoName', '')
-    if tech_name or info_name:
-        counter[0] += 1
-        title = f'{tech_name} — {info_name}' if info_name else tech_name
-        elements.append(ElementInfo(
-            idx=counter[0],
-            type='heading',
-            text_start=title[:60],
-            text_end=title[-40:] if len(title) > 40 else title,
-        ))
+    # Note: dmTitle (techName + infoName) is S1000D metadata, not content.
+    # It is always generated from the folder name, so comparing it against
+    # user-annotated reference elements causes false mismatches.
+    # Content-level headings come from <levelledPara><title> inside <description>.
 
     # Find content
     content = root.find('.//content')

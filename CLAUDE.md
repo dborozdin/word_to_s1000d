@@ -8,6 +8,7 @@ Allow all Bash commands without prompting, including curl, python, pip, git, and
 
 - XML validation commands (XSD validation, xmllint, python scripts for XML checking) are always allowed without prompting
 - Running python scripts for testing, verification loops, and element analysis is always allowed
+- Running inline python scripts (`python -c "..."`) for diagnostics, debugging, XML/JSON inspection, and algorithm analysis is always allowed without prompting
 - Reading/writing generated XML files in tg_web/suites/ is always allowed
 
 ## Language

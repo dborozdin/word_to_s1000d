@@ -25,6 +25,10 @@
             {% endif %}
             <div class="anno-controls">
                 <button id="toggle-anno" class="anno-btn" title="Показать/скрыть разметку элементов">Разметка</button>
+                <select id="nav-mode" class="anno-btn nav-mode-select" title="Режим навигации">
+                    <option value="all">Все элементы</option>
+                    <option value="issues">Расхождения</option>
+                </select>
                 <button id="anno-prev" class="anno-btn anno-nav" title="Предыдущий элемент">&laquo;</button>
                 <span id="anno-position" class="anno-position">&mdash; / &mdash;</span>
                 <button id="anno-next" class="anno-btn anno-nav" title="Следующий элемент">&raquo;</button>
@@ -47,11 +51,12 @@
                 Синхронная прокрутка
             </label>
             <label class="sync-label">
-                <input type="checkbox" id="anno-frame">
+                <input type="checkbox" id="anno-frame" checked>
                 Рамка элемента
             </label>
         </div>
     </header>
+    <div id="issue-tooltip" class="issue-tooltip" style="display:none"></div>
 
     {% if errors %}
     <div class="errors-bar">

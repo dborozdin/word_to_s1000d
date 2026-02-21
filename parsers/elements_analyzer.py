@@ -1395,6 +1395,11 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
                 if elements[i].get('type') == '_skip':
                     continue
                 break
+            # Illustrations break text groups (lists, paragraphs) — never
+            # override an illustration with a non-illustration type.
+            elem_type = elements[i].get('type', '')
+            if elem_type == 'illustration' and mapped_type != 'illustration':
+                break
             elements[i]['_original_type'] = elements[i]['type']
             elements[i]['type'] = mapped_type
             elements[i]['_ref_annotated'] = True

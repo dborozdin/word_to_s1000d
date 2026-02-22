@@ -1401,7 +1401,12 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             if elem_type == 'illustration' and mapped_type != 'illustration':
                 break
             elements[i]['_original_type'] = elements[i]['type']
-            elements[i]['type'] = mapped_type
+            # Section headers: only the first element is the header;
+            # subsequent span elements are content paragraphs within that section
+            if mapped_type == 'numbered_paragraph_header':
+                elements[i]['type'] = 'paragraph'
+            else:
+                elements[i]['type'] = mapped_type
             elements[i]['_ref_annotated'] = True
             elements[i]['_ref_idx'] = ref_idx
             elements[i]['_ref_type_raw'] = ref_type_raw
@@ -1446,6 +1451,12 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             continue
 
         mapped_type = type_map.get(ref_type, ref_type)
+
+        # Section-numbered lists (3.2, 3.1.4, etc.) → numbered_paragraph_header
+        # so the processor generates <levelledPara><title> instead of <randomList>
+        if mapped_type in ('numbered_list', 'nested_numbered_list') and ref_text_start:
+            if re.match(r'^\d+(?:\.\d+)*\s+', ref_text_start):
+                mapped_type = 'numbered_paragraph_header'
 
         ref_element_id = ref_elem.get('element_id', '')
 

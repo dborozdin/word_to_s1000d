@@ -364,24 +364,8 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
     from parsers.multi_sheet_illustration_parser import process_multi_sheet_illustrations
     elements = process_multi_sheet_illustrations(elements, graphic_ident_prefix=graphic_ident_prefix)
 
-    # Post-process to clean figure titles by removing "Рисунок <number> – " prefix
-    for elem in elements:
-        if elem.get('type') == 'illustration':
-            content = elem.get('content', '')
-            # Check if content starts with figure title pattern
-            title_match = re.search(r'^[Рр]исунок\s*\d+\s*[–-]\s*(.+)', content, re.IGNORECASE)
-            if title_match:
-                clean_title = title_match.group(1).strip()
-                # Update both content and xml_example
-                elem['content'] = clean_title
-                # Also update the title in xml_example
-                if '<title>' in elem.get('xml_example', ''):
-                    # Replace the title content in the XML
-                    old_xml = elem['xml_example']
-                    # Find and replace the title content
-                    title_pattern = r'(<title>)[^<]*(</title>)'
-                    new_xml = re.sub(title_pattern, f'\\1{clean_title}\\2', old_xml, flags=re.IGNORECASE)
-                    elem['xml_example'] = new_xml
+    # NOTE: "Рисунок N –" prefix is preserved in figure titles so that
+    # cross-references in document text ("см. рисунок 205") remain valid.
 
     # Apply user reference markup (or fall back to overrides) if available
     if dm_code_override:
@@ -700,6 +684,21 @@ def group_sections_by_type(headings: List[str]) -> Dict[str, List[int]]:
     return groups
 
 
+_SECTION_NUM_RE = re.compile(r'^(\d+(?:\.\d+)*)\s+(.+)', re.DOTALL)
+
+
+def _parse_section_number(text: str):
+    """Detect section number (N, N.N, N.N.N) at text start.
+
+    Returns (number_str, depth, stripped_title) or None.
+    """
+    m = _SECTION_NUM_RE.match(text.strip())
+    if m:
+        num = m.group(1)
+        return (num, num.count('.') + 1, m.group(2).strip())
+    return None
+
+
 def assemble_content_for_section(section: Dict, document: Document, tables: Dict[str, Dict], lists_data: List[Dict], elements: List[Dict], illustration_counter: int = 0, figure_counter: int = 0, figure_info: List = None, tech_name: str = "", info_name_override: str = "", graphic_ident_prefix: str = None) -> Dict:
     """
     Assemble content for a specific analyzed section using element analysis.
@@ -941,34 +940,52 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
 
         elif elem_type in ['numbered_list', 'unnumbered_list',
                            'nested_numbered_list', 'nested_unnumbered_list']:
-            # DON'T flush current_levelled_para - lists should be inside the current section
-            # Store (content, list_level) tuples for nested list support
-            is_nested = elem_type.startswith('nested_')
-            # Use explicit levels: 0 = top-level, 1 = nested.
-            # Don't use raw list_level (EMU values) — they conflict with
-            # the forced level=1 during normalization.
-            elem_level = 1 if is_nested else 0
-            # Base type for grouping: nested_unnumbered_list → unnumbered_list
-            base_type = elem_type.replace('nested_', '') if is_nested else elem_type
+            # Check if this is a section-numbered item (3.2, 3.1.4, etc.)
+            # that should generate <levelledPara><title> instead of <randomList>
+            section_info = None
+            if elem_type in ('numbered_list', 'nested_numbered_list'):
+                section_info = _parse_section_number(content)
 
-            if is_nested and current_list_items:
-                # Nested: continue accumulating into the current (parent) list
-                current_list_items.append((content, elem_level))
-            elif base_type == current_list_type:
-                # Same base type — but if returning from nested back to
-                # top level, flush first so each reference element group
-                # produces its own <randomList> for 1:1 comparison
-                if current_list_items and any(lvl > 0 for _, lvl in current_list_items):
+            if section_info is not None:
+                # Section header disguised as numbered_list → levelledPara
+                number_str, depth, title_text = section_info
+                flush_current_list()
+                if current_levelled_para:
+                    xml_parts.append(f'<levelledPara>{"".join(current_levelled_para)}</levelledPara>')
+                    current_levelled_para = []
+                    in_levelled_para = False
+                current_levelled_para = [f'<title>{title_text}</title>']
+                in_levelled_para = True
+            else:
+                # Regular list item → accumulate for <randomList>
+                # DON'T flush current_levelled_para - lists should be inside the current section
+                # Store (content, list_level) tuples for nested list support
+                is_nested = elem_type.startswith('nested_')
+                # Use explicit levels: 0 = top-level, 1 = nested.
+                # Don't use raw list_level (EMU values) — they conflict with
+                # the forced level=1 during normalization.
+                elem_level = 1 if is_nested else 0
+                # Base type for grouping: nested_unnumbered_list → unnumbered_list
+                base_type = elem_type.replace('nested_', '') if is_nested else elem_type
+
+                if is_nested and current_list_items:
+                    # Nested: continue accumulating into the current (parent) list
+                    current_list_items.append((content, elem_level))
+                elif base_type == current_list_type:
+                    # Same base type — but if returning from nested back to
+                    # top level, flush first so each reference element group
+                    # produces its own <randomList> for 1:1 comparison
+                    if current_list_items and any(lvl > 0 for _, lvl in current_list_items):
+                        flush_current_list()
+                        current_list_type = base_type
+                        current_list_items = [(content, elem_level)]
+                    else:
+                        current_list_items.append((content, elem_level))
+                else:
+                    # Flush previous list (will be added to current_levelled_para if inside one)
                     flush_current_list()
                     current_list_type = base_type
                     current_list_items = [(content, elem_level)]
-                else:
-                    current_list_items.append((content, elem_level))
-            else:
-                # Flush previous list (will be added to current_levelled_para if inside one)
-                flush_current_list()
-                current_list_type = base_type
-                current_list_items = [(content, elem_level)]
 
         elif elem_type == 'paragraph':
             # Flush any pending list before adding paragraph (preserve document order)

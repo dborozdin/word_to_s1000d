@@ -1452,10 +1452,12 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
 
         mapped_type = type_map.get(ref_type, ref_type)
 
-        # Section-numbered lists (3.2, 3.1.4, etc.) → numbered_paragraph_header
-        # so the processor generates <levelledPara><title> instead of <randomList>
+        # Section-numbered lists → numbered_paragraph_header ONLY for depth <= 2
+        # ("3 Общие указания" depth=1, "3.2 Последовательность" depth=2 → <levelledPara>)
+        # ("3.2.1 Снимите...", "3.1.4 При монтаже..." depth=3+ → keep as numbered_list)
         if mapped_type in ('numbered_list', 'nested_numbered_list') and ref_text_start:
-            if re.match(r'^\d+(?:\.\d+)*\s+', ref_text_start):
+            m_sec = re.match(r'^(\d+(?:\.\d+)*)\s+', ref_text_start)
+            if m_sec and m_sec.group(1).count('.') < 2:
                 mapped_type = 'numbered_paragraph_header'
 
         ref_element_id = ref_elem.get('element_id', '')

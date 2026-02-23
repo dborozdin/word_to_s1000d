@@ -235,13 +235,15 @@ _BULLET_RE = re.compile(
     r'^[\-\u2013\u2014\u2212\u2022\u25CF\u25CB\u2023\u25AA\u25AB\u2043]'
 )
 _NUMBERED_RE = re.compile(r'^\d+[\.\)]\s')
+# Multi-level section numbers: "3.1 ", "3.1.1 ", "3.2.4 " etc.
+_SECTION_HDR_RE = re.compile(r'^\d+(?:\.\d+)+\s')
 _TERMINAL_RE = re.compile(r'[.!?;][»"\'\)\]]*\s*$')
 
 
 def _is_list_start(text: str) -> bool:
-    """Check if text begins with a bullet/dash or numbered prefix."""
+    """Check if text begins with a bullet/dash, numbered prefix, or section number."""
     t = text.strip()
-    return bool(_BULLET_RE.match(t) or _NUMBERED_RE.match(t))
+    return bool(_BULLET_RE.match(t) or _NUMBERED_RE.match(t) or _SECTION_HDR_RE.match(t))
 
 
 def _collapse_table_blocks(blocks: list, preserve_font_info: bool = False) -> list:

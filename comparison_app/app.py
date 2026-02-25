@@ -30,6 +30,11 @@ from comparison_app.headless_comparator import extract_xml_elements, compare_ele
 
 app = Flask(__name__)
 
+# Fix MIME types for ES modules (.mjs) — Windows registry often misses these
+import mimetypes
+mimetypes.add_type('application/javascript', '.mjs')
+mimetypes.add_type('application/javascript', '.js')
+
 # In-memory progress tracking for verification loops
 _loop_progress = {}  # dmc_string -> {cycle, max_cycles, status}
 

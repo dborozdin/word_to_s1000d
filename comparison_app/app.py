@@ -383,6 +383,5 @@ if __name__ == '__main__':
     print(f'Comparison app starting on http://localhost:{port}')
     print(f'Input dir: {INPUT_DIR}')
     print(f'Output dir: {OUTPUT_DIR}')
-    print(f'MS Word available: {_is_word_available()}')
     app.run(host='0.0.0.0', port=port, debug=debug, use_reloader=False)
 

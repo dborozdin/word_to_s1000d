@@ -146,21 +146,31 @@ def _extract_body(html: str) -> str:
 # ==========================================================================
 
 def is_word_available() -> bool:
-    """Check if MS Word COM automation is available."""
-    try:
-        import pythoncom
-        import win32com.client
-        pythoncom.CoInitialize()
+    """Check if MS Word COM automation is available (with 5 s timeout)."""
+    import threading
+
+    result: list = [False]
+
+    def _check():
         try:
-            word = win32com.client.Dispatch("Word.Application")
-            word.Quit()
-            return True
+            import pythoncom
+            import win32com.client
+            pythoncom.CoInitialize()
+            try:
+                word = win32com.client.Dispatch("Word.Application")
+                word.Quit()
+                result[0] = True
+            except Exception:
+                pass
+            finally:
+                pythoncom.CoUninitialize()
         except Exception:
-            return False
-        finally:
-            pythoncom.CoUninitialize()
-    except ImportError:
-        return False
+            pass
+
+    t = threading.Thread(target=_check, daemon=True)
+    t.start()
+    t.join(timeout=5)
+    return result[0]
 
 
 # ==========================================================================

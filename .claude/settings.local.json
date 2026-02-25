@@ -25,7 +25,11 @@
       "Bash(/c/python_projects/word_to_s1000d/venv/Scripts/python.exe:*)",
       "Bash(/c/python_projects/word_to_s1000d/venv/Scripts/pip.exe freeze)",
       "Bash(git add .vscode/settings.json requirements.txt comparison_app/s1000d_renderer.py comparison_app/reference_store.py config.ini main.py parsers/content_analyzer.py parsers/elements_analyzer.py parsers/illustration_parser.py processing_scripts/descriptive_processor.py)",
-      "Bash(git add .claude/settings.local.json)"
+      "Bash(git add .claude/settings.local.json)",
+      "Bash(git commit:*)",
+      "Bash(git push --force origin main)",
+      "Bash(git add .vscode/settings.json)",
+      "Bash(git push)"
     ]
   }
 }

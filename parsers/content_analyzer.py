@@ -266,7 +266,9 @@ def generate_module_mapping_log(document_path: str, module_mapping: Dict[str, Di
     import os
     import datetime
 
-    log_path = os.path.join(output_path, f"module_mapping_{os.path.basename(document_path).replace('.docx', '')}.log")
+    _logs_dir = os.path.join(output_path, '_logs')
+    os.makedirs(_logs_dir, exist_ok=True)
+    log_path = os.path.join(_logs_dir, f"module_mapping_{os.path.basename(document_path).replace('.docx', '')}.log")
 
     with open(log_path, 'w', encoding='utf-8') as f:
         f.write("S1000D Module Mapping Log\n")
@@ -320,7 +322,9 @@ def generate_content_analysis_log(document_path: str, analysis_results: List[Dic
     import os
     import datetime
 
-    log_path = os.path.join(output_path, f"content_analysis_{os.path.basename(document_path).replace('.docx', '')}.log")
+    _logs_dir_ca = os.path.join(output_path, '_logs')
+    os.makedirs(_logs_dir_ca, exist_ok=True)
+    log_path = os.path.join(_logs_dir_ca, f"content_analysis_{os.path.basename(document_path).replace('.docx', '')}.log")
 
     with open(log_path, 'w', encoding='utf-8') as f:
         f.write(f"Content Analysis Log\n")

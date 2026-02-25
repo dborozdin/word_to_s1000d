@@ -107,7 +107,9 @@ def setup_logging(output_dir: str) -> logging.Logger:
     logger.addHandler(console_handler)
 
     # File handler
-    log_file = os.path.join(output_dir, 'batch_processing.log')
+    _logs_dir = os.path.join(output_dir, '_logs')
+    os.makedirs(_logs_dir, exist_ok=True)
+    log_file = os.path.join(_logs_dir, 'batch_processing.log')
     file_handler = logging.FileHandler(log_file, encoding='utf-8', mode='w')
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))

@@ -297,7 +297,10 @@ def _save_element_map_sidecar(xml_filepath: str, elements: List[Dict]) -> None:
     if not element_map:
         return
 
-    sidecar_path = os.path.splitext(xml_filepath)[0] + '_element_map.json'
+    _finetune_dir = os.path.join(os.path.dirname(xml_filepath), 'user_finetune')
+    os.makedirs(_finetune_dir, exist_ok=True)
+    sidecar_path = os.path.join(_finetune_dir,
+                                os.path.splitext(os.path.basename(xml_filepath))[0] + '_element_map.json')
     with open(sidecar_path, 'w', encoding='utf-8') as f:
         _json.dump({'element_map': element_map}, f, ensure_ascii=False, indent=2)
     matched = sum(1 for e in element_map if e['stable_id'])
@@ -518,7 +521,9 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
     else:
         # For combined mode, generate general module mapping all log
         log_filename = "module_mapping_all.log"
-        mapping_log_path = os.path.join(output_dir, log_filename)
+        _logs_dir = os.path.join(output_dir, '_logs')
+        os.makedirs(_logs_dir, exist_ok=True)
+        mapping_log_path = os.path.join(_logs_dir, log_filename)
 
         with open(mapping_log_path, 'w', encoding='utf-8') as f:
             import datetime
@@ -1242,7 +1247,9 @@ def validate_content_inclusion(doc_path: str, generated_files: List[str], illust
         List of validation error messages
     """
     errors = []
-    error_log_path = os.path.join(output_dir, "errors.log")
+    _logs_dir_err = os.path.join(output_dir, '_logs')
+    os.makedirs(_logs_dir_err, exist_ok=True)
+    error_log_path = os.path.join(_logs_dir_err, "errors.log")
 
     # Load original document
     try:

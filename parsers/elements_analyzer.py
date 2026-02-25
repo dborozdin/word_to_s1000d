@@ -1654,7 +1654,9 @@ def generate_elements_log(document_path: str, elements: List[Dict[str, Any]], ou
         Path to generated log file
     """
     filename = os.path.basename(document_path).replace('.docx', '').replace('.doc', '')
-    log_path = os.path.join(output_path, f"elements_{filename}.log")
+    _logs_dir = os.path.join(output_path, '_logs')
+    os.makedirs(_logs_dir, exist_ok=True)
+    log_path = os.path.join(_logs_dir, f"elements_{filename}.log")
 
     element_type_names = {
         'header': 'Заголовок',

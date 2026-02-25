@@ -540,7 +540,9 @@ def _load_element_map(xml_path: str) -> list:
     """Load element map sidecar JSON for an XML file (if it exists)."""
     import json as _json
     import os as _os
-    sidecar_path = _os.path.splitext(xml_path)[0] + '_element_map.json'
+    _xml_dir = _os.path.dirname(xml_path)
+    _xml_stem = _os.path.splitext(_os.path.basename(xml_path))[0]
+    sidecar_path = _os.path.join(_xml_dir, 'user_finetune', _xml_stem + '_element_map.json')
     if _os.path.isfile(sidecar_path):
         try:
             with open(sidecar_path, 'r', encoding='utf-8') as f:

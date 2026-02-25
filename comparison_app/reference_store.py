@@ -10,7 +10,18 @@ import hashlib
 from datetime import datetime
 from typing import Optional
 
-REFERENCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_references')
+def _get_reference_dir() -> str:
+    """Compute reference directory as {output_dir}/user_finetune/ from config.ini."""
+    import configparser as _cp
+    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _cfg = _cp.ConfigParser()
+    _cfg.read(os.path.join(_project_root, 'config.ini'), encoding='utf-8')
+    _output_dir = os.path.join(_project_root,
+                               _cfg.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
+    return os.path.join(_output_dir, 'user_finetune')
+
+
+REFERENCE_DIR = _get_reference_dir()
 
 
 def _ensure_dir():

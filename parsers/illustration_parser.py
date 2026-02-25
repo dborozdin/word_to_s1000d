@@ -151,7 +151,9 @@ def extract_illustrations(doc: Document, output_dir: str = "./tg_web/publication
             table_end_char = char_position
 
     # Create log file for illustration extraction
-    log_path = os.path.join(output_dir, "illustration_extraction.log")
+    _logs_dir = os.path.join(output_dir, '_logs')
+    os.makedirs(_logs_dir, exist_ok=True)
+    log_path = os.path.join(_logs_dir, "illustration_extraction.log")
     with open(log_path, 'w', encoding='utf-8') as log_file:
         log_file.write("Лог извлечения иллюстраций\n")
         log_file.write("=" * 50 + "\n")

@@ -232,7 +232,7 @@ list_analysis_log.txt
 numbered_headers_analysis_log.txt
 nul
 /last_version_generated
-*.js
+index-*.js
 /examples
 /comparison_app/pdf_cache
 /comparison_app/_references

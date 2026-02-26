@@ -25,6 +25,9 @@ Allow all Bash commands without prompting, including curl, python, pip, git, and
 - Part IV: Pipeline diagrams
 - Part V: Hybrid PDF+DOCX approach (reference matching algorithm)
 - Part VI: Stable element IDs (stable_id content-hash, sidecar JSON, 3-phase comparison)
+- Part VII: Client module architecture (ES6 modules, see `docs/comparison_module_spec.md`)
+
+**For comparison module debugging:** Read `docs/comparison_module_spec.md` — detailed spec of all 14 ES6 modules, shared state, sync pipeline, edit mode flow, data schemas.
 
 ## Mandatory rule: keep algorithm_description.html up to date
 
@@ -42,7 +45,18 @@ Allow all Bash commands without prompting, including curl, python, pip, git, and
 | `comparison_app/app.py` | Flask comparison app (PDF left panel ↔ XML right panel) |
 | `comparison_app/s1000d_renderer.py` | Renders S1000D XML → HTML, emits `data-element-id` from sidecar |
 | `comparison_app/headless_comparator.py` | 3-phase element comparison: stable_id → text similarity → LCS fallback |
-| `comparison_app/static/js/comparison.js` | Client-side: annotations, ID-based navigation, 3-level mismatch highlighting |
+| `comparison_app/static/js/comparison.js` | Entry point (~60 lines): imports all modules, initializes app lifecycle |
+| `comparison_app/static/js/modules/` | 14 ES6 modules (see `docs/comparison_module_spec.md` for details): |
+| `  modules/state.js` | Centralized shared state + DOM refs with getters/setters |
+| `  modules/badges.js` | Badge injection, rebuild lifecycle, hook registry for sync modules |
+| `  modules/pdf-sync.js` | PDF marker ↔ reference sync (bbox text matching + logging) |
+| `  modules/html-sync.js` | HTML element ↔ reference sync (text/sequential) |
+| `  modules/xml-sync.js` | S1000D 3-phase matching (stable_id → text → type-group) |
+| `  modules/edit-mode.js` | Context menu, CRUD ops, merge/split/delete/create |
+| `  modules/mismatch.js` | Mismatch detection, LCS, issue navigation |
+| `  modules/verification.js` | Verify loop, XSD issues, S1000D panel refresh |
+| `  modules/navigation.js` | Annotation navigation, keyboard shortcuts |
+| `  modules/pdf-overlay.js` | PDF page overlay creation (server blocks + JS fallback) |
 | `comparison_app/reference_store.py` | CRUD for reference markup (`_references/*.json`), stores `stable_id` |
 | `comparison_app/_references/` | Reference JSON files (the "ground truth" element markup) |
 | `comparison_app/pdf_block_extractor.py` | Extracts text blocks from PDF via PyMuPDF for left panel |

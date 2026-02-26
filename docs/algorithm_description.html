@@ -212,6 +212,8 @@
     <li class="sub"><a href="#v5">V.5. Унифицированная структура данных</a></li>
     <li class="sub"><a href="#v6">V.6. Таблицы и иллюстрации</a></li>
     <li class="sub"><a href="#v7">V.7. Fallback и миграция</a></li>
+    <li><a href="#part6">Часть VI. Стабильные идентификаторы элементов</a></li>
+    <li><a href="#part7">Часть VII. Архитектура клиентского модуля сравнения</a></li>
   </ul>
 </div>
 
@@ -1553,8 +1555,67 @@ stable_id = sha256(raw)[:12]</code></pre>
   </ul>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="part7">Часть VII. Архитектура клиентского модуля сравнения</h2>
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+
+<div class="info-block">
+  <strong>Подробная спецификация:</strong> <code>docs/comparison_module_spec.md</code> —
+  полное описание всех модулей, shared state, sync pipeline, edit mode flow, форматов данных
+  и зависимостей между модулями.
+</div>
+
+<h3>Модульная структура (ES6 modules)</h3>
+
+<p>Монолитный <code>comparison.js</code> (2836 строк, ~75 функций) разделён на 14 ES6-модулей
+по 50–350 строк каждый. Точка входа — <code>comparison.js</code> (~60 строк),
+загружается как <code>&lt;script type="module"&gt;</code>.</p>
+
+<pre><code>comparison_app/static/js/
+├── comparison.js              ← entry point: imports + init (~60 строк)
+└── modules/
+    ├── config.js              ← константы: ANNO_TYPE_LABELS, ANNO_COLORS, SENTINEL_TYPES
+    ├── state.js               ← shared state + DOM refs (getters/setters)
+    ├── logger.js              ← структурированное логгирование (?log=debug)
+    ├── utils.js               ← normType, normForMatch, getCleanText, filterTopLevel
+    ├── layout.js              ← scroll sync, divider resize
+    ├── badges.js              ← injectBadges, rebuildBadges, hook registry
+    ├── pdf-sync.js            ← _syncPdfMarkersBbox / Sequential (с логгированием)
+    ├── html-sync.js           ← _syncHtmlElementsText / Sequential
+    ├── xml-sync.js            ← 3-phase: stable_id → text → type-group
+    ├── pdf-overlay.js         ← analyzePdfTextContent, createPdfOverlay
+    ├── navigation.js          ← navigateTo, scrollToAnno, keyboard
+    ├── mismatch.js            ← detectMismatch, LCS, issue navigation
+    ├── verification.js        ← runVerification, runVerifyLoop, XSD issues
+    └── edit-mode.js           ← context menu, merge/split/delete/create
+</code></pre>
+
+<h3>Shared state (state.js)</h3>
+<p>Все мутабельные переменные сосредоточены в <code>state.js</code> и доступны через
+getter/setter функции. DOM-элементы кэшируются в объекте <code>dom</code> при вызове
+<code>initState()</code>. Это исключает прямой доступ к глобальным переменным из других модулей.</p>
+
+<h3>Hook-паттерн для циклических зависимостей</h3>
+<p><code>badges.js</code> экспортирует <code>_rebuildHooks</code> — объект, куда другие модули
+регистрируют свои функции при инициализации:</p>
+<ul>
+  <li><code>syncPdfMarkers</code> — из pdf-sync.js</li>
+  <li><code>syncHtmlElements</code> — из html-sync.js</li>
+  <li><code>detectMismatch</code> — из mismatch.js</li>
+  <li><code>makeNavHandler</code> — из navigation.js</li>
+</ul>
+<p>Это позволяет <code>rebuildBadges()</code> вызывать функции sync-модулей без
+циклических импортов.</p>
+
+<h3>Логгирование (logger.js)</h3>
+<p>Включается через URL-параметр <code>?log=debug</code> или
+<code>localStorage.setItem('compLog', 'debug')</code>.
+Области: <code>pdf-sync</code>, <code>html-sync</code>, <code>xml-sync</code>,
+<code>edit</code>, <code>badges</code>, <code>verify</code>, <code>nav</code>, <code>overlay</code>.
+Фильтрация по области: <code>?logArea=pdf-sync,edit</code>.</p>
+
 <p style="text-align:center; color:var(--gray); margin-top:3rem; font-size:0.85rem;">
-  Документ сгенерирован: 2026-02-20 | Проект: Word to S1000D Converter
+  Документ сгенерирован: 2026-02-26 | Проект: Word to S1000D Converter
 </p>
 
 </body>

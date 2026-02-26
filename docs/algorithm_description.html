@@ -584,15 +584,71 @@
   ]
 }</div>
 
-  <h4>10.2. Инициализация (автоматическая)</h4>
+  <h4>10.2. Инициализация (автоматическая) — XML-first подход</h4>
+  <p>При первом открытии сравнения (или после нажатия &laquo;Сбросить эталон&raquo;)
+  эталонная разметка создаётся по приоритету:</p>
   <ol>
-    <li>Пользователь нажимает кнопку &laquo;Эталон&raquo;</li>
-    <li>JS вызывает <code>/api/reference/&lt;dmc&gt;/init</code> (POST)</li>
-    <li>Python: <code>init_reference_from_auto()</code> &mdash; извлекает элементы из docx через mammoth HTML-парсер</li>
-    <li>Создаёт список элементов с авто-назначенными типами</li>
-    <li>Сохраняет в <code>_references/</code> с <code>source: "auto"</code></li>
+    <li><strong>XML-first</strong> (приоритет 1, <code>element_source=hybrid</code> + наличие XML + MS Word):
+      <ol type="a">
+        <li>Извлекает XML-элементы из сгенерированного XML &mdash; <code>extract_xml_elements(xml_path)</code></li>
+        <li>Загружает <code>stable_id</code> из sidecar JSON (<code>user_finetune/*_element_map.json</code>)</li>
+        <li>Рендерит DOCX → PDF и извлекает блоки &mdash; <code>extract_pdf_blocks_full()</code></li>
+        <li>Матчит XML-элементы к PDF-блокам &mdash; <strong><code>match_xml_to_pdf()</code></strong> в <code>parsers/hybrid_matcher.py</code></li>
+        <li>Результат: эталон с теми же элементами что и XML, позиционированными в PDF-пространстве</li>
+        <li>Источник: <code>source: "auto_xml_derived"</code></li>
+      </ol>
+    </li>
+    <li><strong>Hybrid PDF+DOCX</strong> (приоритет 2, <code>element_source=hybrid</code> + MS Word): PDF-first матчинг,
+      <code>match_pdf_to_docx()</code>, <code>source: "auto_hybrid"</code></li>
+    <li><strong>DOCX-only</strong> (приоритет 3, fallback): mammoth HTML-парсер,
+      <code>source: "auto"</code></li>
   </ol>
-  <p><span class="file-ref">comparison_app/reference_store.py</span></p>
+
+  <h5>Алгоритм <code>match_xml_to_pdf()</code></h5>
+  <p>XML-элементы — «якоря», PDF-блоки — «позиции». Двухпроходная стратегия:</p>
+
+  <p><strong>Pass 1</strong> — оконный поиск с сохранением порядка документа:</p>
+  <ol>
+    <li>Для каждого XML-элемента поиск PDF-блока по текстовому сходству в окне
+        <code>[cursor-3 .. cursor+80]</code>. Нормализация: убираются маркеры списков
+        (<code>-</code>, <code>•</code>, <code>1.</code>) перед сравнением.
+        <code>_type_context_factor</code> штрафует warning/caution/note при отсутствии
+        ключевых слов (×0.1).</li>
+    <li>Расширение вперёд (forward expansion): захват последовательных PDF-блоков. Критерии:
+        ни один другой XML-элемент не претендует на блок с confidence &gt;0.4;
+        малый y-gap (&lt;3× медианного на той же странице);
+        x-отступ ±40 px <em>или</em> блоки вертикально близки на той же странице
+        (line-wrap в рамках одного абзаца, gap &lt;1.5× медианного).</li>
+    <li>Слияние захваченных блоков: один элемент эталона с <code>span=N</code> и объединённым bbox.</li>
+  </ol>
+
+  <p><strong>Pass 2</strong> — глобальный поиск для элементов, не найденных в Pass 1
+     (warnings/cautions могут стоять в начале XML, но физически на последних страницах PDF,
+     за пределами окна Pass 1):</p>
+  <ol>
+    <li>Каждый не-найденный XML-элемент ищет по ВСЕМ свободным PDF-блокам (без ограничения cursor/window).</li>
+    <li>Forward expansion идентична Pass 1 (включая x0 line-wrap, should_stop по ВСЕМ XML-элементам).</li>
+  </ol>
+
+  <p><strong>Sentinel-типы:</strong></p>
+  <ul>
+    <li>PDF-блоки без XML-соответствия → тип <code>_extra_pdf</code> (красная штриховка).</li>
+    <li>XML-элементы без PDF-позиции → тип <code>_unmatched_xml</code> с интерполированным bbox (жёлтая штриховка).</li>
+    <li>При <code>apply_reference_markup()</code> и сравнении sentinel-типы фильтруются:
+        <code>_extra_pdf</code>, <code>_unmatched_xml</code>, <code>_skip</code> не участвуют в матчинге.</li>
+  </ul>
+
+  <h5>Кнопки управления (новые)</h5>
+  <ul>
+    <li><strong>Сбросить эталон</strong> &mdash; DELETE + re-init с XML-first алгоритмом.
+        Тултип: «Инициализация эталона по XML».</li>
+    <li><strong>Сбросить XML</strong> &mdash; повторная генерация XML из DOCX
+        (вызов <code>/api/regenerate/&lt;dmc&gt;</code>, POST). Диалог с опцией «Сбросить также эталон».</li>
+  </ul>
+
+  <p><span class="file-ref">comparison_app/reference_store.py</span>
+     &bull; <span class="file-ref">parsers/hybrid_matcher.py</span>
+     &bull; <span class="file-ref">comparison_app/app.py</span></p>
 
   <h4>10.3. Редактирование (ручное)</h4>
   <p>Пользователь входит в режим редактирования &rarr; на блоках появляются цветные бейджи.
@@ -652,6 +708,14 @@
       </ul>
     </li>
     <li>Если для элемента нет совпадения в эталоне &mdash; остаётся авто-определённый тип</li>
+    <li><strong>Фильтрация sentinel-типов:</strong> элементы с типами <code>_extra_pdf</code>,
+        <code>_unmatched_xml</code> исключаются перед матчингом, чтобы не «красть» DOCX-элементы
+        у настоящих ref-элементов.</li>
+    <li><strong>Pre-merge:</strong> если несколько последовательных DOCX-элементов имеют одинаковый
+        <code>_ref_idx</code> и тип из множества <code>{paragraph, warning, caution, note}</code>,
+        они объединяются в один элемент с конкатенированным контентом (через <code>\n</code>).
+        Для warning/caution результат генерируется как несколько <code>&lt;warningAndCautionPara&gt;</code>,
+        для note — несколько <code>&lt;notePara&gt;</code>.</li>
   </ol>
 
   <h4>11.3. Сравнение: 3-фазный алгоритм на stable_id</h4>

@@ -183,7 +183,7 @@ def run_verification_loop(
         return [{'cycle': 0, 'error': 'No reference markup saved for this DMC'}]
 
     ref_elements = [ElementInfo.from_dict(e) for e in ref_data['elements']
-                     if e.get('type') != '_skip']
+                     if e.get('type') not in ('_skip', '_extra_pdf', '_unmatched_xml')]
     if not ref_elements:
         return [{'cycle': 0, 'error': 'Reference has no elements'}]
 

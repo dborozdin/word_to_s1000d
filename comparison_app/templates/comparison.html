@@ -37,7 +37,8 @@
             <div class="ref-controls">
                 <button id="edit-ref-btn" class="anno-btn" title="Загрузить / создать эталонную разметку">Эталон</button>
                 <button id="save-ref-btn" class="anno-btn" style="display:none" title="Сохранить изменения в эталоне">Сохранить</button>
-                <button id="reset-ref-btn" class="anno-btn" style="display:none" title="Удалить эталон и создать заново">Сбросить эталон</button>
+                <button id="reset-ref-btn" class="anno-btn" style="display:none" title="Инициализация эталона по XML — удалить пользовательскую разметку и пересоздать из XML">Сбросить эталон</button>
+                <button id="reset-xml-btn" class="anno-btn" title="Повторно сгенерировать XML из DOCX с нуля">Сбросить XML</button>
                 <button id="run-verify-btn" class="anno-btn" style="display:none" title="Сверить XML с эталоном">Проверить</button>
                 <button id="run-loop-btn" class="anno-btn" style="display:none" title="Применить разбиение и типы элементов из эталона к XML">Форматировать согласно эталону</button>
                 <div id="loop-progress" class="loop-progress" style="display:none">
@@ -132,6 +133,32 @@
             <button id="ctx-save" class="ctx-btn ctx-btn-save" title="Сохранить эталон">&#128190; Сохранить</button>
         </div>
         <div class="ctx-preview" id="ctx-preview"></div>
+    </div>
+
+    <!-- Regenerate XML confirmation modal -->
+    <div id="regen-modal" class="regen-modal" style="display:none">
+        <div class="regen-modal-box">
+            <div class="regen-modal-title">Сбросить XML?</div>
+            <p class="regen-modal-desc">Будет запущена повторная конвертация DOCX → XML.<br>
+            Текущий XML будет перезаписан.</p>
+            <label class="regen-modal-check">
+                <input type="checkbox" id="regen-reset-ref"> Сбросить также эталон
+            </label>
+            <div class="regen-modal-actions">
+                <button id="regen-confirm" class="anno-btn">Подтвердить</button>
+                <button id="regen-cancel" class="anno-btn">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Regen progress splash overlay -->
+    <div id="regen-splash" style="display:none">
+        <div class="regen-splash-box">
+            <div class="regen-splash-spinner"></div>
+            <div id="regen-splash-text" class="regen-splash-text">Генерация XML...</div>
+            <div id="regen-splash-result" class="regen-splash-result" style="display:none"></div>
+            <button id="regen-splash-close" class="regen-splash-close-btn" style="display:none">Закрыть</button>
+        </div>
     </div>
 
     <!-- XSD issues panel -->
@@ -248,6 +275,6 @@
         }
     </script>
     {% endif %}
-    <script src="{{ url_for('static', filename='js/comparison.js') }}?v=6"></script>
+    <script src="{{ url_for('static', filename='js/comparison.js') }}?v=9"></script>
 </body>
 </html>

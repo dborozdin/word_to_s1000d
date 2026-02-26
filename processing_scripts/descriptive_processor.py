@@ -372,7 +372,6 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
 
     # Apply user reference markup (or fall back to overrides) if available
     if dm_code_override:
-        from parsers.dmc_parser import dm_code_to_string
         dmc_str = dm_code_to_string(dm_code_override)
         elements = apply_reference_markup(elements, dmc_str)
 
@@ -858,7 +857,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 elem.get('_ref_idx') is not None and
                 _merged_elements[-1].get('_ref_idx') == elem.get('_ref_idx') and
                 elem.get('type') == _merged_elements[-1].get('type') and
-                elem.get('type') == 'paragraph'):
+                elem.get('type') in ('paragraph', 'warning', 'caution', 'note')):
             _merged_elements[-1] = dict(_merged_elements[-1])  # shallow copy
             _merged_elements[-1]['content'] = (
                 _merged_elements[-1].get('content', '') + '\n' +
@@ -1134,11 +1133,18 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 # Skip outputting table references as they are redundant when table is present
                 pass
             elif elem_type == 'warning':
-                add_to_current_section(f'<warning><warningAndCautionPara>{content}</warningAndCautionPara></warning>')
+                # Merged content (pre-merge joins with \n) → multiple <warningAndCautionPara>
+                paras = [p for p in content.split('\n') if p.strip()]
+                inner = ''.join(f'<warningAndCautionPara>{p}</warningAndCautionPara>' for p in paras) if paras else f'<warningAndCautionPara>{content}</warningAndCautionPara>'
+                add_to_current_section(f'<warning>{inner}</warning>')
             elif elem_type == 'caution':
-                add_to_current_section(f'<caution><warningAndCautionPara>{content}</warningAndCautionPara></caution>')
+                paras = [p for p in content.split('\n') if p.strip()]
+                inner = ''.join(f'<warningAndCautionPara>{p}</warningAndCautionPara>' for p in paras) if paras else f'<warningAndCautionPara>{content}</warningAndCautionPara>'
+                add_to_current_section(f'<caution>{inner}</caution>')
             elif elem_type == 'note':
-                add_to_current_section(f'<note><notePara>{content}</notePara></note>')
+                paras = [p for p in content.split('\n') if p.strip()]
+                inner = ''.join(f'<notePara>{p}</notePara>' for p in paras) if paras else f'<notePara>{content}</notePara>'
+                add_to_current_section(f'<note>{inner}</note>')
             else:
                 # Default paragraph - skip if marked for skipping
                 if not elem.get('skip_output', False):

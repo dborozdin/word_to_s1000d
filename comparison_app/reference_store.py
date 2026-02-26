@@ -87,6 +87,42 @@ def save_reference(dmc_string: str, elements: list, source: str = 'manual') -> d
     return ref
 
 
+def _init_reference_xml_derived(dmc_string: str, docx_path: str, xml_path: str) -> list:
+    """
+    Build reference elements XML-first:
+    - XML elements provide structure and types (from the generated S1000D XML)
+    - stable_ids are taken from the sidecar JSON (exact match with XML renderer)
+    - PDF blocks provide visual positions (bounding boxes)
+
+    Result: reference whose element count and types exactly match the XML,
+    with each element positioned in PDF space.
+    """
+    from comparison_app.docx_renderer import render_docx_to_pdf, is_word_available
+    if not is_word_available():
+        raise RuntimeError('XML-derived init requires MS Word for PDF rendering')
+
+    pdf_path = render_docx_to_pdf(docx_path, dmc_string)
+
+    from comparison_app.pdf_block_extractor import extract_pdf_blocks_full
+    pdf_pages = extract_pdf_blocks_full(pdf_path)
+
+    flat_blocks = []
+    for page in pdf_pages:
+        for block in page['blocks']:
+            flat_blocks.append({**block, 'page_num': page['page_num']})
+
+    from comparison_app.headless_comparator import extract_xml_elements
+    xml_elements = extract_xml_elements(xml_path)
+
+    # Load stable_ids in XML render order from sidecar JSON
+    from comparison_app.s1000d_renderer import _load_element_map
+    sidecar_map = _load_element_map(xml_path)
+    stable_ids = [entry.get('stable_id', '') for entry in sidecar_map]
+
+    from parsers.hybrid_matcher import match_xml_to_pdf
+    return match_xml_to_pdf(xml_elements, flat_blocks, stable_ids)
+
+
 def _init_reference_hybrid(dmc_string: str, docx_path: str) -> list:
     """Build reference elements via hybrid PDF+DOCX pipeline (with element_id)."""
     import configparser as _cp
@@ -132,17 +168,22 @@ def _init_reference_hybrid(dmc_string: str, docx_path: str) -> list:
     return element_dicts
 
 
-def init_reference_from_auto(dmc_string: str, docx_path: str) -> dict:
+def init_reference_from_auto(dmc_string: str, docx_path: str,
+                             xml_path: str = None) -> dict:
     """
-    Create initial reference from automatic docx element extraction.
+    Create initial reference from automatic element extraction.
 
-    In hybrid mode (element_source=hybrid in config.ini), uses PDF+DOCX
-    matching pipeline which provides element_id for stable identification.
-    Otherwise falls back to mammoth-based HTML parsing.
+    Priority:
+    1. XML-derived (xml_path provided + hybrid mode + Word available):
+       XML elements → anchors; PDF blocks → positions. Best correspondence
+       with the right panel since structure comes directly from generated XML.
+    2. Hybrid (hybrid mode + Word available): PDF+DOCX matching.
+    3. DOCX-only fallback: mammoth HTML parsing.
 
     Args:
         dmc_string: DMC identifier
-        docx_path: Path to the source .docx file
+        docx_path:  Path to the source .docx file
+        xml_path:   Path to the generated S1000D XML (optional)
 
     Returns:
         The created reference dict.
@@ -154,30 +195,38 @@ def init_reference_from_auto(dmc_string: str, docx_path: str) -> dict:
     _cfg.read(os.path.join(_project_root, 'config.ini'), encoding='utf-8')
     element_source = _cfg.get('processing', 'element_source', fallback='docx_only')
 
-    if element_source == 'hybrid':
+    element_dicts = None
+    source_label = 'auto'
+
+    # Path 1: XML-derived — requires XML file + hybrid mode + MS Word
+    if xml_path and os.path.isfile(xml_path) and element_source == 'hybrid':
+        try:
+            element_dicts = _init_reference_xml_derived(dmc_string, docx_path, xml_path)
+            source_label = 'auto_xml_derived'
+        except Exception as e:
+            print(f'[reference_store] XML-derived init failed ({e}), trying hybrid')
+
+    # Path 2: Hybrid PDF+DOCX — requires MS Word
+    if element_dicts is None and element_source == 'hybrid':
         try:
             element_dicts = _init_reference_hybrid(dmc_string, docx_path)
+            source_label = 'auto_hybrid'
         except Exception as e:
             print(f'[reference_store] Hybrid init failed ({e}), falling back to docx_only')
-            from comparison_app.headless_comparator import extract_docx_elements
-            from parsers.elements_analyzer import compute_stable_id
-            elements = extract_docx_elements(docx_path)
-            element_dicts = []
-            for e in elements:
-                d = e.to_dict()
-                text_for_id = (d.get('text_start', '') + d.get('text_end', ''))
-                d['stable_id'] = compute_stable_id(d['idx'], d['type'], text_for_id)
-                element_dicts.append(d)
-    else:
+
+    # Path 3: DOCX-only fallback
+    if element_dicts is None:
         from comparison_app.headless_comparator import extract_docx_elements
         from parsers.elements_analyzer import compute_stable_id
         elements = extract_docx_elements(docx_path)
         element_dicts = []
-        for e in elements:
-            d = e.to_dict()
-            text_for_id = (d.get('text_start', '') + d.get('text_end', ''))
-            d['stable_id'] = compute_stable_id(d['idx'], d['type'], text_for_id)
+        for elem in elements:
+            d = elem.to_dict()
+            d['stable_id'] = compute_stable_id(
+                d['idx'], d['type'], d.get('text_start', '') + d.get('text_end', '')
+            )
             element_dicts.append(d)
+        source_label = 'auto'
 
     _ensure_dir()
     now = datetime.now().isoformat(timespec='seconds')
@@ -188,7 +237,7 @@ def init_reference_from_auto(dmc_string: str, docx_path: str) -> dict:
         'docx_hash': docx_hash,
         'created_at': now,
         'modified_at': now,
-        'source': 'auto_hybrid' if element_source == 'hybrid' else 'auto',
+        'source': source_label,
         'elements': element_dicts,
     }
 

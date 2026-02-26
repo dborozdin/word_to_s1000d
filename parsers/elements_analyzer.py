@@ -1248,6 +1248,11 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
 
     ref_elements = ref_data['elements']
 
+    # Filter out sentinel types from XML-first references — they have no
+    # real DOCX counterpart and would steal matches from actual elements.
+    ref_elements = [e for e in ref_elements
+                    if e.get('type') not in ('_extra_pdf', '_unmatched_xml')]
+
     # Type mapping: reference types → analyzer types used by descriptive_processor
     type_map = {
         'heading': 'header',
@@ -1481,23 +1486,17 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
             used.add(best_idx)
             cursor = best_idx + 1
 
-            # Defer span_forward to phase 3 (after all single-element matching)
+            # Defer span_forward to phase 3 (after all single-element matching).
+            # Always defer when span > 1 — span_forward handles the "already
+            # complete" case gracefully (it will simply not find extra elements).
+            # Removing the previous already_complete optimization fixes user merge
+            # scenarios where span>1 covering multiple DOCX paragraphs.
             if ref_span > 1:
-                first_content_end = elements[best_idx].get('content', '')[-40:].strip()
-                already_complete = False
-                if ref_text_end and first_content_end:
-                    end_score = _prefix_score(ref_text_end, first_content_end)
-                    stripped_end = _strip_list_prefix(ref_text_end)
-                    stripped_content = _strip_list_prefix(first_content_end)
-                    if stripped_end and stripped_content:
-                        end_score = max(end_score, _prefix_score(stripped_end, stripped_content))
-                    if end_score > 0.3:
-                        already_complete = True
-                if not already_complete:
-                    span_deferred.append((best_idx, ref_span, ref_text_end,
-                                         mapped_type, ref_idx, ref_type))
-                    # Advance cursor past expected span range
-                    cursor = max(cursor, best_idx + ref_span)
+                span_deferred.append((best_idx, ref_span, ref_text_end,
+                                     mapped_type, ref_idx, ref_type))
+                # Advance cursor past expected span range so later refs
+                # search beyond this span
+                cursor = max(cursor, best_idx + ref_span)
 
     # --- Phase 2: process _skip elements on remaining unused auto elements ---
     for ref_elem in skip_refs:
@@ -1519,6 +1518,9 @@ def apply_reference_markup(elements: List[Dict[str, Any]], dmc_string: str) -> L
 
     # --- Phase 3: apply deferred span_forward on remaining unused elements ---
     for args in span_deferred:
+        start_idx, ref_span_val = args[0], args[1]
+        print(f'[ref_markup] Phase 3: span_forward from auto[{start_idx}], '
+              f'span={ref_span_val}, type={args[3]}, ref_idx={args[4]}')
         _apply_span_forward(*args, used)
 
     # --- Phase 4: post-match fixups for granularity mismatches ---

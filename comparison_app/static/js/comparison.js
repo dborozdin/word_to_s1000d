@@ -114,7 +114,9 @@
         heading: '\u0437\u0430\u0433\u043E\u043B.', // загол.
         warning: '\u043F\u0440\u0435\u0434\u0443\u043F\u0440.', // предупр.
         caution: '\u0432\u043D\u0438\u043C\u0430\u043D.', // вниман.
-        note: '\u043F\u0440\u0438\u043C.'    // прим.
+        note: '\u043F\u0440\u0438\u043C.',  // прим.
+        _extra_pdf: '?PDF',      // PDF-блок без XML-соответствия
+        _unmatched_xml: '?XML'   // XML-элемент без PDF-позиции
     };
 
     // Types that represent nested lists (merged into parent list during XML generation,
@@ -332,22 +334,67 @@
         return marker.parentNode;
     }
 
+    /** Determine page number (1-based) of an .anno-marker by its DOM position */
+    function _getMarkerPage(marker) {
+        var overlay = _getMarkerOverlay(marker);
+        if (!overlay) return 1;
+        var wrapper = overlay.parentElement;
+        var allWrappers = docxPanel.querySelectorAll('.pdf-page-wrapper');
+        for (var _wi = 0; _wi < allWrappers.length; _wi++) {
+            if (allWrappers[_wi] === wrapper) return _wi + 1;
+        }
+        return 1;
+    }
+
+    /** True when the loaded reference was created by the XML-first algorithm */
+    function _isXmlDerivedRef() {
+        if (!referenceData || !referenceData.elements) return false;
+        if (referenceData.source === 'auto_xml_derived') return true;
+        return referenceData.elements.some(function (e) { return e.type_source === 'xml_derived'; });
+    }
+
+    /**
+     * Normalize text for prefix-match comparison (mirrors Python _normalize_for_match).
+     * Strips leading bullets/numbers, lowercases, collapses whitespace, takes first 80 chars.
+     */
+    function _normForMatch(text) {
+        return (text || '').toLowerCase()
+            .replace(/^[\-\u2013\u2014\u2022]+\s*/, '')   // bullets: –, —, •
+            .replace(/^\d+[\.\)]\s+/, '')                   // "1. " / "1) "
+            .replace(/^\d+(?:\.\d+)*\s+/, '')               // "3.1.2 "
+            .replace(/\s+/g, ' ').trim()
+            .slice(0, 80);
+    }
+
+    /**
+     * Render bracket-markers for all .anno-marker elements on the PDF panel.
+     * For XML-derived references: uses bbox-based positional matching so that
+     * warnings/notes on page 10 don't get mapped to page-1 markers.
+     * For old references: keeps the original sequential span-based mapping.
+     */
     function _syncPdfMarkers(markers) {
         // Convert NodeList to array (DOM order is page-by-page top-to-bottom)
         var sorted = [];
         for (var i = 0; i < markers.length; i++) sorted.push(markers[i]);
 
+        if (_isXmlDerivedRef()) {
+            _syncPdfMarkersBbox(sorted);
+        } else {
+            _syncPdfMarkersSequential(sorted);
+        }
+    }
+
+    /** Original sequential span-based mapping (for non-XML-derived references) */
+    function _syncPdfMarkersSequential(sorted) {
         var refLen = referenceData.elements.length;
         var markerIdx = 0;
         var pdfTypeCounts = {};
 
-        // Span-based mapping: each ref element may cover multiple physical markers
         for (var r = 0; r < refLen && markerIdx < sorted.length; r++) {
             var refElem = referenceData.elements[r];
             var span = refElem.span || 1;
             var type = refElem.type;
 
-            // Skip deleted elements: consume marker slot(s) but hide them
             if (type === '_skip') {
                 for (var s = 0; s < span && markerIdx < sorted.length; s++) {
                     sorted[markerIdx].style.display = 'none';
@@ -363,13 +410,11 @@
             var typeNum = pdfTypeCounts[normT];
             var label = (ANNO_TYPE_LABELS[normT] || normT) + typeNum + ' [' + idx + ']';
             var color = getAnnoColor(idx);
-
-            // Collect markers for this span, grouped by page overlay
-            var pageGroups = []; // [{overlay, markers[], firstTop, lastBottom}]
+            var pageGroups = [];
             var curGroup = null;
-
             var source = refElem.type_source || 'auto';
-            for (var s = 0; s < span && markerIdx < sorted.length; s++) {
+
+            for (var s2 = 0; s2 < span && markerIdx < sorted.length; s2++) {
                 var marker = sorted[markerIdx];
                 marker.setAttribute('data-anno-idx', String(idx));
                 marker.setAttribute('data-anno-type', type);
@@ -381,7 +426,6 @@
 
                 var overlay = _getMarkerOverlay(marker);
                 if (!curGroup || overlay !== curGroup.overlay) {
-                    // New page — start a new group
                     curGroup = {
                         overlay: overlay,
                         markers: [],
@@ -393,75 +437,245 @@
                 curGroup.markers.push(marker);
                 var mBottom = parseFloat(marker.getAttribute('data-anno-bottom'));
                 if (mBottom > curGroup.lastBottom) curGroup.lastBottom = mBottom;
-
                 markerIdx++;
             }
 
-            // Render brackets per page group
-            for (var g = 0; g < pageGroups.length; g++) {
-                var group = pageGroups[g];
-                var isLast = (g === pageGroups.length - 1);
-
-                for (var m = 0; m < group.markers.length; m++) {
-                    var mk = group.markers[m];
-                    if (m === 0) {
-                        // First marker on this page: visible
-                        mk.style.display = '';
-                        var labelEl = mk.querySelector('.marker-label');
-                        var displayLabel = (g === 0) ? label : '\u21A7 ' + label;
-                        if (labelEl) {
-                            labelEl.textContent = displayLabel;
-                        } else {
-                            mk.textContent = displayLabel;
-                        }
-
-                        // Set bracket: if not the last page in span, extend to bottom
-                        var top = group.firstTop;
-                        var bottom = isLast ? group.lastBottom : 100;
-                        mk.style.top = top + '%';
-                        mk.style.height = Math.max(bottom - top, 1.5) + '%';
-                    } else {
-                        // Additional markers on same page: hidden
-                        mk.style.display = 'none';
-                    }
-                }
-            }
+            _renderMarkerBrackets(pageGroups, label);
         }
 
-        // Mark remaining excess markers as unassigned (available for Create)
         for (; markerIdx < sorted.length; markerIdx++) {
-            var um = sorted[markerIdx];
-            um.style.display = '';
-            um.removeAttribute('data-anno-idx');
-            um.classList.add('anno-marker-unassigned');
-            um.style.setProperty('--anno-clr', '#27ae60');
-            um.style.opacity = '0.6';
-            um.style.borderStyle = 'dashed';
-            var uLabel = um.querySelector('.marker-label');
-            if (uLabel) uLabel.textContent = '+';
+            _markUnassigned(sorted[markerIdx]);
         }
     }
 
+    /**
+     * Text+position-based marker mapping for XML-derived references.
+     * Uses text prefix matching to find the best marker for each reference
+     * element, with bbox.page as a page hint.  Falls back to position-based
+     * matching when text is unavailable.  Works correctly even when markers
+     * come from a different algorithm (match_pdf_to_docx) than the reference
+     * (match_xml_to_pdf), because text content is the common denominator.
+     */
+    function _syncPdfMarkersBbox(sorted) {
+        // Build flat info list with per-marker normalized text
+        var allInfos = [];
+        var byPage = {};
+
+        for (var i = 0; i < sorted.length; i++) {
+            var mk = sorted[i];
+            var pg = _getMarkerPage(mk);
+            var top = parseFloat(mk.getAttribute('data-anno-top') || '0');
+            var bot = parseFloat(mk.getAttribute('data-anno-bottom') || '0');
+            var rawText = mk.getAttribute('data-anno-text') || '';
+            var info = {
+                marker: mk, page: pg, top: top, bot: bot,
+                normText: _normForMatch(rawText),
+                used: false, globalIdx: i
+            };
+            if (!byPage[pg]) byPage[pg] = [];
+            byPage[pg].push(info);
+            allInfos.push(info);
+        }
+
+        var pdfTypeCounts = {};
+        var refElems = referenceData.elements;
+
+        for (var r = 0; r < refElems.length; r++) {
+            var refElem = refElems[r];
+            var type = refElem.type;
+
+            if (type === '_skip') continue;
+            if (type === '_unmatched_xml') continue;
+            if (type === '_extra_pdf') continue;
+
+            var refNorm = _normForMatch(refElem.text_start || '');
+            var bbox = refElem.bbox;
+
+            // Determine which markers to search: prefer same page if bbox exists
+            var candidates;
+            if (bbox && bbox.page) {
+                candidates = (byPage[bbox.page] || []).slice();
+                // Also include adjacent pages in case of cross-page elements
+                var prev = byPage[bbox.page - 1] || [];
+                var next = byPage[bbox.page + 1] || [];
+                candidates = candidates.concat(prev, next);
+            } else {
+                // No bbox (e.g. newly created element) → search all markers
+                candidates = allInfos;
+            }
+
+            // Find best matching unused marker by text prefix
+            var bestInfo = null;
+            var bestScore = -1;
+
+            if (refNorm.length > 0) {
+                for (var mi = 0; mi < candidates.length; mi++) {
+                    if (candidates[mi].used) continue;
+                    var cNorm = candidates[mi].normText;
+                    if (!cNorm) continue;
+                    // Prefix overlap score
+                    var mLen = Math.min(refNorm.length, cNorm.length);
+                    if (mLen === 0) continue;
+                    var common = 0;
+                    for (var ci = 0; ci < mLen; ci++) {
+                        if (refNorm[ci] === cNorm[ci]) common++; else break;
+                    }
+                    var score = common / Math.max(refNorm.length, 1);
+                    if (score > bestScore) { bestScore = score; bestInfo = candidates[mi]; }
+                }
+            }
+
+            // Fallback: position-based matching if text match is poor
+            if ((!bestInfo || bestScore < 0.3) && bbox && bbox.page) {
+                var pageData = window._serverPdfBlocks
+                    ? window._serverPdfBlocks[bbox.page - 1] : null;
+                var pageHeight = pageData ? pageData.height : 792;
+                var yTarget = (bbox.y0 / pageHeight) * 100;
+                var pageMarkers = byPage[bbox.page] || [];
+                var posBest = null;
+                var posDist = Infinity;
+                for (var pi = 0; pi < pageMarkers.length; pi++) {
+                    if (pageMarkers[pi].used) continue;
+                    var dist = Math.abs(pageMarkers[pi].top - yTarget);
+                    if (dist < posDist) { posDist = dist; posBest = pageMarkers[pi]; }
+                }
+                if (posBest && posDist < 5) bestInfo = posBest;
+            }
+
+            if (!bestInfo) continue;
+
+            bestInfo.used = true;
+            var span = refElem.span || 1;
+            var idx = refElem.idx;
+            var normT = normType(type);
+            pdfTypeCounts[normT] = (pdfTypeCounts[normT] || 0) + 1;
+            var typeNum = pdfTypeCounts[normT];
+            var label = (ANNO_TYPE_LABELS[normT] || normT) + typeNum + ' [' + idx + ']';
+            var color = getAnnoColor(idx);
+            var source = refElem.type_source || 'auto';
+
+            // Claim anchor marker
+            var anchorMarker = bestInfo.marker;
+            anchorMarker.setAttribute('data-anno-idx', String(idx));
+            anchorMarker.setAttribute('data-anno-type', type);
+            anchorMarker.setAttribute('data-anno-source', source);
+            anchorMarker.style.setProperty('--anno-clr', color);
+            anchorMarker.style.opacity = '';
+            anchorMarker.style.borderStyle = '';
+            anchorMarker.classList.remove('anno-marker-unassigned');
+
+            var pageGroups = [];
+            var curGroup = {
+                overlay: _getMarkerOverlay(anchorMarker),
+                markers: [anchorMarker],
+                firstTop: bestInfo.top,
+                lastBottom: bestInfo.bot
+            };
+            pageGroups.push(curGroup);
+
+            // Claim span-1 more consecutive unused markers in document order
+            var claimed = 1;
+            for (var si = bestInfo.globalIdx + 1;
+                 si < allInfos.length && claimed < span; si++) {
+                var mInfo = allInfos[si];
+                if (mInfo.used) continue;
+                mInfo.used = true;
+
+                var marker = mInfo.marker;
+                marker.setAttribute('data-anno-idx', String(idx));
+                marker.setAttribute('data-anno-type', type);
+                marker.setAttribute('data-anno-source', source);
+                marker.style.setProperty('--anno-clr', color);
+                marker.style.opacity = '';
+                marker.style.borderStyle = '';
+                marker.classList.remove('anno-marker-unassigned');
+
+                var ov = _getMarkerOverlay(marker);
+                if (ov !== curGroup.overlay) {
+                    curGroup = {
+                        overlay: ov, markers: [],
+                        firstTop: mInfo.top, lastBottom: mInfo.bot
+                    };
+                    pageGroups.push(curGroup);
+                }
+                curGroup.markers.push(marker);
+                if (mInfo.bot > curGroup.lastBottom) curGroup.lastBottom = mInfo.bot;
+                claimed++;
+            }
+
+            _renderMarkerBrackets(pageGroups, label);
+        }
+
+        // Remaining unused markers → unassigned (available for Create)
+        for (var ui = 0; ui < allInfos.length; ui++) {
+            if (!allInfos[ui].used) _markUnassigned(allInfos[ui].marker);
+        }
+    }
+
+    /** Render label + bracket styling for a list of page groups (shared by both sync modes) */
+    function _renderMarkerBrackets(pageGroups, label) {
+        for (var g = 0; g < pageGroups.length; g++) {
+            var group = pageGroups[g];
+            var isLast = (g === pageGroups.length - 1);
+            for (var m = 0; m < group.markers.length; m++) {
+                var mk = group.markers[m];
+                if (m === 0) {
+                    mk.style.display = '';
+                    var labelEl = mk.querySelector('.marker-label');
+                    var displayLabel = (g === 0) ? label : '\u21A7 ' + label;
+                    if (labelEl) labelEl.textContent = displayLabel;
+                    else mk.textContent = displayLabel;
+                    var top = group.firstTop;
+                    var bottom = isLast ? group.lastBottom : 100;
+                    mk.style.top = top + '%';
+                    mk.style.height = Math.max(bottom - top, 1.5) + '%';
+                } else {
+                    mk.style.display = 'none';
+                }
+            }
+        }
+    }
+
+    /** Style a single marker as "unassigned" (green dashed, available for Create) */
+    function _markUnassigned(um) {
+        um.style.display = '';
+        um.removeAttribute('data-anno-idx');
+        um.classList.add('anno-marker-unassigned');
+        um.style.setProperty('--anno-clr', '#27ae60');
+        um.style.opacity = '0.6';
+        um.style.borderStyle = 'dashed';
+        var uLabel = um.querySelector('.marker-label');
+        if (uLabel) uLabel.textContent = '+';
+    }
+
+    /**
+     * Annotate HTML block elements on the DOCX panel.
+     * For XML-derived references: uses text prefix-matching so that elements
+     * are placed at the correct DOM block regardless of XML semantic order.
+     * For old references: keeps the original sequential span-based mapping.
+     */
     function _syncHtmlElements(allAnno, panel) {
         var annoEls = _filterTopLevel(allAnno, panel);
 
+        if (_isXmlDerivedRef()) {
+            _syncHtmlElementsText(annoEls);
+        } else {
+            _syncHtmlElementsSequential(annoEls);
+        }
+    }
+
+    /** Original sequential span-based mapping (for non-XML-derived references) */
+    function _syncHtmlElementsSequential(annoEls) {
         var refLen = referenceData.elements.length;
         var domIdx = 0;
 
-        // Span-based mapping: each ref element may cover multiple DOM blocks
         for (var j = 0; j < refLen; j++) {
             var refElem = referenceData.elements[j];
             var span = refElem.span || 1;
 
-            // Skip deleted elements: consume DOM slot(s) but clear them
             if (refElem.type === '_skip') {
                 for (var s = 0; s < span && domIdx < annoEls.length; s++) {
-                    annoEls[domIdx].removeAttribute('data-anno-idx');
-                    annoEls[domIdx].removeAttribute('data-anno-type');
-                    annoEls[domIdx].removeAttribute('data-anno-cont');
-                    annoEls[domIdx].style.removeProperty('--anno-clr');
-                    annoEls[domIdx].style.borderLeft = '';
-                    annoEls[domIdx].setAttribute('data-anno-idx-cleared', '1');
+                    _clearAnnoEl(annoEls[domIdx]);
                     domIdx++;
                 }
                 continue;
@@ -470,31 +684,101 @@
             var color = getAnnoColor(refElem.idx);
             var source = refElem.type_source || 'auto';
 
-            for (var s = 0; s < span && domIdx < annoEls.length; s++) {
+            for (var s2 = 0; s2 < span && domIdx < annoEls.length; s2++) {
                 annoEls[domIdx].setAttribute('data-anno-idx', String(refElem.idx));
                 annoEls[domIdx].setAttribute('data-anno-type', refElem.type);
                 annoEls[domIdx].setAttribute('data-anno-source', source);
                 annoEls[domIdx].style.setProperty('--anno-clr', color);
                 annoEls[domIdx].removeAttribute('data-anno-idx-cleared');
-
-                if (s > 0) {
-                    annoEls[domIdx].setAttribute('data-anno-cont', '1');
-                } else {
-                    annoEls[domIdx].removeAttribute('data-anno-cont');
-                }
+                if (s2 > 0) annoEls[domIdx].setAttribute('data-anno-cont', '1');
+                else annoEls[domIdx].removeAttribute('data-anno-cont');
                 domIdx++;
             }
         }
 
-        // Mark excess DOM elements as "cleared" (available for Create)
-        for (; domIdx < annoEls.length; domIdx++) {
-            annoEls[domIdx].removeAttribute('data-anno-idx');
-            annoEls[domIdx].removeAttribute('data-anno-type');
-            annoEls[domIdx].removeAttribute('data-anno-cont');
-            annoEls[domIdx].style.removeProperty('--anno-clr');
-            annoEls[domIdx].style.borderLeft = '';
-            annoEls[domIdx].setAttribute('data-anno-idx-cleared', '1');
+        for (; domIdx < annoEls.length; domIdx++) _clearAnnoEl(annoEls[domIdx]);
+    }
+
+    /**
+     * Text-based mapping for XML-derived references.
+     * For each reference element find the DOM block whose text best prefix-matches
+     * ref.text_start, then claim that block plus span-1 following unused blocks.
+     * _extra_pdf and _unmatched_xml have no DOCX counterpart → skipped.
+     */
+    function _syncHtmlElementsText(annoEls) {
+        // Pre-clear all blocks
+        for (var ci = 0; ci < annoEls.length; ci++) _clearAnnoEl(annoEls[ci]);
+
+        // Pre-compute normalized texts for all DOM elements
+        var domNorms = [];
+        for (var di = 0; di < annoEls.length; di++) {
+            domNorms.push(_normForMatch(_getCleanText(annoEls[di])));
         }
+
+        var usedDom = [];
+        for (var ui = 0; ui < annoEls.length; ui++) usedDom.push(false);
+
+        var refElems = referenceData.elements;
+
+        for (var r = 0; r < refElems.length; r++) {
+            var refElem = refElems[r];
+            var type = refElem.type;
+
+            // Types without a real DOCX block: skip
+            if (type === '_skip' || type === '_extra_pdf' || type === '_unmatched_xml') continue;
+
+            var textStart = _normForMatch(refElem.text_start || '');
+            if (!textStart) continue;
+
+            // Find DOM element with best prefix-match to text_start
+            var bestIdx = -1;
+            var bestScore = 0;
+            for (var di2 = 0; di2 < annoEls.length; di2++) {
+                if (usedDom[di2]) continue;
+                var domText = domNorms[di2];
+                var len = Math.min(textStart.length, domText.length);
+                var pfx = 0;
+                for (var ci2 = 0; ci2 < len; ci2++) {
+                    if (textStart[ci2] !== domText[ci2]) break;
+                    pfx++;
+                }
+                var score = textStart.length > 0 ? pfx / textStart.length : 0;
+                if (score > bestScore) { bestScore = score; bestIdx = di2; }
+            }
+
+            if (bestIdx < 0 || bestScore < 0.3) continue; // no acceptable match
+
+            var span = refElem.span || 1;
+            var idx = refElem.idx;
+            var color = getAnnoColor(idx);
+            var source = refElem.type_source || 'auto';
+
+            // Claim span blocks: anchor + (span-1) next unused in DOM order
+            var claimed = 0;
+            for (var si = bestIdx; si < annoEls.length && claimed < span; si++) {
+                if (usedDom[si]) continue;
+                usedDom[si] = true;
+                annoEls[si].setAttribute('data-anno-idx', String(idx));
+                annoEls[si].setAttribute('data-anno-type', type);
+                annoEls[si].setAttribute('data-anno-source', source);
+                annoEls[si].style.setProperty('--anno-clr', color);
+                annoEls[si].removeAttribute('data-anno-idx-cleared');
+                if (claimed > 0) annoEls[si].setAttribute('data-anno-cont', '1');
+                else annoEls[si].removeAttribute('data-anno-cont');
+                claimed++;
+            }
+        }
+    }
+
+    /** Clear annotation attributes from a DOM element (mark as available for Create) */
+    function _clearAnnoEl(el) {
+        el.removeAttribute('data-anno-idx');
+        el.removeAttribute('data-anno-type');
+        el.removeAttribute('data-anno-cont');
+        el.removeAttribute('data-anno-source');
+        el.style.removeProperty('--anno-clr');
+        el.style.borderLeft = '';
+        el.setAttribute('data-anno-idx-cleared', '1');
     }
 
     /**
@@ -2008,6 +2292,24 @@
         });
     }
 
+    var _SENTINEL_TYPES = { '_skip': 1, '_extra_pdf': 1, '_unmatched_xml': 1 };
+
+    /** Find index of nearest non-sentinel element before arrIdx. */
+    function _findPrevReal(arrIdx) {
+        for (var i = arrIdx - 1; i >= 0; i--) {
+            if (!_SENTINEL_TYPES[referenceData.elements[i].type]) return i;
+        }
+        return -1;
+    }
+
+    /** Find index of nearest non-sentinel element after arrIdx. */
+    function _findNextReal(arrIdx) {
+        for (var i = arrIdx + 1; i < referenceData.elements.length; i++) {
+            if (!_SENTINEL_TYPES[referenceData.elements[i].type]) return i;
+        }
+        return -1;
+    }
+
     // Context menu: merge with previous
     if (ctxMergePrev) {
         ctxMergePrev.addEventListener('click', function () {
@@ -2015,14 +2317,22 @@
             var arrIdx = findRefElementIndex(ctxTargetIdx);
             if (arrIdx <= 0) return;
 
-            var prev = referenceData.elements[arrIdx - 1];
-            var curr = referenceData.elements[arrIdx];
-            // Merge: extend prev boundaries to cover current, track span
-            prev.text_end = curr.text_end;
-            prev.span = (prev.span || 1) + (curr.span || 1);
-            referenceData.elements.splice(arrIdx, 1);
+            var prevIdx = _findPrevReal(arrIdx);
+            if (prevIdx < 0) return;
 
-            // Renumber and rebuild
+            var prev = referenceData.elements[prevIdx];
+            var curr = referenceData.elements[arrIdx];
+            // Merge: extend prev boundaries to cover current, track span.
+            // Also absorb any sentinel elements between prev and curr.
+            var absorbedSpan = 0;
+            for (var bi = prevIdx + 1; bi < arrIdx; bi++) {
+                absorbedSpan += (referenceData.elements[bi].span || 1);
+            }
+            prev.text_end = curr.text_end;
+            prev.span = (prev.span || 1) + absorbedSpan + (curr.span || 1);
+            // Remove all elements from prevIdx+1 to arrIdx (inclusive)
+            referenceData.elements.splice(prevIdx + 1, arrIdx - prevIdx);
+
             renumberRefElements();
             hideContextMenu();
             rebuildBadges(docxPanel);
@@ -2034,16 +2344,24 @@
         ctxMergeNext.addEventListener('click', function () {
             if (ctxTargetIdx < 1 || !referenceData) return;
             var arrIdx = findRefElementIndex(ctxTargetIdx);
-            if (arrIdx < 0 || arrIdx >= referenceData.elements.length - 1) return;
+            if (arrIdx < 0) return;
+
+            var nextIdx = _findNextReal(arrIdx);
+            if (nextIdx < 0) return;
 
             var curr = referenceData.elements[arrIdx];
-            var next = referenceData.elements[arrIdx + 1];
-            // Merge: extend current boundaries to cover next, track span
+            var next = referenceData.elements[nextIdx];
+            // Merge: extend current boundaries to cover next, track span.
+            // Also absorb any sentinel elements between curr and next.
+            var absorbedSpan = 0;
+            for (var bi = arrIdx + 1; bi < nextIdx; bi++) {
+                absorbedSpan += (referenceData.elements[bi].span || 1);
+            }
             curr.text_end = next.text_end;
-            curr.span = (curr.span || 1) + (next.span || 1);
-            referenceData.elements.splice(arrIdx + 1, 1);
+            curr.span = (curr.span || 1) + absorbedSpan + (next.span || 1);
+            // Remove all elements from arrIdx+1 to nextIdx (inclusive)
+            referenceData.elements.splice(arrIdx + 1, nextIdx - arrIdx);
 
-            // Renumber and rebuild
             renumberRefElements();
             hideContextMenu();
             rebuildBadges(docxPanel);
@@ -2150,8 +2468,12 @@
 
     function _determineInsertPosition(domPosition) {
         if (!referenceData || !referenceData.elements.length) return 0;
+        // Only count elements that actually consume markers
+        // (skip sentinel types that have no PDF marker)
         var cumulative = 0;
         for (var i = 0; i < referenceData.elements.length; i++) {
+            var t = referenceData.elements[i].type;
+            if (t === '_skip' || t === '_extra_pdf' || t === '_unmatched_xml') continue;
             cumulative += (referenceData.elements[i].span || 1);
             if (cumulative > domPosition) return i;
         }
@@ -2171,7 +2493,7 @@
 
         if (ctxLabel) ctxLabel.textContent = '\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u044D\u043B\u0435\u043C\u0435\u043D\u0442'; // Создать элемент
         if (ctxTypeSelect) ctxTypeSelect.value = 'para';
-        if (ctxPreview) ctxPreview.textContent = _getCleanText(block) || block.getAttribute('data-anno-text') || '';
+        if (ctxPreview) ctxPreview.textContent = block.getAttribute('data-anno-text') || _getCleanText(block) || '';
 
         // Hide normal edit buttons, show create button
         if (ctxMergePrev) ctxMergePrev.style.display = 'none';
@@ -2187,7 +2509,10 @@
             var type = ctxTypeSelect ? ctxTypeSelect.value : 'para';
             var text = '';
             if (_createBlock) {
-                text = _getCleanText(_createBlock) || _createBlock.getAttribute('data-anno-text') || '';
+                // For PDF markers, textContent is just the label ("+"),
+                // so prefer data-anno-text which holds the actual block text.
+                text = _createBlock.getAttribute('data-anno-text')
+                    || _getCleanText(_createBlock) || '';
             }
             var insertAt = _determineInsertPosition(_createDomPosition);
             var newElem = {
@@ -2352,6 +2677,109 @@
                     resetRefBtn.disabled = false;
                     resetRefBtn.textContent = '\u0421\u0431\u0440\u043E\u0441\u0438\u0442\u044C \u044D\u0442\u0430\u043B\u043E\u043D';
                     alert('\u041E\u0448\u0438\u0431\u043A\u0430 \u043F\u0440\u0438 \u0441\u0431\u0440\u043E\u0441\u0435 \u044D\u0442\u0430\u043B\u043E\u043D\u0430');
+                });
+        });
+    }
+
+    // ====================================================================
+    // Reset XML button — regenerate XML from DOCX
+    // ====================================================================
+    var resetXmlBtn = document.getElementById('reset-xml-btn');
+    var regenModal = document.getElementById('regen-modal');
+    var regenConfirm = document.getElementById('regen-confirm');
+    var regenCancel = document.getElementById('regen-cancel');
+    var regenResetRef = document.getElementById('regen-reset-ref');
+
+    if (resetXmlBtn && regenModal) {
+        resetXmlBtn.addEventListener('click', function () {
+            if (regenResetRef) regenResetRef.checked = false;
+            regenModal.style.display = 'flex';
+        });
+    }
+
+    if (regenCancel) {
+        regenCancel.addEventListener('click', function () {
+            regenModal.style.display = 'none';
+        });
+    }
+
+    if (regenConfirm) {
+        regenConfirm.addEventListener('click', function () {
+            regenModal.style.display = 'none';
+            var resetRef = regenResetRef && regenResetRef.checked;
+            var dmc = window.DMC_STRING;
+            if (!dmc) return;
+
+            // Splash helpers
+            var splash = document.getElementById('regen-splash');
+            var splashText = document.getElementById('regen-splash-text');
+            var splashResult = document.getElementById('regen-splash-result');
+            var splashSpinner = splash ? splash.querySelector('.regen-splash-spinner') : null;
+            var splashClose = document.getElementById('regen-splash-close');
+
+            function showSplash(msg) {
+                if (!splash) return;
+                splashText.textContent = msg;
+                splashResult.style.display = 'none';
+                splashResult.className = 'regen-splash-result';
+                splashResult.textContent = '';
+                if (splashSpinner) splashSpinner.className = 'regen-splash-spinner';
+                if (splashClose) splashClose.style.display = 'none';
+                splash.style.display = 'flex';
+            }
+
+            function setSplashPhase(msg) {
+                if (splashText) splashText.textContent = msg;
+            }
+
+            function finishSplash(lines, isError) {
+                if (!splash) return;
+                if (splashSpinner) {
+                    splashSpinner.className = 'regen-splash-spinner ' + (isError ? 'error' : 'done');
+                }
+                splashText.textContent = isError ? 'Произошла ошибка' : 'Готово';
+                splashResult.className = 'regen-splash-result' + (isError ? ' error' : '');
+                splashResult.textContent = lines.join('\n');
+                splashResult.style.display = 'block';
+                if (splashClose) splashClose.style.display = 'inline-block';
+            }
+
+            if (splashClose) {
+                splashClose.onclick = function () {
+                    if (splash) splash.style.display = 'none';
+                };
+            }
+
+            showSplash('Генерация XML из DOCX…');
+
+            var done = [];
+
+            fetch('/api/regenerate/' + dmc, { method: 'POST' })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.error) throw new Error(data.error);
+                    done.push('✓ XML перегенерирован');
+                    if (!resetRef) return Promise.resolve();
+                    setSplashPhase('Сброс эталона…');
+                    return fetch('/api/reference/' + dmc, { method: 'DELETE' })
+                        .then(function () {
+                            done.push('✓ Старый эталон удалён');
+                            setSplashPhase('Инициализация эталона из XML…');
+                            return fetch('/api/reference/' + dmc + '/init', { method: 'POST' });
+                        })
+                        .then(function (r) { return r.json(); })
+                        .then(function (d) {
+                            if (d.error) throw new Error(d.error);
+                            done.push('✓ Эталон инициализирован по XML');
+                        });
+                })
+                .then(function () {
+                    done.push('Страница обновится через 2 секунды…');
+                    finishSplash(done, false);
+                    setTimeout(function () { location.reload(); }, 2000);
+                })
+                .catch(function (err) {
+                    finishSplash([err.message], true);
                 });
         });
     }

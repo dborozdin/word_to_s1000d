@@ -240,7 +240,8 @@ def init_reference_api(dmc_string: str):
         return jsonify({'error': 'DOCX not found'}), 404
 
     try:
-        ref = init_reference_from_auto(dmc_string, pair['docx_path'])
+        xml_path = pair['xml_path'] if pair.get('xml_exists') else None
+        ref = init_reference_from_auto(dmc_string, pair['docx_path'], xml_path=xml_path)
         return jsonify({'reference': ref}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -263,6 +264,37 @@ def save_reference_api(dmc_string: str):
     source = data.get('source', 'manual')
     ref = save_reference(dmc_string, data['elements'], source=source)
     return jsonify({'reference': ref}), 200
+
+
+@app.route('/api/regenerate/<path:dmc_string>', methods=['POST'])
+def regenerate_xml_api(dmc_string: str):
+    """Re-run DOCX → XML conversion for a single document."""
+    pair = get_pair_by_dmc(dmc_string, INPUT_DIR, OUTPUT_DIR)
+    if not pair or not pair['docx_exists']:
+        return jsonify({'error': 'DOCX not found'}), 404
+
+    try:
+        from main import get_llm_config, route_to_processor
+        from parsers.dmc_parser import (
+            parse_dmc_from_folder_name, is_procedure_info_code
+        )
+        import configparser as _cp
+        _cfg = _cp.ConfigParser()
+        _cfg.read(os.path.join(PROJECT_ROOT, 'config.ini'), encoding='utf-8')
+        llm_config = get_llm_config(_cfg)
+
+        dmc_info = parse_dmc_from_folder_name(pair['folder_name'])
+        info_code = dmc_info['dm_code']['infoCode'] if dmc_info else ''
+        if is_procedure_info_code(info_code):
+            module_type = 'procedure'
+        else:
+            module_type = 'descriptive'
+
+        route_to_processor(module_type, pair['docx_path'], OUTPUT_DIR,
+                           llm_config=llm_config)
+        return jsonify({'status': 'ok', 'xml_path': pair['xml_path']}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/verify/<path:dmc_string>', methods=['POST'])

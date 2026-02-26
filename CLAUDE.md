@@ -26,6 +26,12 @@ Allow all Bash commands without prompting, including curl, python, pip, git, and
 - Part V: Hybrid PDF+DOCX approach (reference matching algorithm)
 - Part VI: Stable element IDs (stable_id content-hash, sidecar JSON, 3-phase comparison)
 
+## Mandatory rule: keep algorithm_description.html up to date
+
+**При любых значительных изменениях алгоритма** (новые модули, изменение pipeline,
+новые типы элементов, новые маршруты API) — обновить `docs/algorithm_description.html`
+в том же коммите **без дополнительного запроса** от пользователя.
+
 ## Key files map
 
 | File | Role |

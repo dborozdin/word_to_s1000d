@@ -315,7 +315,9 @@ def _walk_para(para_elem, elements, counter):
             if tag == 'randomList':
                 counter[0] += 1
                 ts, te = _text_snippet(child)
-                elements.append(ElementInfo(idx=counter[0], type='unnumbered_list', text_start=ts, text_end=te))
+                prefix = child.get('listItemPrefix', 'pf02')
+                list_type = 'numbered_list' if prefix == 'pf01' else 'unnumbered_list'
+                elements.append(ElementInfo(idx=counter[0], type=list_type, text_start=ts, text_end=te))
             elif tag == 'sequentialList':
                 counter[0] += 1
                 ts, te = _text_snippet(child)

@@ -619,8 +619,10 @@ PDF → DOCX сопоставление для hybrid reference (без XML).
 | `_find_best_docx_match window` | cursor-5 .. cursor+50 | Окно поиска |
 | `match_xml_to_pdf pass 1 window` | 80 | Размер окна pass 1 |
 | `forward expansion max steps` | 30 | Максимум дополнительных блоков |
-| `forward expansion gap limit` | median_gap * 3 | Вертикальный разрыв |
-| `forward expansion x-offset limit` | 40 px | Горизонтальный сдвиг |
+| `forward expansion gap limit` | median_gap * 3 (списки: * 5) | Вертикальный разрыв (увеличен для списков) |
+| `forward expansion page-bottom peek` | — | При gap-break перед сменой страницы — продолжить |
+| `forward expansion x-offset limit` | 40 px (cross-page: 100 px) | Горизонтальный сдвиг (relaxed cross-page) |
+| `forward expansion is_table guard` | — | Не-таблица не может захватить is_table блок |
 | `forward expansion vertical close` | median_gap * 1.5 | Порог "близко по вертикали" |
 | `text_end stop threshold` | 0.4 | prefix_score для text_end |
 | `other element stop threshold` | 0.4 | Score чужого элемента |

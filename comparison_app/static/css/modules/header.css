@@ -75,6 +75,12 @@
     background: #3498db;
     color: white;
 }
+.mode-btn.disabled {
+    color: rgba(255,255,255,0.3);
+    cursor: not-allowed;
+    pointer-events: none;
+    opacity: 0.5;
+}
 
 /* Render mode badge in panel header */
 .render-mode-badge {

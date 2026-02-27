@@ -303,7 +303,7 @@ def regenerate_xml_api(dmc_string: str):
 
 @app.route('/api/verify/<path:dmc_string>', methods=['POST'])
 def run_verification_api(dmc_string: str):
-    """Run headless comparison between reference and current XML."""
+    """Run headless comparison between reference and current XML + XSD validation."""
     pair = get_pair_by_dmc(dmc_string, INPUT_DIR, OUTPUT_DIR)
     if not pair:
         return jsonify({'error': 'Pair not found'}), 404
@@ -326,7 +326,51 @@ def run_verification_api(dmc_string: str):
 
         # Compare
         report = compare_elements(ref_elems, xml_elems)
-        return jsonify({'report': report.to_dict()}), 200
+
+        # ── XSD validation ──
+        xsd_valid = True
+        xsd_element_issues = []
+        try:
+            from generators.s1000d_generator import S1000DGenerator
+            from parsers.dmc_parser import is_procedure_info_code
+            info_code = pair.get('info_code', '')
+            schema = 'xsd/proced.xsd' if is_procedure_info_code(info_code) else 'xsd/descript.xsd'
+            xsd_valid, xsd_structured = S1000DGenerator.validate_xml_with_details(
+                pair['xml_path'], schema_file=schema)
+
+            if not xsd_valid:
+                from verify_loop import _map_xsd_to_source_elements
+                from parsers.elements_analyzer import get_last_markup_result
+                source_elements = get_last_markup_result(dmc_string)
+                if source_elements:
+                    xsd_element_issues = _map_xsd_to_source_elements(
+                        xsd_structured, source_elements)
+                else:
+                    xsd_element_issues = [{
+                        'source_idx': None, 'ref_idx': None,
+                        'text_preview': (e.get('element_text') or '')[:50],
+                        'user_type': None, 'original_type': None,
+                        'xsd_error': e.get('message', ''),
+                        'is_user_annotated': False,
+                        'element_tag': e.get('element_tag'),
+                        'xpath': e.get('xpath'),
+                    } for e in xsd_structured]
+        except Exception as xsd_err:
+            xsd_valid = False
+            xsd_element_issues = [{
+                'source_idx': None, 'ref_idx': None,
+                'text_preview': '', 'user_type': None,
+                'original_type': None,
+                'xsd_error': f'XSD validation error: {xsd_err}',
+                'is_user_annotated': False,
+                'element_tag': None, 'xpath': None,
+            }]
+
+        return jsonify({
+            'report': report.to_dict(),
+            'xsd_valid': xsd_valid,
+            'xsd_element_issues': xsd_element_issues,
+        }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

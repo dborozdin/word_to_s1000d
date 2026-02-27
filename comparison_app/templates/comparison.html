@@ -17,10 +17,8 @@
             <div class="mode-switch">
                 <a href="?mode=pdf" class="mode-btn {% if render_mode == 'pdf' %}active{% endif %}"
                    title="PDF через MS Word + pdf.js (синхронная прокрутка)">PDF</a>
-                <a href="?mode=wordhtml" class="mode-btn {% if render_mode == 'wordhtml' %}active{% endif %}"
-                   title="HTML через MS Word (синхронная прокрутка)">Word HTML</a>
-                <a href="?mode=html" class="mode-btn {% if render_mode == 'html' %}active{% endif %}"
-                   title="HTML через mammoth (fallback)">mammoth</a>
+                <span class="mode-btn disabled" title="Word HTML (отключён)">Word HTML</span>
+                <span class="mode-btn disabled" title="mammoth (отключён)">mammoth</span>
             </div>
             {% endif %}
             <div class="anno-controls">

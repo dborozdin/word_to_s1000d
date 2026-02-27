@@ -28,15 +28,30 @@ export function runVerification() {
                 var score = data.report.score;
                 var matched = data.report.matched_pairs ? data.report.matched_pairs.length : 0;
                 var total = Math.max(data.report.left_count, data.report.right_count);
-                dom.verifyScore.className = score >= 0.95 ? 'mismatch-badge ok' : 'mismatch-badge warn';
-                dom.verifyScore.textContent = (score * 100).toFixed(0) + '% (' + matched + '/' + total + ')';
 
-                // Build issues list and auto-switch to issues mode if any
+                // Build label with XSD status
+                var label = (score * 100).toFixed(0) + '% (' + matched + '/' + total + ')';
+                if (data.xsd_valid === false) {
+                    var issueCount = (data.xsd_element_issues || []).length;
+                    label += ' (XSD: ' + issueCount + ' \u043E\u0448.)';
+                } else if (data.xsd_valid === true) {
+                    label += ' (XSD \u2713)';
+                }
+
+                dom.verifyScore.className = (score >= 0.95 && data.xsd_valid !== false)
+                    ? 'mismatch-badge ok' : 'mismatch-badge warn';
+                dom.verifyScore.textContent = label;
+
+                // Build issues list (navigation mode stays as user selected)
                 state.setLastReport(data.report);
                 buildIssuesList(data.report);
-                if (state.getIssuesList().length > 0 && dom.navModeSelect) {
-                    state.setNavMode('issues');
-                    dom.navModeSelect.value = 'issues';
+
+                // Show/hide XSD issues panel
+                var xsdIssues = data.xsd_element_issues || [];
+                if (xsdIssues.length > 0) {
+                    renderXsdIssues(xsdIssues);
+                } else {
+                    hideXsdIssues();
                 }
             } else if (data.error && dom.verifyScore) {
                 dom.verifyScore.className = 'mismatch-badge warn';
@@ -127,10 +142,6 @@ export function runVerifyLoop() {
                 if (last.report) {
                     state.setLastReport(last.report);
                     buildIssuesList(last.report);
-                    if (state.getIssuesList().length > 0 && dom.navModeSelect) {
-                        state.setNavMode('issues');
-                        dom.navModeSelect.value = 'issues';
-                    }
                 }
 
                 // Show XSD issues panel if there are element-mapped errors

@@ -522,7 +522,7 @@
     <tr><th>XML-структура</th><th>Тип аннотации</th></tr>
     <tr><td><code>&lt;levelledPara&gt;</code> с <code>&lt;title&gt;</code></td><td>heading</td></tr>
     <tr><td><code>&lt;para&gt;</code></td><td>para</td></tr>
-    <tr><td><code>&lt;para&gt;</code> с <code>&lt;randomList&gt;</code></td><td>para + unnumbered_list</td></tr>
+    <tr><td><code>&lt;para&gt;</code> с <code>&lt;randomList&gt;</code></td><td>para + numbered_list (pf01) или unnumbered_list (pf02)</td></tr>
     <tr><td><code>&lt;para&gt;</code> с <code>&lt;sequentialList&gt;</code></td><td>para + numbered_list</td></tr>
     <tr><td><code>&lt;table&gt;</code></td><td>table</td></tr>
     <tr><td><code>&lt;figure&gt;</code></td><td>illustration</td></tr>
@@ -623,11 +623,19 @@
         <code>_type_context_factor</code> штрафует warning/caution/note при отсутствии
         ключевых слов (×0.1). Безопасность: <code>max(normalized, raw)</code> score
         гарантирует надёжность начального матчинга.</li>
-    <li>Расширение вперёд (forward expansion): захват последовательных PDF-блоков. Критерии:
-        ни один другой XML-элемент не претендует на блок с confidence &gt;0.4;
-        малый y-gap (&lt;3× медианного на той же странице);
-        x-отступ ±40 px <em>или</em> блоки вертикально близки на той же странице
-        (line-wrap в рамках одного абзаца, gap &lt;1.5× медианного).
+    <li>Расширение вперёд (forward expansion): захват последовательных PDF-блоков. Критерии остановки:
+        <ul>
+          <li><strong>is_table guard:</strong> не-табличный XML-элемент не может захватить PDF-блок с <code>is_table=True</code>.</li>
+          <li><strong>Граница страниц:</strong> не более <code>anchor_page + 1</code>.</li>
+          <li><strong>Boundary ownership:</strong> ни один другой XML-элемент не претендует на блок с confidence &gt;0.4.</li>
+          <li><strong>Y-gap:</strong> &lt;3× медианного (для списков — &lt;5× медианного).
+              Исключение: если следующий блок находится перед переходом страницы
+              (footer/header), gap-break пропускается для продолжения на следующей странице.</li>
+          <li><strong>X-offset:</strong> ±40 px <em>или</em> блоки вертикально близки на той же странице
+              (line-wrap, gap &lt;1.5× медианного). При переходе страниц: таблицы продолжаются
+              без ограничений; для остальных — порог 100 px.</li>
+          <li><strong>text_end match:</strong> <code>prefix_score(text_end, block) &gt; 0.4</code> → конец элемента.</li>
+        </ul>
         Сохранение многоуровневых чисел в нормализации предотвращает ложные срабатывания
         boundary-check для списков с похожим текстом (3.1.1 vs 3.1.4).</li>
     <li>Слияние захваченных блоков: один элемент эталона с <code>span=N</code> и объединённым bbox.</li>
@@ -635,10 +643,11 @@
 
   <p><strong>Pass 2</strong> — глобальный поиск для элементов, не найденных в Pass 1
      (warnings/cautions могут стоять в начале XML, но физически на последних страницах PDF,
-     за пределами окна Pass 1):</p>
+     за пределами окна Pass 1; также элементы «застрявшие» из-за cursor jump):</p>
   <ol>
     <li>Каждый не-найденный XML-элемент ищет по ВСЕМ свободным PDF-блокам (без ограничения cursor/window).</li>
-    <li>Forward expansion идентична Pass 1 (включая x0 line-wrap, should_stop по ВСЕМ XML-элементам).</li>
+    <li>Forward expansion полностью идентична Pass 1 (все критерии остановки, включая
+        is_table guard, cross-page relaxation, page-bottom peek).</li>
   </ol>
 
   <p><strong>Sentinel-типы:</strong></p>

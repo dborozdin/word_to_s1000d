@@ -337,13 +337,31 @@ def _match_xml_to_pdf_pass(
                 break
             next_block = pdf_blocks[next_pi]
 
+            # Non-table XML elements must not consume table PDF blocks
+            if next_block.get('is_table') and xml_elem.type != 'table':
+                break
+
             if next_block['page_num'] > anchor_page + 1:
                 break
 
             if next_block['page_num'] == pdf_blocks[claimed[-1]]['page_num']:
                 gap = next_block['y0'] - pdf_blocks[claimed[-1]]['y1']
-                if gap > median_gap * 3:
-                    break
+                # Lists use larger gap tolerance: numbered items often have
+                # extra spacing before emphasis lines like "ВНИМАНИЕ".
+                gap_mult = 5 if xml_elem.type in (
+                    'numbered_list', 'unnumbered_list',
+                    'nested_numbered_list', 'nested_unnumbered_list',
+                ) else 3
+                if gap > median_gap * gap_mult:
+                    # Allow the gap if this is a page-bottom block right before
+                    # a page transition (footer/header).  The next block on the
+                    # new page may still belong to this element.
+                    peek = next_pi + 1
+                    if (peek < len(pdf_blocks) and
+                            pdf_blocks[peek]['page_num'] > next_block['page_num']):
+                        pass  # don't break — cross-page continuation
+                    else:
+                        break
 
             # Stop if any OTHER XML element owns this block with reasonable
             # confidence.  Checks ALL elements (not just xi+1..xi+15) so that
@@ -370,7 +388,12 @@ def _match_xml_to_pdf_pass(
             # X-offset check: stop if horizontal position differs significantly,
             # UNLESS blocks are vertically close on the same page (line-wrap
             # within the same paragraph — e.g. "ДЕМОН-" / "ТИРОВАТЬ,...").
-            if abs(next_block['x0'] - anchor_x0) > 40:
+            # Cross-page: page margins often shift (tables, lists continue at
+            # a different x after headers/footers), so only stop on very large
+            # offsets.  The page-boundary check (anchor_page+1) and the
+            # boundary-ownership check already guard against over-claiming.
+            x_diff = abs(next_block['x0'] - anchor_x0)
+            if x_diff > 40:
                 same_page = (next_block['page_num']
                              == pdf_blocks[claimed[-1]]['page_num'])
                 if same_page:
@@ -378,8 +401,10 @@ def _match_xml_to_pdf_pass(
                     if gap > median_gap * 1.5:
                         break  # far apart vertically → different element
                     # else: close vertically → same-paragraph wrap, allow
-                else:
-                    break  # cross-page + different x → stop
+                elif next_block.get('is_table') and xml_elem.type == 'table':
+                    pass  # table continuation across pages — always allow
+                elif x_diff > 100:
+                    break  # extreme x shift across pages → stop
 
             claimed.append(next_pi)
             used_pdf.add(next_pi)
@@ -546,12 +571,28 @@ def match_xml_to_pdf(
                 if next_ci >= len(content_list) or next_ci in used_pdf:
                     break
                 nblk = content_list[next_ci]
+
+                # Non-table XML elements must not consume table PDF blocks
+                if nblk.get('is_table') and xml_elem.type != 'table':
+                    break
+
                 if nblk['page_num'] > anchor_page + 1:
                     break
+
                 if nblk['page_num'] == content_list[claimed2[-1]]['page_num']:
                     gap = nblk['y0'] - content_list[claimed2[-1]]['y1']
-                    if gap > median_gap * 3:
-                        break
+                    gap_mult = 5 if xml_elem.type in (
+                        'numbered_list', 'unnumbered_list',
+                        'nested_numbered_list', 'nested_unnumbered_list',
+                    ) else 3
+                    if gap > median_gap * gap_mult:
+                        peek = next_ci + 1
+                        if (peek < len(content_list) and
+                                content_list[peek]['page_num'] > nblk['page_num']):
+                            pass  # don't break — cross-page continuation
+                        else:
+                            break
+
                 # Stop if any OTHER XML element owns this block with
                 # reasonable confidence (check ALL elements — Pass 2 order
                 # does not follow document order).
@@ -572,10 +613,10 @@ def match_xml_to_pdf(
                         break
                 if stop2:
                     break
-                # X-offset check: stop if horizontal position differs
-                # significantly, UNLESS blocks are vertically close on the
-                # same page (line-wrap within the same paragraph).
-                if abs(nblk['x0'] - anchor_x0) > 40:
+
+                # X-offset check (same logic as pass 1)
+                x_diff2 = abs(nblk['x0'] - anchor_x0)
+                if x_diff2 > 40:
                     same_page = (nblk['page_num']
                                  == content_list[claimed2[-1]]['page_num'])
                     if same_page:
@@ -583,8 +624,11 @@ def match_xml_to_pdf(
                         if x_gap > median_gap * 1.5:
                             break  # far apart vertically → different element
                         # else: close vertically → same-paragraph wrap, allow
-                    else:
-                        break  # cross-page + different x → stop
+                    elif nblk.get('is_table') and xml_elem.type == 'table':
+                        pass  # table continuation across pages — always allow
+                    elif x_diff2 > 100:
+                        break  # extreme x shift across pages → stop
+
                 claimed2.append(next_ci)
                 used_pdf.add(next_ci)
                 if xml_te:

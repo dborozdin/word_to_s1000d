@@ -694,12 +694,23 @@ _SECTION_NUM_RE = re.compile(r'^(\d+(?:\.\d+)*)\s+(.+)', re.DOTALL)
 def _parse_section_number(text: str):
     """Detect section number (N, N.N, N.N.N) at text start.
 
+    Only treats as section header if text after number is predominantly
+    UPPERCASE (ratio >= 0.7). Sentence-case items like '3.1.2 При монтаже'
+    return None so they stay as list items.
+
     Returns (number_str, depth, stripped_title) or None.
     """
     m = _SECTION_NUM_RE.match(text.strip())
     if m:
         num = m.group(1)
-        return (num, num.count('.') + 1, m.group(2).strip())
+        title_text = m.group(2).strip()
+        # Only treat as section header if text is predominantly UPPERCASE
+        letters = [c for c in title_text if c.isalpha()]
+        if letters:
+            upper_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
+            if upper_ratio < 0.7:
+                return None  # sentence-case → keep as list item
+        return (num, num.count('.') + 1, title_text)
     return None
 
 
@@ -936,7 +947,12 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
                 in_levelled_para = False
 
             # Strip numbering from header text for title element
-            title_text = re.sub(r'^\d+\.\s*', '', content).strip()
+            # Handles: "1. TEXT", "1 TEXT", "3.1.2 TEXT", "3.1.2. TEXT"
+            # But keep numbering for ПУНКТ-style headers (numbering generated from style)
+            if elem.get('numbering_source') == 'punkt_style':
+                title_text = content.strip()
+            else:
+                title_text = re.sub(r'^\d+(?:\.\d+)*\.?\s*', '', content).strip()
 
             # Start a new levelledPara with title (will be closed when next header or end)
             current_levelled_para = [f'<title>{title_text}</title>']

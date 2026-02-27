@@ -259,10 +259,14 @@ def save_reference_api(dmc_string: str):
     """Save user-edited reference markup."""
     data = request.get_json()
     if not data or 'elements' not in data:
+        app.logger.warning('save_reference_api: missing elements in request for %s', dmc_string)
         return jsonify({'error': 'Missing elements'}), 400
 
     source = data.get('source', 'manual')
+    app.logger.info('save_reference_api: saving %d elements for %s (source=%s)',
+                     len(data['elements']), dmc_string, source)
     ref = save_reference(dmc_string, data['elements'], source=source)
+    app.logger.info('save_reference_api: saved OK, %d elements returned', len(ref.get('elements', [])))
     return jsonify({'reference': ref}), 200
 
 

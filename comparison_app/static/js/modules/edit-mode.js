@@ -84,19 +84,31 @@ function exitEditMode() {
 
 function saveReference() {
     var referenceData = state.getReferenceData();
-    if (!referenceData || !window.DMC_STRING) return;
+    if (!referenceData || !window.DMC_STRING) {
+        console.warn('[edit-mode] saveReference: no referenceData or DMC_STRING', {
+            hasRef: !!referenceData, dmc: window.DMC_STRING
+        });
+        return;
+    }
+
+    var payload = {
+        elements: referenceData.elements,
+        source: 'auto+manual'
+    };
+    console.log('[edit-mode] saveReference: sending', payload.elements.length, 'elements to', '/api/reference/' + window.DMC_STRING);
 
     fetch('/api/reference/' + window.DMC_STRING, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            elements: referenceData.elements,
-            source: 'auto+manual'
-        })
+        body: JSON.stringify(payload)
     })
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+        console.log('[edit-mode] saveReference: response status', r.status);
+        return r.json();
+    })
     .then(function (data) {
         if (data.reference) {
+            console.log('[edit-mode] saveReference: saved OK,', data.reference.elements.length, 'elements');
             state.setReferenceData(data.reference);
             // Rebuild badges to reflect any changes
             rebuildBadges(dom.docxPanel);
@@ -105,7 +117,12 @@ function saveReference() {
                 dom.saveRefBtn.textContent = '\u2713 \u0421\u043E\u0445\u0440.';
                 setTimeout(function () { dom.saveRefBtn.textContent = '\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C'; }, 1500);
             }
+        } else {
+            console.error('[edit-mode] saveReference: no reference in response', data);
         }
+    })
+    .catch(function (err) {
+        console.error('[edit-mode] saveReference: fetch error', err);
     });
 }
 
@@ -361,7 +378,7 @@ function showCreateMenu(block, domPosition, x, y) {
     if (dom.ctxTypeSelect) dom.ctxTypeSelect.value = 'para';
     if (dom.ctxPreview) dom.ctxPreview.textContent = block.getAttribute('data-anno-text') || getCleanText(block) || '';
 
-    // Hide normal edit buttons, show create button
+    // Hide normal edit buttons, show cancel button (was "Создать")
     if (dom.ctxMergePrev) dom.ctxMergePrev.style.display = 'none';
     if (dom.ctxMergeNext) dom.ctxMergeNext.style.display = 'none';
     if (dom.ctxDelete) dom.ctxDelete.style.display = 'none';
@@ -427,6 +444,7 @@ export function initEditMode() {
             renumberRefElements();
             hideContextMenu();
             rebuildBadges(dom.docxPanel);
+            saveReference();
         });
     }
 
@@ -454,6 +472,7 @@ export function initEditMode() {
             renumberRefElements();
             hideContextMenu();
             rebuildBadges(dom.docxPanel);
+            saveReference();
         });
     }
 
@@ -469,6 +488,7 @@ export function initEditMode() {
             renumberRefElements();
             hideContextMenu();
             rebuildBadges(dom.docxPanel);
+            saveReference();
         });
     }
 
@@ -480,48 +500,62 @@ export function initEditMode() {
         });
     }
 
-    // Context menu: create new element from unassigned block
+    // Helper: create a new element from the current create-mode state.
+    // Returns true if element was created, false if not possible.
+    function _doCreateElement() {
+        var referenceData = state.getReferenceData();
+        if (!referenceData) return false;
+        var type = dom.ctxTypeSelect ? dom.ctxTypeSelect.value : 'para';
+        var text = '';
+        var createBlock = state.getCreateBlock();
+        if (createBlock) {
+            // For PDF markers, textContent is just the label ("+"),
+            // so prefer data-anno-text which holds the actual block text.
+            text = createBlock.getAttribute('data-anno-text')
+                || getCleanText(createBlock) || '';
+        }
+        var insertAt = _determineInsertPosition(state.getCreateDomPosition());
+        // Capture marker position so _syncPdfMarkersBbox finds the
+        // correct marker (not another one with identical text on a
+        // different page).
+        var _bbox = null;
+        if (createBlock && createBlock.classList.contains('anno-marker')) {
+            _bbox = {
+                page: getMarkerPage(createBlock, dom.docxPanel),
+                y0: markerTopToAbsolute(createBlock, dom.docxPanel)
+            };
+        }
+
+        console.log('[edit-mode] Create element:', {
+            type: type, text: text.substring(0, 60),
+            insertAt: insertAt, bbox: _bbox,
+            totalBefore: referenceData.elements.length
+        });
+        log('edit', 'Create element', {
+            type: type, text: text.substring(0, 40),
+            insertAt: insertAt, bbox: _bbox
+        });
+
+        var newElem = {
+            idx: 0, type: type,
+            text_start: text.substring(0, 60),
+            text_end: text.substring(Math.max(0, text.length - 40)),
+            span: 1,
+            type_source: 'user_override'
+        };
+        if (_bbox) newElem.bbox = _bbox;
+        referenceData.elements.splice(insertAt, 0, newElem);
+        renumberRefElements();
+        console.log('[edit-mode] After create: total elements =', referenceData.elements.length,
+                    ', new elem idx =', newElem.idx);
+        rebuildBadges(dom.docxPanel);
+        return true;
+    }
+
+    // Context menu: cancel (close dialog without changes)
     if (dom.ctxCreate) {
         dom.ctxCreate.addEventListener('click', function () {
-            var referenceData = state.getReferenceData();
-            if (!referenceData) return;
-            var type = dom.ctxTypeSelect ? dom.ctxTypeSelect.value : 'para';
-            var text = '';
-            var createBlock = state.getCreateBlock();
-            if (createBlock) {
-                // For PDF markers, textContent is just the label ("+"),
-                // so prefer data-anno-text which holds the actual block text.
-                text = createBlock.getAttribute('data-anno-text')
-                    || getCleanText(createBlock) || '';
-            }
-            var insertAt = _determineInsertPosition(state.getCreateDomPosition());
-            // Capture marker position so _syncPdfMarkersBbox finds the
-            // correct marker (not another one with identical text on a
-            // different page).
-            var _bbox = null;
-            if (createBlock && createBlock.classList.contains('anno-marker')) {
-                _bbox = {
-                    page: getMarkerPage(createBlock, dom.docxPanel),
-                    y0: markerTopToAbsolute(createBlock, dom.docxPanel)
-                };
-            }
-
-            log('edit', 'Create element', {
-                type: type, text: text.substring(0, 40),
-                insertAt: insertAt, bbox: _bbox
-            });
-
-            var newElem = {
-                idx: 0, type: type,
-                text_start: text.substring(0, 60),
-                text_end: text.substring(Math.max(0, text.length - 40)),
-                span: 1
-            };
-            if (_bbox) newElem.bbox = _bbox;
-            referenceData.elements.splice(insertAt, 0, newElem);
-            renumberRefElements();
             hideContextMenu();
-            rebuildBadges(dom.docxPanel);
         });
     }
 
@@ -560,9 +594,19 @@ export function initEditMode() {
         showCreateMenu(block, domPosition, e.clientX, e.clientY);
     }, true); // useCapture to intercept before other handlers
 
-    // Context menu: save reference
+    // Context menu: save reference (auto-creates element if in create mode)
     if (dom.ctxSave) {
         dom.ctxSave.addEventListener('click', function () {
+            // If in create mode (ctxTargetIdx === -999), auto-create element first
+            if (state.getCtxTargetIdx() === -999) {
+                if (!_doCreateElement()) {
+                    console.warn('[edit-mode] ctxSave: auto-create failed');
+                    hideContextMenu();
+                    return;
+                }
+                // Reset create mode state
+                state.setCtxTargetIdx(-1);
+            }
             // Immediately rebuild badges to show pending changes
             rebuildBadges(dom.docxPanel);
             saveReference();

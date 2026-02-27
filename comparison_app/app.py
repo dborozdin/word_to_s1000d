@@ -65,7 +65,84 @@ MODES = ('pdf', 'wordhtml', 'html')
 def index():
     """Module pair selector page."""
     pairs = get_comparison_pairs(INPUT_DIR, OUTPUT_DIR)
-    return render_template('index.html', pairs=pairs, word_available=_is_word_available())
+    return render_template('index.html', pairs=pairs, word_available=_is_word_available(),
+                           input_dir=INPUT_DIR, output_dir=OUTPUT_DIR)
+
+
+@app.route('/api/config', methods=['GET'])
+def get_config_api():
+    """Return current configuration values."""
+    return jsonify({
+        'input_dir': INPUT_DIR,
+        'output_dir': OUTPUT_DIR,
+        'input_dir_raw': config.get('processing', 'input_dir', fallback='doc_source'),
+        'output_dir_raw': config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'),
+    }), 200
+
+
+@app.route('/api/config', methods=['POST'])
+def update_config_api():
+    """Update config.ini values for input_dir and/or output_dir (preserves comments)."""
+    import re as _re
+    global INPUT_DIR, OUTPUT_DIR, GRAPHICS_DIR
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    config_path = os.path.join(PROJECT_ROOT, 'config.ini')
+    with open(config_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    if 'input_dir' in data:
+        content = _re.sub(
+            r'^(input_dir\s*=\s*).*$',
+            r'\g<1>' + data['input_dir'],
+            content, flags=_re.MULTILINE,
+        )
+    if 'output_dir' in data:
+        content = _re.sub(
+            r'^(output_dir\s*=\s*).*$',
+            r'\g<1>' + data['output_dir'],
+            content, flags=_re.MULTILINE,
+        )
+
+    with open(config_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+    # Re-read config cleanly
+    config.read(config_path, encoding='utf-8')
+    INPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'input_dir', fallback='doc_source'))
+    OUTPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
+    GRAPHICS_DIR = os.path.join(OUTPUT_DIR, 'graphics')
+
+    return jsonify({
+        'status': 'ok',
+        'input_dir': INPUT_DIR,
+        'output_dir': OUTPUT_DIR,
+    }), 200
+
+
+@app.route('/api/reload-config', methods=['POST'])
+def reload_config_api():
+    """Re-read config.ini from disk and return fresh pairs list."""
+    global INPUT_DIR, OUTPUT_DIR, GRAPHICS_DIR, ELEMENT_SOURCE
+
+    config_path = os.path.join(PROJECT_ROOT, 'config.ini')
+    config.read(config_path, encoding='utf-8')
+
+    INPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'input_dir', fallback='doc_source'))
+    OUTPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
+    GRAPHICS_DIR = os.path.join(OUTPUT_DIR, 'graphics')
+    ELEMENT_SOURCE = config.get('processing', 'element_source', fallback='docx_only')
+
+    pairs = get_comparison_pairs(INPUT_DIR, OUTPUT_DIR)
+    return jsonify({
+        'status': 'ok',
+        'input_dir': INPUT_DIR,
+        'output_dir': OUTPUT_DIR,
+        'pairs': pairs,
+    }), 200
 
 
 @app.route('/compare/<path:dmc_string>')
@@ -278,9 +355,10 @@ def regenerate_xml_api(dmc_string: str):
         return jsonify({'error': 'DOCX not found'}), 404
 
     try:
-        from main import get_llm_config, route_to_processor
+        from main import get_llm_config
         from parsers.dmc_parser import (
-            parse_dmc_from_folder_name, is_procedure_info_code
+            parse_dmc_from_folder_name, is_procedure_info_code,
+            build_graphic_ident_prefix,
         )
         import configparser as _cp
         _cfg = _cp.ConfigParser()
@@ -288,14 +366,37 @@ def regenerate_xml_api(dmc_string: str):
         llm_config = get_llm_config(_cfg)
 
         dmc_info = parse_dmc_from_folder_name(pair['folder_name'])
-        info_code = dmc_info['dm_code']['infoCode'] if dmc_info else ''
-        if is_procedure_info_code(info_code):
-            module_type = 'procedure'
-        else:
-            module_type = 'descriptive'
+        if not dmc_info:
+            return jsonify({'error': 'Cannot parse DMC from folder name'}), 400
 
-        route_to_processor(module_type, pair['docx_path'], OUTPUT_DIR,
-                           llm_config=llm_config)
+        dm_code = dmc_info['dm_code']
+        info_code = dm_code['infoCode']
+        graphic_prefix = build_graphic_ident_prefix(dm_code)
+
+        if is_procedure_info_code(info_code):
+            from processing_scripts import procedure_processor
+            procedure_processor.process_procedure_document(
+                doc_path=pair['docx_path'],
+                output_dir=OUTPUT_DIR,
+                llm_config=llm_config,
+                dm_code_override=dm_code,
+                tech_name_override=dmc_info['tech_name'],
+                info_name_override=dmc_info['info_name'],
+                skip_pmc=True,
+                graphic_ident_prefix=graphic_prefix,
+            )
+        else:
+            from processing_scripts import descriptive_processor
+            descriptive_processor.process_descriptive_document(
+                doc_path=pair['docx_path'],
+                output_dir=OUTPUT_DIR,
+                llm_config=llm_config,
+                dm_code_override=dm_code,
+                tech_name_override=dmc_info['tech_name'],
+                info_name_override=dmc_info['info_name'],
+                skip_pmc=True,
+                graphic_ident_prefix=graphic_prefix,
+            )
         return jsonify({'status': 'ok', 'xml_path': pair['xml_path']}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Сравнение: выбор модуля данных</title>
+    <title>Генерация S1000D XML</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -18,7 +18,51 @@
         }
         .header h1 { font-size: 20px; font-weight: 500; }
         .header p { font-size: 13px; opacity: 0.7; margin-top: 4px; }
-        .container { max-width: 1200px; margin: 24px auto; padding: 0 24px; }
+        .config-bar {
+            background: #ecf0f1;
+            padding: 10px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #ddd;
+        }
+        .config-path {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+        }
+        .config-label {
+            font-size: 13px;
+            color: #666;
+            margin-right: 8px;
+            white-space: nowrap;
+        }
+        .config-value {
+            font-family: monospace;
+            font-size: 13px;
+            color: #2c3e50;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .config-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+            margin-left: 16px;
+        }
+        .config-btn {
+            padding: 5px 14px;
+            background: #fff;
+            border: 1px solid #bdc3c7;
+            border-radius: 3px;
+            font-size: 13px;
+            cursor: pointer;
+            color: #2c3e50;
+            white-space: nowrap;
+        }
+        .config-btn:hover { background: #d5dbdb; }
+        .container { max-width: 1400px; margin: 24px auto; padding: 0 24px; }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -67,14 +111,125 @@
         }
         .info-code-descr { background: #e8f5e9; color: #2e7d32; }
         .info-code-proc { background: #fff3e0; color: #e65100; }
+        .gen-btn {
+            padding: 4px 12px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .gen-btn:hover { background: #219a52; }
+        .gen-btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .gen-btn.generating { background: #f39c12; cursor: wait; }
+        .gen-btn.error { background: #e74c3c; }
+        .gen-btn.success { background: #27ae60; }
+        /* Settings modal */
+        .settings-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9000;
+        }
+        .settings-box {
+            background: #fff;
+            border-radius: 6px;
+            padding: 24px 28px;
+            min-width: 480px;
+            max-width: 600px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+        }
+        .settings-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            color: #2c3e50;
+        }
+        .settings-field {
+            margin-bottom: 12px;
+        }
+        .settings-field label {
+            display: block;
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .settings-field input {
+            width: 100%;
+            padding: 6px 8px;
+            font-size: 13px;
+            border: 1px solid #bdc3c7;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .settings-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+        .settings-btn {
+            padding: 6px 14px;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .settings-btn-save { background: #27ae60; color: white; border-color: #219a52; }
+        .settings-btn-save:hover { background: #219a52; }
+        .settings-btn-cancel { background: #ecf0f1; color: #2c3e50; }
+        .settings-btn-cancel:hover { background: #d5dbdb; }
+        .gen-all-bar {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .gen-all-btn {
+            padding: 10px 28px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .gen-all-btn:hover { background: #219a52; }
+        .gen-all-btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .gen-all-btn.generating { background: #f39c12; cursor: wait; }
+        .gen-all-progress {
+            font-size: 13px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Сравнение исходных документов и модулей данных S1000D</h1>
-        <p>Выберите пару для визуальной сверки</p>
+        <h1>Генерация модулей данных S1000D (XML) на основе документов MS Word</h1>
+        <p>Генерация и сравнение модулей данных</p>
+    </div>
+    <div class="config-bar">
+        <div class="config-path">
+            <span class="config-label">Исходные документы:</span>
+            <span id="config-input-dir" class="config-value">{{ input_dir }}</span>
+        </div>
+        <div class="config-actions">
+            <button id="btn-settings" class="config-btn">Открыть настройки</button>
+            <button id="btn-reload" class="config-btn">Перечитать конфигурацию</button>
+        </div>
     </div>
     <div class="container">
+        <div class="gen-all-bar">
+            <button id="btn-gen-all" class="gen-all-btn">Генерировать все</button>
+            <span id="gen-all-progress" class="gen-all-progress"></span>
+        </div>
         <table>
             <thead>
                 <tr>
@@ -83,6 +238,7 @@
                     <th>Наименование</th>
                     <th>DOCX</th>
                     <th>XML</th>
+                    <th>Генерация</th>
                     <th></th>
                 </tr>
             </thead>
@@ -108,11 +264,18 @@
                         <span class="status-missing">&#10007;</span>
                         {% endif %}
                     </td>
-                    <td>
+                    <td class="xml-status">
                         {% if pair.xml_exists %}
                         <span class="status-ok">&#10003;</span>
                         {% else %}
                         <span class="status-missing">&#10007;</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if pair.docx_exists %}
+                        <button class="gen-btn" data-dmc="{{ pair.dmc_string }}" title="Сгенерировать XML из DOCX">Сгенерировать XML</button>
+                        {% else %}
+                        <button class="gen-btn" disabled title="DOCX не найден">Сгенерировать XML</button>
                         {% endif %}
                     </td>
                     <td>
@@ -127,5 +290,247 @@
             </tbody>
         </table>
     </div>
+
+    <!-- Settings modal -->
+    <div id="settings-modal" class="settings-overlay" style="display:none">
+        <div class="settings-box">
+            <div class="settings-title">Настройки</div>
+            <div class="settings-field">
+                <label>Каталог исходных документов (input_dir):</label>
+                <input id="settings-input-dir" type="text">
+            </div>
+            <div class="settings-field">
+                <label>Каталог выходных XML (output_dir):</label>
+                <input id="settings-output-dir" type="text">
+            </div>
+            <div class="settings-actions">
+                <button id="settings-save" class="settings-btn settings-btn-save">Сохранить</button>
+                <button id="settings-cancel" class="settings-btn settings-btn-cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+(function() {
+    // ── Helper: generate single DMC, returns promise ──
+    function generateOne(btn) {
+        var dmc = btn.getAttribute('data-dmc');
+        if (!dmc) return Promise.resolve('skip');
+
+        btn.disabled = true;
+        btn.classList.add('generating');
+        var origText = btn.textContent;
+        btn.textContent = 'Генерация...';
+
+        return fetch('/api/regenerate/' + dmc, { method: 'POST' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) throw new Error(data.error);
+                var row = btn.closest('tr');
+                var xmlCell = row.querySelector('.xml-status');
+                if (xmlCell) {
+                    xmlCell.innerHTML = '<span class="status-ok">&#10003;</span>';
+                }
+                var link = row.querySelector('a.compare-link');
+                if (link && link.classList.contains('disabled')) {
+                    link.classList.remove('disabled');
+                    link.href = '/compare/' + dmc;
+                }
+                btn.textContent = 'Готово';
+                btn.classList.remove('generating');
+                btn.classList.add('success');
+                setTimeout(function() {
+                    btn.textContent = origText;
+                    btn.disabled = false;
+                    btn.classList.remove('success');
+                }, 2000);
+                return 'ok';
+            })
+            .catch(function(err) {
+                btn.textContent = 'Ошибка';
+                btn.classList.remove('generating');
+                btn.classList.add('error');
+                btn.title = err.message;
+                setTimeout(function() {
+                    btn.textContent = origText;
+                    btn.disabled = false;
+                    btn.classList.remove('error');
+                    btn.title = 'Сгенерировать XML из DOCX';
+                }, 3000);
+                return 'error';
+            });
+    }
+
+    // ── Generate All ──
+    document.getElementById('btn-gen-all').addEventListener('click', function() {
+        var allBtn = this;
+        var progressEl = document.getElementById('gen-all-progress');
+        var buttons = Array.from(document.querySelectorAll('.gen-btn[data-dmc]:not([disabled])'));
+        if (buttons.length === 0) {
+            progressEl.textContent = 'Нет доступных модулей для генерации';
+            return;
+        }
+
+        allBtn.disabled = true;
+        allBtn.classList.add('generating');
+        allBtn.textContent = 'Генерация...';
+
+        var total = buttons.length;
+        var done = 0;
+        var errors = 0;
+
+        function next(i) {
+            if (i >= total) {
+                allBtn.disabled = false;
+                allBtn.classList.remove('generating');
+                allBtn.textContent = 'Генерировать все';
+                var msg = 'Завершено: ' + done + ' из ' + total;
+                if (errors > 0) msg += ' (ошибок: ' + errors + ')';
+                progressEl.textContent = msg;
+                return;
+            }
+            progressEl.textContent = 'Генерация ' + (i + 1) + ' из ' + total + '...';
+            generateOne(buttons[i]).then(function(result) {
+                done++;
+                if (result === 'error') errors++;
+                next(i + 1);
+            });
+        }
+        next(0);
+    });
+
+    // ── Generate XML per row (click delegation) ──
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.gen-btn');
+        if (!btn || btn.disabled) return;
+        // Skip if "generate all" is running (buttons handled by generateOne already)
+        if (document.getElementById('btn-gen-all').disabled) return;
+
+        generateOne(btn);
+    });
+
+    // ── Settings modal ──
+    var settingsModal = document.getElementById('settings-modal');
+    var settingsInputDir = document.getElementById('settings-input-dir');
+    var settingsOutputDir = document.getElementById('settings-output-dir');
+
+    document.getElementById('btn-settings').addEventListener('click', function() {
+        fetch('/api/config')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                settingsInputDir.value = data.input_dir_raw;
+                settingsOutputDir.value = data.output_dir_raw;
+                settingsModal.style.display = 'flex';
+            });
+    });
+
+    document.getElementById('settings-cancel').addEventListener('click', function() {
+        settingsModal.style.display = 'none';
+    });
+
+    // Close modal on overlay click
+    settingsModal.addEventListener('click', function(e) {
+        if (e.target === settingsModal) settingsModal.style.display = 'none';
+    });
+
+    document.getElementById('settings-save').addEventListener('click', function() {
+        var payload = {
+            input_dir: settingsInputDir.value.trim(),
+            output_dir: settingsOutputDir.value.trim()
+        };
+        fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) throw new Error(data.error);
+            settingsModal.style.display = 'none';
+            document.getElementById('config-input-dir').textContent = data.input_dir;
+            // Reload table with new config
+            return fetch('/api/reload-config', { method: 'POST' });
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.pairs) rebuildTable(data.pairs);
+        })
+        .catch(function(err) {
+            alert('Ошибка сохранения: ' + err.message);
+        });
+    });
+
+    // ── Reload config ──
+    document.getElementById('btn-reload').addEventListener('click', function() {
+        var btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Загрузка...';
+        fetch('/api/reload-config', { method: 'POST' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) throw new Error(data.error);
+                document.getElementById('config-input-dir').textContent = data.input_dir;
+                if (data.pairs) rebuildTable(data.pairs);
+            })
+            .catch(function(err) {
+                alert('Ошибка: ' + err.message);
+            })
+            .finally(function() {
+                btn.disabled = false;
+                btn.textContent = 'Перечитать конфигурацию';
+            });
+    });
+
+    // ── Rebuild table from JSON ──
+    function rebuildTable(pairs) {
+        var tbody = document.querySelector('table tbody');
+        tbody.innerHTML = '';
+        pairs.forEach(function(pair) {
+            var infoInt = parseInt(pair.info_code, 10);
+            var typeBadge = (infoInt < 100)
+                ? '<span class="info-code-badge info-code-descr">Описание</span>'
+                : '<span class="info-code-badge info-code-proc">Процедура</span>';
+
+            var nameHtml = '<strong>' + escHtml(pair.tech_name) + '</strong>';
+            if (pair.info_name) nameHtml += ' &mdash; ' + escHtml(pair.info_name);
+
+            var docxStatus = pair.docx_exists
+                ? '<span class="status-ok">&#10003;</span>'
+                : '<span class="status-missing">&#10007;</span>';
+            var xmlStatus = pair.xml_exists
+                ? '<span class="status-ok">&#10003;</span>'
+                : '<span class="status-missing">&#10007;</span>';
+
+            var genBtn = pair.docx_exists
+                ? '<button class="gen-btn" data-dmc="' + escAttr(pair.dmc_string) + '" title="Сгенерировать XML из DOCX">Сгенерировать XML</button>'
+                : '<button class="gen-btn" disabled title="DOCX не найден">Сгенерировать XML</button>';
+
+            var compareLink = (pair.docx_exists && pair.xml_exists)
+                ? '<a href="/compare/' + escAttr(pair.dmc_string) + '" class="compare-link">Сравнить</a>'
+                : '<a class="compare-link disabled">Сравнить</a>';
+
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td class="dmc-code">' + escHtml(pair.dmc_string) + '</td>' +
+                '<td>' + typeBadge + '</td>' +
+                '<td>' + nameHtml + '</td>' +
+                '<td>' + docxStatus + '</td>' +
+                '<td class="xml-status">' + xmlStatus + '</td>' +
+                '<td>' + genBtn + '</td>' +
+                '<td>' + compareLink + '</td>';
+            tbody.appendChild(tr);
+        });
+    }
+
+    function escHtml(s) {
+        var d = document.createElement('div');
+        d.textContent = s || '';
+        return d.innerHTML;
+    }
+    function escAttr(s) {
+        return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    }
+})();
+</script>
 </body>
 </html>

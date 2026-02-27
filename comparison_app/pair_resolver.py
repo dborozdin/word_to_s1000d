@@ -17,6 +17,8 @@ def find_docx_in_folder(folder_path: str) -> Optional[str]:
     """Find the primary .docx file at the root level of a folder."""
     skip_names = {'signaturelistved.docx'}
     for f in os.listdir(folder_path):
+        if f.startswith('~$'):
+            continue
         full_path = os.path.join(folder_path, f)
         if os.path.isfile(full_path) and f.lower().endswith('.docx') and f.lower() not in skip_names:
             return full_path

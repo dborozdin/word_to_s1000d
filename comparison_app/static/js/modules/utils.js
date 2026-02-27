@@ -39,6 +39,31 @@ export function normForMatch(text) {
 }
 
 /**
+ * Light normalization: only lowercase + collapse whitespace, NO number stripping.
+ * Preserves multi-level numbers like "3.1.1", "3.1.2" so items with different
+ * numbering but identical body text can still be distinguished.
+ */
+export function normForMatchLight(text) {
+    return (text || '').toLowerCase()
+        .replace(/\s+/g, ' ').trim()
+        .slice(0, 80);
+}
+
+/**
+ * Compute prefix-overlap score between two normalized strings.
+ * Returns a value in [0, 1] — the fraction of `a` matched as a prefix of `b`.
+ */
+export function prefixScore(a, b) {
+    if (!a || !b) return 0;
+    var len = Math.min(a.length, b.length);
+    var common = 0;
+    for (var i = 0; i < len; i++) {
+        if (a[i] === b[i]) common++; else break;
+    }
+    return common / Math.max(a.length, 1);
+}
+
+/**
  * Get clean text from a DOM element (strips .anno-badge children).
  * Returns first 80 chars, trimmed.
  */

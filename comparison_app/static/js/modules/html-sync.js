@@ -6,7 +6,7 @@
  */
 
 import { getReferenceData } from './state.js';
-import { normForMatch, getCleanText, filterTopLevel } from './utils.js';
+import { normForMatch, normForMatchLight, prefixScore, getCleanText, filterTopLevel } from './utils.js';
 import { getAnnoColor } from './badges.js';
 import { isXmlDerivedRef } from './pdf-sync.js';
 
@@ -92,10 +92,13 @@ function _syncHtmlElementsText(annoEls) {
     // Pre-clear all blocks
     for (var ci = 0; ci < annoEls.length; ci++) clearAnnoEl(annoEls[ci]);
 
-    // Pre-compute normalized texts for all DOM elements
+    // Pre-compute normalized texts for all DOM elements (heavy + light)
     var domNorms = [];
+    var domLights = [];
     for (var di = 0; di < annoEls.length; di++) {
-        domNorms.push(normForMatch(getCleanText(annoEls[di])));
+        var cleanText = getCleanText(annoEls[di]);
+        domNorms.push(normForMatch(cleanText));
+        domLights.push(normForMatchLight(cleanText));
     }
 
     var usedDom = [];
@@ -111,21 +114,19 @@ function _syncHtmlElementsText(annoEls) {
         if (type === '_skip' || type === '_extra_pdf' || type === '_unmatched_xml') continue;
 
         var textStart = normForMatch(refElem.text_start || '');
-        if (!textStart) continue;
+        var textStartLight = normForMatchLight(refElem.text_start || '');
+        if (!textStart && !textStartLight) continue;
 
-        // Find DOM element with best prefix-match to text_start
+        // Find DOM element with best prefix-match to text_start.
+        // Dual scoring (heavy + light norm) to distinguish numbered items
+        // like "3.1.1 При монтаже..." vs "3.1.2 При монтаже..."
         var bestIdx = -1;
         var bestScore = 0;
         for (var di2 = 0; di2 < annoEls.length; di2++) {
             if (usedDom[di2]) continue;
-            var domText = domNorms[di2];
-            var len = Math.min(textStart.length, domText.length);
-            var pfx = 0;
-            for (var ci2 = 0; ci2 < len; ci2++) {
-                if (textStart[ci2] !== domText[ci2]) break;
-                pfx++;
-            }
-            var score = textStart.length > 0 ? pfx / textStart.length : 0;
+            var scoreHeavy = prefixScore(textStart, domNorms[di2]);
+            var scoreLight = prefixScore(textStartLight, domLights[di2]);
+            var score = scoreHeavy + scoreLight;
             if (score > bestScore) { bestScore = score; bestIdx = di2; }
         }
 

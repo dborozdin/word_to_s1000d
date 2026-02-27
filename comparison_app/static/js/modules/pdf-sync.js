@@ -7,7 +7,7 @@
 
 import { ANNO_TYPE_LABELS } from './config.js';
 import { getReferenceData, dom } from './state.js';
-import { normType, normForMatch, getMarkerOverlay, getMarkerPage } from './utils.js';
+import { normType, normForMatch, normForMatchLight, prefixScore, getMarkerOverlay, getMarkerPage } from './utils.js';
 import { log, logInfo, logGroup, logGroupEnd, logTime } from './logger.js';
 import { getAnnoColor } from './badges.js';
 
@@ -171,6 +171,7 @@ function _syncPdfMarkersBbox(sorted) {
         var info = {
             marker: mk, page: pg, top: top, bot: bot,
             normText: normForMatch(rawText),
+            lightText: normForMatchLight(rawText),
             used: false, globalIdx: i
         };
         if (!byPage[pg]) byPage[pg] = [];
@@ -192,6 +193,7 @@ function _syncPdfMarkersBbox(sorted) {
         if (type === '_extra_pdf') continue;
 
         var refNorm = normForMatch(refElem.text_start || '');
+        var refLight = normForMatchLight(refElem.text_start || '');
         var bbox = refElem.bbox;
 
         // Determine which markers to search: prefer same page if bbox exists
@@ -207,41 +209,49 @@ function _syncPdfMarkersBbox(sorted) {
             candidates = allInfos;
         }
 
-        // Find best matching unused marker by text prefix
+        // Find best matching unused marker by text prefix.
+        // Dual scoring: heavy norm (strips numbers) + light norm (preserves numbers).
+        // This distinguishes items like "3.1.1 При монтаже..." vs "3.1.2 При монтаже..."
+        // when both ref and marker include number prefixes.
+        // When text scores tie (e.g. ref has no number but PDF does), use position
+        // from bbox.y0 to pick the closest marker.
         var bestInfo = null;
         var bestScore = -1;
+        var bestPosDist = Infinity;
+        // Pre-compute position target for tie-breaking
+        var yTarget = null;
+        if (bbox && bbox.page) {
+            var _pd = window._serverPdfBlocks
+                ? window._serverPdfBlocks[bbox.page - 1] : null;
+            var _ph = _pd ? _pd.height : 792;
+            yTarget = (bbox.y0 / _ph) * 100;
+        }
 
-        if (refNorm.length > 0) {
+        if (refNorm.length > 0 || refLight.length > 0) {
             for (var mi = 0; mi < candidates.length; mi++) {
                 if (candidates[mi].used) continue;
                 var cNorm = candidates[mi].normText;
-                if (!cNorm) continue;
-                // Prefix overlap score
-                var mLen = Math.min(refNorm.length, cNorm.length);
-                if (mLen === 0) continue;
-                var common = 0;
-                for (var ci = 0; ci < mLen; ci++) {
-                    if (refNorm[ci] === cNorm[ci]) common++; else break;
-                }
-                var score = common / Math.max(refNorm.length, 1);
+                var cLight = candidates[mi].lightText;
+                if (!cNorm && !cLight) continue;
+                var scoreHeavy = prefixScore(refNorm, cNorm);
+                var scoreLight = prefixScore(refLight, cLight);
+                var score = scoreHeavy + scoreLight;
                 if (score > bestScore) {
                     bestScore = score; bestInfo = candidates[mi];
-                } else if (score === bestScore && score > 0.5 && bbox && bbox.page) {
-                    // Tie-break: prefer marker on the same page as bbox
-                    if (candidates[mi].page === bbox.page &&
-                        (!bestInfo || bestInfo.page !== bbox.page)) {
+                    bestPosDist = (yTarget !== null) ? Math.abs(candidates[mi].top - yTarget) : Infinity;
+                } else if (score === bestScore && score > 0.5) {
+                    // Tie-break: prefer marker closer to bbox.y0 position
+                    var cDist = (yTarget !== null) ? Math.abs(candidates[mi].top - yTarget) : Infinity;
+                    if (cDist < bestPosDist) {
                         bestInfo = candidates[mi];
+                        bestPosDist = cDist;
                     }
                 }
             }
         }
 
         // Fallback: position-based matching if text match is poor
-        if ((!bestInfo || bestScore < 0.3) && bbox && bbox.page) {
-            var pageData = window._serverPdfBlocks
-                ? window._serverPdfBlocks[bbox.page - 1] : null;
-            var pageHeight = pageData ? pageData.height : 792;
-            var yTarget = (bbox.y0 / pageHeight) * 100;
+        if ((!bestInfo || bestScore < 0.3) && yTarget !== null) {
             var pageMarkers = byPage[bbox.page] || [];
             var posBest = null;
             var posDist = Infinity;

@@ -34,7 +34,18 @@ def _extract_raw_pages(pdf_path: str, full_mode: bool = False) -> list:
         data = page.get_text("dict")
         blocks = []
         for block in data["blocks"]:
-            if block["type"] != 0:  # 0 = text, 1 = image
+            if block["type"] == 1:  # image block — extract bbox for illustration framing
+                bbox = block["bbox"]
+                blocks.append({
+                    "x0": bbox[0], "y0": bbox[1],
+                    "x1": bbox[2], "y1": bbox[3],
+                    "text": "",
+                    "lines": 0,
+                    "max_font_size": 0,
+                    "_is_image": True,
+                })
+                continue
+            if block["type"] != 0:  # skip non-text, non-image blocks
                 continue
             text = ""
             total_chars = 0
@@ -344,8 +355,10 @@ def _merge_lines_into_blocks(blocks: list, preserve_font_info: bool = False) -> 
         # Decision: should we start a new block?
         new_block = False
 
-        # 0. Table blocks are always standalone (already collapsed)
+        # 0. Table and image blocks are always standalone
         if cur.get("is_table") or b.get("is_table"):
+            new_block = True
+        if cur.get("_is_image") or b.get("_is_image"):
             new_block = True
 
         # 1. Large vertical gap → paragraph break
@@ -402,7 +415,43 @@ def _merge_lines_into_blocks(blocks: list, preserve_font_info: bool = False) -> 
                 cur["is_italic"] = cur.get("is_italic", False) or b.get("is_italic", False)
 
     merged.append(cur)
-    return merged
+
+    # Post-merge: combine image blocks with their captions ("Рисунок N ...")
+    import re as _re
+    final = []
+    skip_indices = set()
+    for i, blk in enumerate(merged):
+        if i in skip_indices:
+            continue
+        if blk.get("_is_image"):
+            # Look for a caption block below the image (within next 3 blocks)
+            caption = None
+            caption_idx = None
+            for j in range(i + 1, min(i + 4, len(merged))):
+                if j in skip_indices:
+                    continue
+                if not merged[j].get("_is_image") and merged[j]["text"]:
+                    if _re.match(r'[Рр]исунок\s*\d+', merged[j]["text"]):
+                        caption = merged[j]
+                        caption_idx = j
+                        break
+            if caption:
+                # Merge image bbox with caption bbox
+                blk["y1"] = max(blk["y1"], caption["y1"])
+                blk["x0"] = min(blk["x0"], caption["x0"])
+                blk["x1"] = max(blk["x1"], caption["x1"])
+                blk["text"] = caption["text"]
+                blk["lines"] = caption["lines"]
+                blk["max_font_size"] = caption["max_font_size"]
+                skip_indices.add(caption_idx)
+            blk.pop("_is_image", None)
+            # Only include if we got caption text (otherwise image has no annotation text)
+            if blk["text"]:
+                final.append(blk)
+        else:
+            final.append(blk)
+
+    return final
 
 
 def _copy_block(b: dict, preserve_font_info: bool = False) -> dict:
@@ -415,6 +464,8 @@ def _copy_block(b: dict, preserve_font_info: bool = False) -> dict:
     }
     if b.get("is_table"):
         d["is_table"] = True
+    if b.get("_is_image"):
+        d["_is_image"] = True
     if preserve_font_info:
         d["is_bold"] = b.get("is_bold", False)
         d["is_italic"] = b.get("is_italic", False)

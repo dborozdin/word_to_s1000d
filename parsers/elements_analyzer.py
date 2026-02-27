@@ -456,26 +456,80 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
             elements.append(element_info)
             continue
 
-        # Detect ПУНКТ-style headers (custom Word styles with auto-numbering)
+        # Detect ПУНКТ-style headers/items (custom Word styles with auto-numbering)
         # Must be before list detection — ПУНКТ paragraphs may have numPr
         # which would cause them to be misclassified as list items.
+        # Levels 1-2 → numbered_paragraph_header, level 3+ → numbered_list
         punkt_info = _parse_punkt_style(style_name)
         if punkt_info:
             punkt_level = punkt_info[0]
             numbering = _get_punkt_number(punkt_level)
-            numbered_title = f"{numbering} {text}"
+            numbered_content = f"{numbering} {text}"
+
+            if punkt_level <= 2:
+                # Levels 1-2: section headers (e.g. "1 Меры безопасности", "3.2 Последовательность монтажа")
+                element_info = {
+                    'type': 'numbered_paragraph_header',
+                    'start_line': para_start_line,
+                    'start_char': para_start_char,
+                    'end_line': para_end_line,
+                    'end_char': para_end_char,
+                    'start_para': para_idx,
+                    'end_para': para_idx,
+                    'content': numbered_content,
+                    'xml_example': f'<levelledPara><title>{numbered_content}</title></levelledPara>',
+                    'details': f'Нумерованный заголовок параграфа (уровень {punkt_level}, стиль ПУНКТ)',
+                    'numbering_source': 'punkt_style'
+                }
+            else:
+                # Level 3+: numbered list items (e.g. "3.2.1 Снимите транспортные заглушки")
+                xml_example = f'<randomList listItemPrefix="pf01"><listItem><para>{numbered_content}</para></listItem></randomList>'
+                element_info = {
+                    'type': 'numbered_list',
+                    'start_line': para_start_line,
+                    'start_char': para_start_char,
+                    'end_line': para_end_line,
+                    'end_char': para_end_char,
+                    'start_para': para_idx,
+                    'end_para': para_idx,
+                    'content': numbered_content,
+                    'xml_example': xml_example,
+                    'details': f'Нумерованный пункт (уровень {punkt_level}, стиль ПУНКТ)',
+                    'numbering_source': 'punkt_style'
+                }
+            elements.append(element_info)
+            continue
+
+        # Style-based warning detection (e.g. "07. Внимание для п.1")
+        if _is_warning_style(style_name):
             element_info = {
-                'type': 'numbered_paragraph_header',
+                'type': 'warning',
                 'start_line': para_start_line,
                 'start_char': para_start_char,
                 'end_line': para_end_line,
                 'end_char': para_end_char,
                 'start_para': para_idx,
                 'end_para': para_idx,
-                'content': numbered_title,
-                'xml_example': f'<levelledPara><title>{numbered_title}</title></levelledPara>',
-                'details': f'Нумерованный заголовок параграфа (уровень {punkt_level}, стиль ПУНКТ)',
-                'numbering_source': 'punkt_style'
+                'content': text,
+                'xml_example': '<warning><warningAndCautionPara>' + text + '</warningAndCautionPara></warning>',
+                'details': f'Предупреждение (стиль: {style_name})'
+            }
+            elements.append(element_info)
+            continue
+
+        # Style-based note detection (e.g. "07. Замеч для п.1")
+        if _is_note_style(style_name):
+            element_info = {
+                'type': 'note',
+                'start_line': para_start_line,
+                'start_char': para_start_char,
+                'end_line': para_end_line,
+                'end_char': para_end_char,
+                'start_para': para_idx,
+                'end_para': para_idx,
+                'content': text,
+                'xml_example': '<note><notePara>' + text + '</notePara></note>',
+                'details': f'Примечание (стиль: {style_name})'
             }
             elements.append(element_info)
             continue
@@ -563,6 +617,23 @@ def analyze_document_elements(doc: Document, illustrations: Dict[str, str] = Non
                 'content': text,
                 'xml_example': '<warning><warningAndCautionPara>Предупреждающий текст</warningAndCautionPara></warning>',
                 'details': 'Предупреждение/Предупреждение'
+            }
+            elements.append(element_info)
+            continue
+
+        # Detect notes (text-based: "Примечание:", "ПРИМЕЧАНИЕ." etc.)
+        if _is_note(text):
+            element_info = {
+                'type': 'note',
+                'start_line': para_start_line,
+                'start_char': para_start_char,
+                'end_line': para_end_line,
+                'end_char': para_end_char,
+                'start_para': para_idx,
+                'end_para': para_idx,
+                'content': text,
+                'xml_example': '<note><notePara>' + text + '</notePara></note>',
+                'details': 'Примечание'
             }
             elements.append(element_info)
             continue
@@ -1211,6 +1282,25 @@ def _is_warning(text: str) -> bool:
         if re.search(r'\b' + keyword + r'\b', lower_text):
             return True
     return False
+
+
+def _is_warning_style(style_name: str) -> bool:
+    """Detect warning styles by name: '07. Внимание для п.1', '22. Внимание для п.1.2.3'."""
+    if not style_name:
+        return False
+    return bool(re.search(r'(?i)вниман', style_name))
+
+
+def _is_note_style(style_name: str) -> bool:
+    """Detect note/remark styles by name: '07. Замеч для п.1', '07. Примеч. для 1.2'."""
+    if not style_name:
+        return False
+    return bool(re.search(r'(?i)(примеч|замеч)', style_name))
+
+
+def _is_note(text: str) -> bool:
+    """Detect note by text content: 'Примечание:', 'ПРИМЕЧАНИЕ.', etc."""
+    return bool(re.match(r'(?i)^\s*примечани[ея][\s.:–\-]', text))
 
 
 def _find_references(text: str) -> List[Tuple[str, str, str]]:

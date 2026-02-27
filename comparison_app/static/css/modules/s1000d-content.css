@@ -1,0 +1,200 @@
+/* ==========================================================================
+   S1000D content styling (right panel)
+   ========================================================================== */
+
+.s1000d-content .dm-title {
+    font-size: 18px;
+    color: #2c3e50;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+}
+
+.s1000d-content h2 {
+    font-size: 16px;
+    color: #2c3e50;
+    margin: 16px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.s1000d-content h3 {
+    font-size: 14px;
+    color: #34495e;
+    margin: 12px 0 6px;
+}
+
+.s1000d-content h4 {
+    font-size: 13px;
+    color: #34495e;
+    margin: 8px 0 4px;
+}
+
+.s1000d-content p {
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 4px 0;
+}
+
+/* Levelled paragraph sections */
+.levelled-para {
+    margin: 4px 0;
+}
+.levelled-para.level-3,
+.levelled-para.level-4 {
+    margin-left: 12px;
+}
+
+/* Tables */
+.s1000d-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 13px;
+}
+.s1000d-table th,
+.s1000d-table td {
+    border: 1px solid #bdc3c7;
+    padding: 6px 8px;
+    text-align: left;
+}
+.s1000d-table th {
+    background: #ecf0f1;
+    font-weight: 600;
+}
+
+/* Requirement tables (tools, consumables) */
+.rqmt-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 13px;
+}
+.rqmt-table th,
+.rqmt-table td {
+    border: 1px solid #bdc3c7;
+    padding: 6px 8px;
+    text-align: left;
+}
+.rqmt-table th {
+    background: #34495e;
+    color: white;
+    font-weight: 500;
+}
+.rqmt-table td:first-child {
+    width: 30px;
+    text-align: center;
+    color: #7f8c8d;
+}
+
+/* Figures */
+.figure {
+    margin: 12px 0;
+    text-align: center;
+}
+.figure-graphic {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #ecf0f1;
+}
+.figure-title {
+    font-size: 13px;
+    font-style: italic;
+    color: #555;
+    margin-top: 4px;
+}
+
+/* Lists */
+.random-list,
+.sequenced-list {
+    margin: 4px 0 4px 24px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+.random-list li,
+.sequenced-list li {
+    margin: 2px 0;
+}
+
+/* Admonitions (warning, caution, note) */
+.admonition {
+    margin: 10px 0;
+    padding: 10px 12px;
+    border-radius: 4px;
+    border-left: 4px solid;
+}
+.admonition-title {
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+.admonition.warning {
+    background: #fdedec;
+    border-color: #e74c3c;
+}
+.admonition.warning .admonition-title { color: #c0392b; }
+
+.admonition.caution {
+    background: #fef9e7;
+    border-color: #f39c12;
+}
+.admonition.caution .admonition-title { color: #d68910; }
+
+.admonition.note {
+    background: #eaf2f8;
+    border-color: #3498db;
+}
+.admonition.note .admonition-title { color: #2874a6; }
+
+/* Procedural steps */
+.procedural-step {
+    margin: 2px 0;
+}
+
+.step-title {
+    font-size: 15px;
+    color: #2c3e50;
+    margin: 12px 0 6px;
+}
+
+.step-para {
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 4px 0;
+}
+
+.step-number {
+    font-weight: 700;
+    color: #3498db;
+    margin-right: 6px;
+    min-width: 28px;
+    display: inline-block;
+}
+
+/* No items placeholder */
+.no-items {
+    font-style: italic;
+    color: #95a5a6;
+    font-size: 13px;
+}
+
+/* Preliminary / close requirements */
+.preliminary-rqmts {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed #bdc3c7;
+}
+
+.close-rqmts {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px dashed #bdc3c7;
+}
+
+/* Page-break spacers (improves scroll sync with paginated left panel) */
+.page-spacer {
+    height: 40px;
+    border-bottom: 1px dashed #dfe6e9;
+    margin: 20px 0;
+}

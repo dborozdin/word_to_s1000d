@@ -1,0 +1,95 @@
+/* ==========================================================================
+   App header, mode switch, render badge, error bar
+   ========================================================================== */
+
+/* Header */
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #2c3e50;
+    color: white;
+    padding: 8px 16px;
+    flex-shrink: 0;
+    min-height: 44px;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+.back-link {
+    color: #bdc3c7;
+    text-decoration: none;
+    font-size: 14px;
+    white-space: nowrap;
+}
+.back-link:hover { color: white; }
+
+.app-header h1 {
+    font-size: 15px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.sync-label {
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+/* Mode switch (PDF / HTML) */
+.mode-switch {
+    display: flex;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.3);
+}
+.mode-btn {
+    padding: 3px 10px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    background: transparent;
+}
+.mode-btn:hover {
+    color: white;
+    background: rgba(255,255,255,0.1);
+}
+.mode-btn.active {
+    background: #3498db;
+    color: white;
+}
+
+/* Render mode badge in panel header */
+.render-mode-badge {
+    font-size: 11px;
+    color: #7f8c8d;
+    font-style: italic;
+}
+
+/* Errors bar */
+.errors-bar {
+    background: #ffeaa7;
+    padding: 8px 16px;
+    flex-shrink: 0;
+}
+.error-msg {
+    font-size: 13px;
+    color: #856404;
+}

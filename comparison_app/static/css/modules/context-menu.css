@@ -1,0 +1,115 @@
+/* ==========================================================================
+   Context menu for element editing
+   ========================================================================== */
+
+.anno-context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: white;
+    border: 1px solid #bdc3c7;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    min-width: 220px;
+    font-size: 13px;
+    color: #333;
+}
+
+.ctx-header {
+    padding: 8px 12px;
+    background: #2c3e50;
+    color: white;
+    font-weight: 600;
+    font-size: 12px;
+    border-radius: 5px 5px 0 0;
+}
+
+.ctx-row {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.ctx-row label {
+    font-size: 12px;
+    color: #7f8c8d;
+    min-width: 30px;
+}
+
+.ctx-row select {
+    flex: 1;
+    padding: 3px 6px;
+    font-size: 12px;
+    border: 1px solid #bdc3c7;
+    border-radius: 3px;
+}
+
+.ctx-actions {
+    padding: 6px 8px;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.ctx-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    border: 1px solid #bdc3c7;
+    border-radius: 3px;
+    background: #ecf0f1;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.ctx-btn:hover {
+    background: #d5dbdb;
+}
+.ctx-btn-danger {
+    color: #e74c3c;
+    border-color: #e74c3c;
+}
+.ctx-btn-danger:hover {
+    background: #fdedec;
+}
+.ctx-btn-split {
+    color: #2980b9;
+    border-color: #2980b9;
+}
+.ctx-btn-split:hover {
+    background: #ebf5fb;
+}
+.ctx-btn-create {
+    color: #27ae60;
+    border-color: #27ae60;
+}
+.ctx-btn-create:hover {
+    background: #eafaf1;
+}
+.ctx-save-row {
+    border-top: 1px solid #ecf0f1;
+}
+.ctx-btn-save {
+    color: #27ae60;
+    border-color: #27ae60;
+    flex: 1;
+    font-weight: 600;
+}
+.ctx-btn-save:hover {
+    background: #eafaf1;
+}
+.ctx-btn-save.saved {
+    background: #27ae60;
+    color: white;
+    border-color: #27ae60;
+}
+
+.ctx-preview {
+    padding: 6px 12px;
+    font-size: 11px;
+    color: #7f8c8d;
+    max-height: 100px;
+    overflow: hidden;
+    word-break: break-word;
+    white-space: pre-line;
+}

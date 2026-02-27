@@ -58,7 +58,7 @@ export function initState() {
     dom.mismatchBadge = document.getElementById('mismatch-badge');
     dom.navModeSelect = document.getElementById('nav-mode');
     dom.issueTooltip = document.getElementById('issue-tooltip');
-    dom.contextMenu = document.getElementById('ref-context-menu');
+    dom.contextMenu = document.getElementById('anno-context-menu');
     dom.ctxLabel = document.getElementById('ctx-label');
     dom.ctxTypeSelect = document.getElementById('ctx-type-select');
     dom.ctxPreview = document.getElementById('ctx-preview');

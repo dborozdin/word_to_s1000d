@@ -214,6 +214,7 @@
     <li class="sub"><a href="#v7">V.7. Fallback и миграция</a></li>
     <li><a href="#part6">Часть VI. Стабильные идентификаторы элементов</a></li>
     <li><a href="#part7">Часть VII. Архитектура клиентского модуля сравнения</a></li>
+    <li><a href="#part8">Часть VIII. Спецификации Python-модулей</a></li>
   </ul>
 </div>
 
@@ -1613,6 +1614,52 @@ getter/setter функции. DOM-элементы кэшируются в об�
 Области: <code>pdf-sync</code>, <code>html-sync</code>, <code>xml-sync</code>,
 <code>edit</code>, <code>badges</code>, <code>verify</code>, <code>nav</code>, <code>overlay</code>.
 Фильтрация по области: <code>?logArea=pdf-sync,edit</code>.</p>
+
+<!-- ====================================================================== -->
+<h2 id="part8">Часть VIII. Спецификации Python-модулей</h2>
+
+<p>Подробные спецификации ключевых Python-модулей вынесены в отдельный документ:
+<span class="file-ref">docs/python_modules_spec.md</span>.</p>
+
+<h3>Охват</h3>
+<table>
+  <tr><th>Модуль</th><th>Роль</th><th>Строк</th></tr>
+  <tr><td><code>parsers/elements_analyzer.py</code></td>
+      <td>Анализ элементов DOCX, compute_stable_id(), apply_reference_markup()</td><td>~1700</td></tr>
+  <tr><td><code>processing_scripts/descriptive_processor.py</code></td>
+      <td>Генерация S1000D XML + sidecar _element_map.json</td><td>~1500</td></tr>
+  <tr><td><code>parsers/hybrid_matcher.py</code></td>
+      <td>Гибридный PDF↔XML↔DOCX matching (2-pass)</td><td>~850</td></tr>
+  <tr><td><code>comparison_app/headless_extractor.py</code></td>
+      <td>Extraction: ElementInfo, ComparisonReport, extract_docx_elements(), extract_xml_elements()</td><td>~350</td></tr>
+  <tr><td><code>comparison_app/headless_comparator.py</code></td>
+      <td>4-phase comparison: stable_id → text → LCS → substring, re-exports из extractor</td><td>~250</td></tr>
+</table>
+
+<h3>Разделение headless_comparator</h3>
+<p>Модуль <code>headless_comparator.py</code> (706 строк) разделён на два файла:</p>
+<ul>
+  <li><strong>headless_extractor.py</strong> — data structures + stateless extraction (парсинг DOCX HTML и S1000D XML в список ElementInfo)</li>
+  <li><strong>headless_comparator.py</strong> — pure computation (4-phase matching, LCS, нормализация текста, scoring) + re-exports для обратной совместимости</li>
+</ul>
+<p>Все существующие импорты вида <code>from comparison_app.headless_comparator import X</code> продолжают работать.</p>
+
+<h3>CSS-модульная структура</h3>
+<p><code>comparison.css</code> (1206 строк) разделён на 11 CSS-модулей
+в директории <code>static/css/modules/</code>. Entry point использует <code>@import</code>:</p>
+<ul>
+  <li><code>base.css</code> — reset, CSS variables</li>
+  <li><code>header.css</code> — app header, mode switch, error bar</li>
+  <li><code>layout.css</code> — grid, panels, divider, PDF/Word content</li>
+  <li><code>docx-content.css</code> — DOCX panel styling</li>
+  <li><code>s1000d-content.css</code> — S1000D panel styling (tables, lists, admonitions, steps)</li>
+  <li><code>annotations.css</code> — annotation controls + badges + markers</li>
+  <li><code>pdf-overlay.css</code> — PDF overlay markers</li>
+  <li><code>mismatch.css</code> — mismatch badge, nav mode, issue tooltip, ref controls</li>
+  <li><code>context-menu.css</code> — context menu for element editing</li>
+  <li><code>panels.css</code> — progress bar, unassigned blocks, XSD panel, special types</li>
+  <li><code>modal.css</code> — regenerate XML modal + splash</li>
+</ul>
 
 <p style="text-align:center; color:var(--gray); margin-top:3rem; font-size:0.85rem;">
   Документ сгенерирован: 2026-02-26 | Проект: Word to S1000D Converter

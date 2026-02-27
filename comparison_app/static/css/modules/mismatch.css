@@ -1,0 +1,76 @@
+/* ==========================================================================
+   Mismatch indicator badge, navigation mode, issue tooltip,
+   reference controls
+   ========================================================================== */
+
+/* Mismatch badge */
+.mismatch-badge {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.mismatch-badge.ok {
+    background: #27ae60;
+    color: white;
+}
+
+.mismatch-badge.warn {
+    background: #f39c12;
+    color: white;
+}
+
+/* Navigation mode selector */
+.nav-mode-select {
+    font-size: 12px;
+    padding: 2px 4px;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 3px;
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.85);
+    cursor: pointer;
+    height: 24px;
+}
+
+.nav-mode-select option {
+    background: #fff;
+    color: #333;
+}
+
+/* Issue tooltip (shown when navigating mismatches) */
+.issue-tooltip {
+    position: fixed;
+    top: 52px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2c2c2c;
+    color: #f0f0f0;
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    z-index: 10000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    white-space: nowrap;
+    pointer-events: none;
+    border-left: 3px solid #f39c12;
+}
+
+/* ── Reference controls ── */
+
+.ref-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Edit mode indicator on body */
+body.ref-editing .anno-badge-start {
+    cursor: pointer;
+    outline: 1px dashed rgba(255,255,255,0.5);
+    outline-offset: 1px;
+}
+body.ref-editing .anno-badge-start:hover {
+    outline-color: white;
+    transform: scale(1.15);
+}

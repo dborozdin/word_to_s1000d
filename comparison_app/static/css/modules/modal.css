@@ -1,0 +1,145 @@
+/* ==========================================================================
+   Regenerate XML modal + progress splash
+   ========================================================================== */
+
+.regen-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9000;
+}
+
+.regen-modal-box {
+    background: #fff;
+    border-radius: 6px;
+    padding: 24px 28px;
+    min-width: 320px;
+    max-width: 420px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+
+.regen-modal-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #2c3e50;
+}
+
+.regen-modal-desc {
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 14px;
+    line-height: 1.5;
+}
+
+.regen-modal-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    margin-bottom: 18px;
+    cursor: pointer;
+}
+
+.regen-modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.regen-modal-actions .anno-btn {
+    color: #2c3e50;
+    background: #ecf0f1;
+    border-color: #bdc3c7;
+    padding: 6px 14px;
+    font-size: 13px;
+}
+
+.regen-modal-actions .anno-btn:hover {
+    color: #2c3e50;
+    background: #d5dbdb;
+}
+
+/* Regen progress splash overlay */
+#regen-splash {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.60);
+    z-index: 9500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.regen-splash-box {
+    background: #fff;
+    border-radius: 10px;
+    padding: 40px 52px;
+    min-width: 300px;
+    max-width: 440px;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+}
+
+.regen-splash-spinner {
+    width: 48px;
+    height: 48px;
+    border: 5px solid #e0e0e0;
+    border-top-color: #2980b9;
+    border-radius: 50%;
+    margin: 0 auto 20px;
+    animation: splash-spin 0.8s linear infinite;
+}
+
+.regen-splash-spinner.done {
+    border-color: #27ae60;
+    border-top-color: #27ae60;
+    animation: none;
+}
+
+.regen-splash-spinner.error {
+    border-color: #e74c3c;
+    border-top-color: #e74c3c;
+    animation: none;
+}
+
+@keyframes splash-spin {
+    to { transform: rotate(360deg); }
+}
+
+.regen-splash-text {
+    font-size: 15px;
+    font-weight: 500;
+    color: #2c3e50;
+    margin-bottom: 6px;
+}
+
+.regen-splash-result {
+    font-size: 13px;
+    color: #27ae60;
+    margin-top: 10px;
+    line-height: 1.5;
+    white-space: pre-line;
+}
+
+.regen-splash-result.error {
+    color: #e74c3c;
+}
+
+.regen-splash-close-btn {
+    margin-top: 18px;
+    padding: 7px 22px;
+    border: 1px solid #bdc3c7;
+    background: #ecf0f1;
+    color: #2c3e50;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.regen-splash-close-btn:hover {
+    background: #d5dbdb;
+}

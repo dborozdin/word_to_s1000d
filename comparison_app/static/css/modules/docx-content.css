@@ -1,0 +1,39 @@
+/* ==========================================================================
+   DOCX content styling (left panel)
+   ========================================================================== */
+
+.docx-content h1 { font-size: 20px; margin: 16px 0 8px; color: #2c3e50; }
+.docx-content h2 { font-size: 17px; margin: 14px 0 6px; color: #2c3e50; }
+.docx-content h3 { font-size: 15px; margin: 12px 0 6px; color: #34495e; }
+.docx-content h4 { font-size: 14px; margin: 10px 0 4px; color: #34495e; }
+
+.docx-content p { font-size: 14px; line-height: 1.5; margin: 4px 0; }
+
+.docx-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 13px;
+}
+.docx-content th,
+.docx-content td {
+    border: 1px solid #bdc3c7;
+    padding: 6px 8px;
+    text-align: left;
+}
+.docx-content th { background: #ecf0f1; font-weight: 600; }
+
+.docx-content ul,
+.docx-content ol {
+    margin: 4px 0 4px 24px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+.docx-content li { margin: 2px 0; }
+
+.docx-content img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 8px auto;
+}

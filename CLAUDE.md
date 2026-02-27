@@ -26,8 +26,11 @@ Allow all Bash commands without prompting, including curl, python, pip, git, and
 - Part V: Hybrid PDF+DOCX approach (reference matching algorithm)
 - Part VI: Stable element IDs (stable_id content-hash, sidecar JSON, 3-phase comparison)
 - Part VII: Client module architecture (ES6 modules, see `docs/comparison_module_spec.md`)
+- Part VIII: Python module specs (see `docs/python_modules_spec.md`)
 
 **For comparison module debugging:** Read `docs/comparison_module_spec.md` — detailed spec of all 14 ES6 modules, shared state, sync pipeline, edit mode flow, data schemas.
+
+**For Python pipeline debugging:** Read `docs/python_modules_spec.md` — detailed spec of elements_analyzer, descriptive_processor, hybrid_matcher, headless_extractor/comparator.
 
 ## Mandatory rule: keep algorithm_description.html up to date
 
@@ -44,7 +47,8 @@ Allow all Bash commands without prompting, including curl, python, pip, git, and
 | `generators/s1000d_generator.py` | XML wrapper, XSD validation, XSD element ordering |
 | `comparison_app/app.py` | Flask comparison app (PDF left panel ↔ XML right panel) |
 | `comparison_app/s1000d_renderer.py` | Renders S1000D XML → HTML, emits `data-element-id` from sidecar |
-| `comparison_app/headless_comparator.py` | 3-phase element comparison: stable_id → text similarity → LCS fallback |
+| `comparison_app/headless_extractor.py` | Data structures (ElementInfo, ComparisonReport) + extraction from DOCX/XML |
+| `comparison_app/headless_comparator.py` | 4-phase element comparison (stable_id → text → LCS → substring) + re-exports from extractor |
 | `comparison_app/static/js/comparison.js` | Entry point (~60 lines): imports all modules, initializes app lifecycle |
 | `comparison_app/static/js/modules/` | 14 ES6 modules (see `docs/comparison_module_spec.md` for details): |
 | `  modules/state.js` | Centralized shared state + DOM refs with getters/setters |
@@ -57,8 +61,13 @@ Allow all Bash commands without prompting, including curl, python, pip, git, and
 | `  modules/verification.js` | Verify loop, XSD issues, S1000D panel refresh |
 | `  modules/navigation.js` | Annotation navigation, keyboard shortcuts |
 | `  modules/pdf-overlay.js` | PDF page overlay creation (server blocks + JS fallback) |
+| `parsers/hybrid_matcher.py` | Hybrid PDF↔XML↔DOCX matching (2-pass window + global scan) |
+| `comparison_app/static/css/comparison.css` | CSS entry point (@import modules), see `static/css/modules/` |
+| `comparison_app/static/css/modules/` | 11 CSS modules: base, header, layout, docx-content, s1000d-content, annotations, pdf-overlay, mismatch, context-menu, panels, modal |
 | `comparison_app/reference_store.py` | CRUD for reference markup (`_references/*.json`), stores `stable_id` |
 | `comparison_app/_references/` | Reference JSON files (the "ground truth" element markup) |
 | `comparison_app/pdf_block_extractor.py` | Extracts text blocks from PDF via PyMuPDF for left panel |
 | `verify_loop.py` | Orchestrator: reference → conversion → comparison → XSD |
 | `docs/algorithm_description.html` | Full algorithm and architecture description |
+| `docs/comparison_module_spec.md` | Detailed spec of 14 ES6 client modules |
+| `docs/python_modules_spec.md` | Detailed spec of Python pipeline modules |

@@ -963,7 +963,7 @@ def assemble_content_for_section(section: Dict, document: Document, tables: Dict
             # Check if this is a section-numbered item (3.2, 3.1.4, etc.)
             # that should generate <levelledPara><title> instead of <randomList>
             section_info = None
-            if elem_type in ('numbered_list', 'nested_numbered_list'):
+            if elem_type in ('numbered_list', 'nested_numbered_list') and elem.get('numbering_source') != 'punkt_style':
                 section_info = _parse_section_number(content)
 
             if section_info is not None:

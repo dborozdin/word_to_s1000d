@@ -329,9 +329,11 @@
   <table>
     <tr><th>Тип</th><th>Описание</th><th>Способ обнаружения</th></tr>
     <tr><td><code>header</code></td><td>Заголовок секции</td><td>Word Heading style + короткий текст</td></tr>
-    <tr><td><code>numbered_paragraph_header</code></td><td>Нумерованный заголовок (1. Название)</td><td>numPr + эвристика или regex <code>^\s*\d+\.?\s+</code></td></tr>
+    <tr><td><code>numbered_paragraph_header</code></td><td>Нумерованный заголовок (1. Название)</td><td>numPr + эвристика, regex <code>^\s*\d+\.?\s+</code>, или ПУНКТ стили level&nbsp;1-2</td></tr>
     <tr><td><code>paragraph</code></td><td>Обычный абзац текста</td><td>Default (всё, что не классифицировано иначе)</td></tr>
-    <tr><td><code>numbered_list</code></td><td>Нумерованный список</td><td>OOXML numPr с числовым форматом</td></tr>
+    <tr><td><code>numbered_list</code></td><td>Нумерованный список</td><td>OOXML numPr с числовым форматом, или ПУНКТ стили level&nbsp;3+.
+        В <code>descriptive_processor</code> ПУНКТ-элементы (<code>numbering_source='punkt_style'</code>)
+        не проходят проверку <code>_parse_section_number</code> — их классификация авторитетна.</td></tr>
     <tr><td><code>unnumbered_list</code></td><td>Маркированный список</td><td>Маркеры (&bull;, &ndash;), <code>;</code> в конце, после <code>:</code></td></tr>
     <tr><td><code>table</code></td><td>Таблица</td><td>Тег <code>w:tbl</code> в OOXML</td></tr>
     <tr><td><code>illustration</code></td><td>Иллюстрация (embedded)</td><td>Наличие элемента <code>a:blip</code> в run</td></tr>
@@ -613,15 +615,21 @@
   <p><strong>Pass 1</strong> — оконный поиск с сохранением порядка документа:</p>
   <ol>
     <li>Для каждого XML-элемента поиск PDF-блока по текстовому сходству в окне
-        <code>[cursor-3 .. cursor+80]</code>. Нормализация: убираются маркеры списков
-        (<code>-</code>, <code>•</code>, <code>1.</code>) перед сравнением.
+        <code>[cursor-3 .. cursor+80]</code>. Нормализация (<code>_normalize_for_match</code>):
+        убираются буллеты (<code>-</code>, <code>•</code>) и одноуровневая нумерация
+        (<code>1.</code>, <code>1)</code>), но <strong>многоуровневые префиксы</strong>
+        (<code>3.1.2</code>, <code>3.2.5</code>) сохраняются для различения элементов
+        списков с одинаковым текстом.
         <code>_type_context_factor</code> штрафует warning/caution/note при отсутствии
-        ключевых слов (×0.1).</li>
+        ключевых слов (×0.1). Безопасность: <code>max(normalized, raw)</code> score
+        гарантирует надёжность начального матчинга.</li>
     <li>Расширение вперёд (forward expansion): захват последовательных PDF-блоков. Критерии:
         ни один другой XML-элемент не претендует на блок с confidence &gt;0.4;
         малый y-gap (&lt;3× медианного на той же странице);
         x-отступ ±40 px <em>или</em> блоки вертикально близки на той же странице
-        (line-wrap в рамках одного абзаца, gap &lt;1.5× медианного).</li>
+        (line-wrap в рамках одного абзаца, gap &lt;1.5× медианного).
+        Сохранение многоуровневых чисел в нормализации предотвращает ложные срабатывания
+        boundary-check для списков с похожим текстом (3.1.1 vs 3.1.4).</li>
     <li>Слияние захваченных блоков: один элемент эталона с <code>span=N</code> и объединённым bbox.</li>
   </ol>
 

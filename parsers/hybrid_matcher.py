@@ -189,7 +189,8 @@ def _classify_by_font(block: dict, median_font: float) -> str:
 def _normalize_for_match(text: str) -> str:
     """
     Strip leading bullet/number markers and normalise case so list items
-    and headings match regardless of capitalisation or section-number prefixes.
+    and headings match regardless of capitalisation.
+    Preserves multi-level prefixes (3.1.2, 3.2.5) for disambiguation.
     Also collapses spaced-out letters like 'П р и м е ч а н и е' → 'Примечание'.
     """
     import re
@@ -200,8 +201,10 @@ def _normalize_for_match(text: str) -> str:
     )
     # Remove numbered-list prefix '1.' / '1)' / '1.2.'
     text = re.sub(r'^\d+[\.\)]\s+', '', text)
-    # Remove section-heading prefix '1 ' / '1.2 ' (number without dot before space)
-    text = re.sub(r'^\d+(?:\.\d+)*\s+', '', text)
+    # NOTE: multi-level prefixes like '3.1.2 ' are intentionally NOT stripped.
+    # They distinguish list items with identical body text during forward expansion
+    # boundary checks (see lines 345-365). The max(normalized, raw) safety net in
+    # initial matching (lines 309-311) ensures no regression.
     text = text.lower()
     # Collapse spaced-out letters like 'п р и м е ч а н и е' → 'примечание'.
     # Split on whitespace and merge consecutive single-character alpha tokens.

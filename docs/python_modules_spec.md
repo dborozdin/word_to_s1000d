@@ -474,6 +474,7 @@ class UnifiedElement:
     type_source: str         # Источник типа: 'ooxml', 'heuristic', 'pdf_heuristic',
                              #   'pdf_table_detect', 'user_override'
     bbox: Dict[str, float]   # {page, x0, y0, x1, y1}
+    bbox_pages: List[Dict]   # Optional: [{page, x0, y0, x1, y1}, ...] для multi-page элементов
     text: str                # Полный текст
     text_start: str = ""     # Первые 60 символов
     text_end: str = ""       # Последние 40 символов

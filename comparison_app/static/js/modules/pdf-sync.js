@@ -329,6 +329,58 @@ function _syncPdfMarkersBbox(sorted) {
             claimed++;
         }
 
+        // Multi-page elements: also claim markers on continuation pages
+        // that the span-based claiming may have missed (e.g. table split
+        // across pages where the overlay block structure differs from
+        // the matcher's flat_blocks).
+        var bboxPages = refElem.bbox_pages;
+        if (bboxPages && bboxPages.length > 1) {
+            var claimedPages = {};
+            for (var gi = 0; gi < pageGroups.length; gi++) {
+                for (var gmi = 0; gmi < pageGroups[gi].markers.length; gmi++) {
+                    claimedPages[getMarkerPage(pageGroups[gi].markers[gmi], dom.docxPanel)] = true;
+                }
+            }
+            for (var bpi = 0; bpi < bboxPages.length; bpi++) {
+                var contPage = bboxPages[bpi].page;
+                if (claimedPages[contPage]) continue;
+                // Find best unused marker on this continuation page
+                var contMarkers = byPage[contPage] || [];
+                var contBest = null;
+                var contBestDist = Infinity;
+                var contYTarget = null;
+                var _cpd = window._serverPdfBlocks
+                    ? window._serverPdfBlocks[contPage - 1] : null;
+                var _cph = _cpd ? _cpd.height : 792;
+                contYTarget = (bboxPages[bpi].y0 / _cph) * 100;
+                for (var cmi = 0; cmi < contMarkers.length; cmi++) {
+                    if (contMarkers[cmi].used) continue;
+                    var cDist = Math.abs(contMarkers[cmi].top - contYTarget);
+                    if (cDist < contBestDist) {
+                        contBestDist = cDist;
+                        contBest = contMarkers[cmi];
+                    }
+                }
+                if (contBest && contBestDist < 15) {
+                    contBest.used = true;
+                    var cMk = contBest.marker;
+                    cMk.setAttribute('data-anno-idx', String(idx));
+                    cMk.setAttribute('data-anno-type', type);
+                    cMk.setAttribute('data-anno-source', source);
+                    cMk.style.setProperty('--anno-clr', color);
+                    cMk.style.opacity = '';
+                    cMk.style.borderStyle = '';
+                    cMk.classList.remove('anno-marker-unassigned');
+                    curGroup = {
+                        overlay: getMarkerOverlay(cMk), markers: [cMk],
+                        firstTop: contBest.top, lastBottom: contBest.bot
+                    };
+                    pageGroups.push(curGroup);
+                    log('pdf-sync', 'elem[' + r + '] cont page=' + contPage + ' dist=' + contBestDist.toFixed(1));
+                }
+            }
+        }
+
         renderMarkerBrackets(pageGroups, label);
     }
 

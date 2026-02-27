@@ -266,6 +266,29 @@ def _type_context_factor(xml_type: str, pdf_text: str, pdf_norm: str) -> float:
     return 0.1
 
 
+def _build_bbox_pages(claimed: list, pdf_blocks: list) -> list | None:
+    """Build per-page bbox list for elements that span multiple pages.
+
+    Returns None if all claimed blocks are on the same page (common case).
+    Otherwise returns a list of dicts: [{'page': N, 'x0': ..., 'y0': ..., ...}, ...].
+    """
+    pages = set(pdf_blocks[i]['page_num'] for i in claimed)
+    if len(pages) <= 1:
+        return None
+    result = []
+    for pg in sorted(pages):
+        pg_indices = [i for i in claimed if pdf_blocks[i]['page_num'] == pg]
+        # Skip pages that only have footer/header blocks (no meaningful content)
+        result.append({
+            'page': pg,
+            'x0': round(min(pdf_blocks[i]['x0'] for i in pg_indices), 1),
+            'y0': round(min(pdf_blocks[i]['y0'] for i in pg_indices), 1),
+            'x1': round(max(pdf_blocks[i]['x1'] for i in pg_indices), 1),
+            'y1': round(max(pdf_blocks[i]['y1'] for i in pg_indices), 1),
+        })
+    return result
+
+
 def _match_xml_to_pdf_pass(
     xml_indices: list,
     xml_elements: list,
@@ -424,7 +447,7 @@ def _match_xml_to_pdf_pass(
             first_blk['page_num'], first_blk['y0'],
             xml_ts or first_blk.get('text', ''),
         )
-        result.append({
+        elem_dict = {
             '_xi': xi,
             'idx': xi + 1,
             'type': xml_elem.type,
@@ -441,7 +464,11 @@ def _match_xml_to_pdf_pass(
                 'x1': round(merged_x1, 1),
                 'y1': round(last_blk['y1'], 1),
             },
-        })
+        }
+        bbox_pages = _build_bbox_pages(claimed, pdf_blocks)
+        if bbox_pages:
+            elem_dict['bbox_pages'] = bbox_pages
+        result.append(elem_dict)
         cursor = max(claimed) + 1
 
     return cursor
@@ -645,7 +672,7 @@ def match_xml_to_pdf(
                 first_blk2['page_num'], first_blk2['y0'],
                 xml_ts or first_blk2.get('text', ''),
             )
-            pass2_by_xi[xi] = {
+            elem_dict2 = {
                 '_xi': xi,
                 'idx': xi + 1,
                 'type': xml_elem.type,
@@ -663,6 +690,10 @@ def match_xml_to_pdf(
                     'y1': round(last_blk2.get('y1', 0), 1),
                 },
             }
+            bbox_pages2 = _build_bbox_pages(claimed2, content_list)
+            if bbox_pages2:
+                elem_dict2['bbox_pages'] = bbox_pages2
+            pass2_by_xi[xi] = elem_dict2
 
         # Replace _unmatched_xml sentinels in pass1_result
         for i, r in enumerate(pass1_result):

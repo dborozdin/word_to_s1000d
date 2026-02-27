@@ -650,6 +650,15 @@
         is_table guard, cross-page relaxation, page-bottom peek).</li>
   </ol>
 
+  <p><strong>Multi-page bbox:</strong> Элементы, захватывающие блоки на нескольких страницах
+     (таблицы через разрыв страницы, длинные списки), получают дополнительное поле
+     <code>bbox_pages</code> — массив per-page bbox:
+     <code>[{page: 5, x0, y0, x1, y1}, {page: 6, x0, y0, x1, y1}]</code>.
+     Основной <code>bbox.page</code> указывает на первую страницу (обратная совместимость).
+     В overlay inline JS (<code>comparison.html</code>) для каждой страницы из <code>bbox_pages</code>
+     создаётся отдельный блок маркера. В sync (<code>pdf-sync.js</code>) после span-claiming
+     выполняется дополнительный поиск маркеров на страницах продолжения по позиции.</p>
+
   <p><strong>Sentinel-типы:</strong></p>
   <ul>
     <li>PDF-блоки без XML-соответствия → тип <code>_extra_pdf</code> (красная штриховка).</li>

@@ -198,16 +198,21 @@
                         var byPage = {};
                         for (var i = 0; i < window._hybridElements.length; i++) {
                             var el = window._hybridElements[i];
-                            var pg = el.bbox.page;
-                            if (!byPage[pg]) byPage[pg] = [];
-                            byPage[pg].push({
-                                x0: el.bbox.x0, y0: el.bbox.y0,
-                                x1: el.bbox.x1, y1: el.bbox.y1,
-                                text: el.text || '',
-                                max_font_size: (el.font_info && el.font_info.max_size) || 12,
-                                _hybrid_type: el.type,
-                                _hybrid_element_id: el.element_id
-                            });
+                            // Multi-page elements: use bbox_pages if available
+                            var bboxList = el.bbox_pages || [el.bbox];
+                            for (var j = 0; j < bboxList.length; j++) {
+                                var bp = bboxList[j];
+                                var pg = bp.page;
+                                if (!byPage[pg]) byPage[pg] = [];
+                                byPage[pg].push({
+                                    x0: bp.x0, y0: bp.y0,
+                                    x1: bp.x1, y1: bp.y1,
+                                    text: el.text || '',
+                                    max_font_size: (el.font_info && el.font_info.max_size) || 12,
+                                    _hybrid_type: el.type,
+                                    _hybrid_element_id: el.element_id
+                                });
+                            }
                         }
                         window._serverPdfBlocks = [];
                         for (var p = 0; p < pdfPages.length; p++) {

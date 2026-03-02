@@ -37,6 +37,14 @@
     white-space: nowrap;
 }
 
+.app-version {
+    font-size: 11px;
+    opacity: 0.5;
+    margin-left: 12px;
+    white-space: nowrap;
+    align-self: center;
+}
+
 .header-controls {
     display: flex;
     align-items: center;

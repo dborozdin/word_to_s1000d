@@ -23,23 +23,51 @@ function loadReference() {
     var dmc = window.DMC_STRING;
     if (!dmc) return;
 
+    // Show splash while loading/creating reference
+    var splash = document.getElementById('regen-splash');
+    var splashText = document.getElementById('regen-splash-text');
+    var splashResult = document.getElementById('regen-splash-result');
+    var splashClose = document.getElementById('regen-splash-close');
+    var splashBox = splash ? splash.querySelector('.regen-splash-box') : null;
+    if (splash) {
+        if (splashText) splashText.textContent = '\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u044D\u0442\u0430\u043B\u043E\u043D\u0430...';
+        if (splashResult) splashResult.style.display = 'none';
+        if (splashClose) splashClose.style.display = 'none';
+        if (splashBox) splashBox.className = 'regen-splash-box';
+        splash.style.display = '';
+    }
+
     fetch('/api/reference/' + dmc)
         .then(function (r) { return r.json(); })
         .then(function (data) {
             if (data.exists) {
                 state.setReferenceData(data.reference);
                 enterEditMode();
+                if (splash) splash.style.display = 'none';
+                navigateTo(1);
             } else {
                 // Init from auto
+                if (splashText) splashText.textContent = '\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0435 \u044D\u0442\u0430\u043B\u043E\u043D\u0430...';
                 fetch('/api/reference/' + dmc + '/init', { method: 'POST' })
                     .then(function (r) { return r.json(); })
                     .then(function (data2) {
                         if (data2.reference) {
                             state.setReferenceData(data2.reference);
                             enterEditMode();
+                            navigateTo(1);
                         }
+                        if (splash) splash.style.display = 'none';
                     });
             }
+        })
+        .catch(function (err) {
+            if (splashText) splashText.textContent = '\u041E\u0448\u0438\u0431\u043A\u0430';
+            if (splashResult) {
+                splashResult.textContent = err.message || '\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u043E\u0448\u0438\u0431\u043A\u0430';
+                splashResult.style.display = '';
+            }
+            if (splashClose) splashClose.style.display = '';
+            if (splashBox) splashBox.classList.add('error');
         });
 }
 

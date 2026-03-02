@@ -30,10 +30,12 @@ from comparison_app.docx_renderer import (
 from comparison_app.s1000d_renderer import render_s1000d_to_html
 from comparison_app.reference_store import get_reference, save_reference, init_reference_from_auto, delete_reference
 from comparison_app.headless_comparator import extract_xml_elements, compare_elements, ElementInfo
+from version import __version__ as APP_VERSION
 
 app = Flask(__name__,
             template_folder=os.path.join(_INTERNAL_ROOT, 'comparison_app', 'templates'),
             static_folder=os.path.join(_INTERNAL_ROOT, 'comparison_app', 'static'))
+app.jinja_env.globals['app_version'] = APP_VERSION
 
 # Fix MIME types for ES modules (.mjs) — Windows registry often misses these
 import mimetypes
@@ -753,6 +755,7 @@ if __name__ == '__main__':
         else:
             print(f'Warning: tg_web not found in {tg_web_dir}')
 
+    print(f'Word to S1000D v{APP_VERSION}')
     print(f'Comparison app starting on http://localhost:{port}')
     print(f'Input dir: {INPUT_DIR}')
     print(f'Output dir: {OUTPUT_DIR}')

@@ -45,7 +45,14 @@
       "Bash(taskkill //f //im word_to_s1000d.exe)",
       "Bash(ping -n 8 127.0.0.1)",
       "Bash(ping -n 10 127.0.0.1)",
-      "Bash(timeout 8 ./word_to_s1000d.exe)"
+      "Bash(timeout 8 ./word_to_s1000d.exe)",
+      "Bash(cmd //c build.bat)",
+      "Bash(xxd)",
+      "Bash(cmd /c \"build.bat\")",
+      "Bash(/c/Windows/System32/cmd.exe /c \"chcp 65001 >nul && build.bat\")",
+      "Bash(timeout 10 ./word_to_s1000d.exe)",
+      "Bash(pkill -f \"python comparison_app/app.py\")",
+      "Bash(pkill -f tgwebserver)"
     ]
   }
 }

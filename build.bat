@@ -15,6 +15,11 @@ if errorlevel 1 (
     pip install pyinstaller
 )
 
+REM Write build number from git for frozen mode
+echo Writing build number...
+for /f %%n in ('git rev-list --count HEAD') do echo %%n> _build_number
+echo   _build_number - OK
+
 REM Clean previous builds
 echo Cleaning previous build...
 if exist "build" rmdir /s /q build
@@ -56,10 +61,23 @@ if exist "%DIST%\tg_web\suites\66935" (
 if not exist "%DIST%\tg_web\suites\66935" mkdir "%DIST%\tg_web\suites\66935"
 echo   tg_web\ - OK (suites/66935 cleaned)
 
+REM Create versioned zip archive
+echo.
+echo Creating zip archive...
+for /f %%v in ('python -c "from version import __version__; print(__version__)"') do set VERSION=%%v
+set ZIP_NAME=word_to_s1000d_%VERSION%.zip
+REM Remove old zip with same name if exists
+if exist "dist\%ZIP_NAME%" del /q "dist\%ZIP_NAME%"
+cd dist
+powershell -Command "Compress-Archive -Path 'word_to_s1000d\*' -DestinationPath '%ZIP_NAME%' -Force"
+cd ..
+echo   dist\%ZIP_NAME% - OK
+
 echo.
 echo ============================================
-echo  Build complete!
+echo  Build complete!  v%VERSION%
 echo  Output: %DIST%\
+echo  Archive: dist\%ZIP_NAME%
 echo ============================================
 echo.
 echo  word_to_s1000d.exe  - Launch comparison app

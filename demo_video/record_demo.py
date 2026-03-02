@@ -1083,6 +1083,27 @@ async def main() -> None:
 
     print(f"\n[Demo] Video saved: {OUTPUT_VIDEO}")
     print(f"[Demo] Screenshots saved: {SCREENSHOT_DIR}")
+
+    # Post-processing: add voice narration
+    narration_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "add_narration.py")
+    narrated_output = OUTPUT_VIDEO.replace(".mp4", "_narrated.mp4")
+    print(f"[Demo] Starting narration post-processing...")
+    try:
+        result = subprocess.run(
+            [sys.executable, narration_script,
+             "--video", OUTPUT_VIDEO,
+             "--output", narrated_output],
+            timeout=600,
+        )
+        if result.returncode == 0:
+            print(f"[Demo] Narrated video: {narrated_output}")
+        else:
+            print(f"[Demo] Narration failed (exit code {result.returncode})")
+    except FileNotFoundError:
+        print("[Demo] Narration skipped: add_narration.py not found")
+    except Exception as e:
+        print(f"[Demo] Narration skipped: {e}")
+
     print("[Demo] Done!")
 
 

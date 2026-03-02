@@ -52,7 +52,13 @@
       "Bash(/c/Windows/System32/cmd.exe /c \"chcp 65001 >nul && build.bat\")",
       "Bash(timeout 10 ./word_to_s1000d.exe)",
       "Bash(pkill -f \"python comparison_app/app.py\")",
-      "Bash(pkill -f tgwebserver)"
+      "Bash(pkill -f tgwebserver)",
+      "Bash(du -sh /c/python_projects/word_to_s1000d/dist/word_to_s1000d/*)",
+      "Bash(PYTHONIOENCODING=utf-8 python demo_video/record_demo.py)",
+      "Bash(taskkill /F /IM word_to_s1000d.exe)",
+      "Bash(taskkill /F /IM tgwebserver.exe)",
+      "Bash(tee /c/tmp/demo_recording.log)",
+      "Bash(where ffmpeg)"
     ]
   }
 }

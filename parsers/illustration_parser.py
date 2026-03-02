@@ -439,7 +439,8 @@ def copy_publication_logo(output_dir: str):
         return
 
     # Search for source logo in known locations
-    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    from app_paths import get_internal_root
+    script_dir = get_internal_root()
     candidates = [
         os.path.join(script_dir, "manual_data_modules", "graphics", "publication_logo.JPG"),
     ]

@@ -28,10 +28,8 @@ def compute_stable_id(seq_index: int, element_type: str, text: str) -> str:
 
 def get_parsing_rules() -> dict:
     """Load parsing rules from parsing_rules.json."""
-    rules_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        'parsing_rules.json',
-    )
+    from app_paths import get_parsing_rules_path
+    rules_path = get_parsing_rules_path()
     if os.path.isfile(rules_path):
         with open(rules_path, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -1358,8 +1356,9 @@ def apply_overrides(elements: List[Dict[str, Any]], dmc_string: str) -> List[Dic
     Returns:
         Modified elements list with overrides applied.
     """
+    from app_paths import get_app_root
     overrides_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        get_app_root(),
         'comparison_app', '_overrides',
     )
     overrides_path = os.path.join(overrides_dir, f'{dmc_string}.json')

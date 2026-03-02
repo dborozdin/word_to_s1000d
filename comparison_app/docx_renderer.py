@@ -12,8 +12,9 @@ import mammoth
 
 logger = logging.getLogger(__name__)
 
-# Cache directory (relative to this file)
-CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pdf_cache')
+# Cache directory (at app root level, writable at runtime)
+from app_paths import get_app_root
+CACHE_DIR = os.path.join(get_app_root(), 'pdf_cache')
 
 
 def _ensure_cache_dir():

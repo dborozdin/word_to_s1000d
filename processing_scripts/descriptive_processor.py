@@ -328,7 +328,8 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
 
     # Read configuration
     config = configparser.ConfigParser()
-    config.read('config.ini', encoding='utf-8')
+    from app_paths import get_config_path
+    config.read(get_config_path(), encoding='utf-8')
     split_into_modules = config.getboolean('processing', 'split_into_modules', fallback=False)
     print(f"Split into modules: {split_into_modules}")
 
@@ -1509,7 +1510,11 @@ def _write_error_log(log_path: str, errors: List[str]):
         with open(log_path, 'w', encoding='utf-8') as f:
             f.write("Content Validation Errors\n")
             f.write("=" * 50 + "\n")
-            f.write(f"Generated: {os.path.basename(__file__)} at {os.path.getctime(__file__)}\n\n")
+            try:
+                _ctime = os.path.getctime(__file__)
+            except OSError:
+                _ctime = 'N/A'
+            f.write(f"Generated: {os.path.basename(__file__)} at {_ctime}\n\n")
 
             if not errors:
                 f.write("No validation errors found. All content appears to be included.\n")

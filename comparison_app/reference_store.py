@@ -13,9 +13,10 @@ from typing import Optional
 def _get_reference_dir() -> str:
     """Compute reference directory as {output_dir}/user_finetune/ from config.ini."""
     import configparser as _cp
-    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    from app_paths import get_app_root, get_config_path
+    _project_root = get_app_root()
     _cfg = _cp.ConfigParser()
-    _cfg.read(os.path.join(_project_root, 'config.ini'), encoding='utf-8')
+    _cfg.read(get_config_path(), encoding='utf-8')
     _output_dir = os.path.join(_project_root,
                                _cfg.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
     return os.path.join(_output_dir, 'user_finetune')
@@ -127,9 +128,10 @@ def _init_reference_hybrid(dmc_string: str, docx_path: str) -> list:
     """Build reference elements via hybrid PDF+DOCX pipeline (with element_id)."""
     import configparser as _cp
 
-    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    from app_paths import get_app_root, get_config_path
+    _project_root = get_app_root()
     _cfg = _cp.ConfigParser()
-    _cfg.read(os.path.join(_project_root, 'config.ini'), encoding='utf-8')
+    _cfg.read(get_config_path(), encoding='utf-8')
     output_dir = os.path.join(_project_root, _cfg.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
 
     from comparison_app.docx_renderer import render_docx_to_pdf, is_word_available
@@ -190,9 +192,9 @@ def init_reference_from_auto(dmc_string: str, docx_path: str,
     """
     import configparser as _cp
 
-    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    from app_paths import get_config_path
     _cfg = _cp.ConfigParser()
-    _cfg.read(os.path.join(_project_root, 'config.ini'), encoding='utf-8')
+    _cfg.read(get_config_path(), encoding='utf-8')
     element_source = _cfg.get('processing', 'element_source', fallback='docx_only')
 
     element_dicts = None

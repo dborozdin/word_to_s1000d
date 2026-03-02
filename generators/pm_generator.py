@@ -319,7 +319,7 @@ class PMGenerator:
         return filepath
 
     @staticmethod
-    def validate_xml_against_schema(xml_file: str, schema_file: str = "xsd/pm.xsd") -> tuple[bool, str]:
+    def validate_xml_against_schema(xml_file: str, schema_file: str = None) -> tuple[bool, str]:
         """
         Validate XML file against XSD schema.
 
@@ -331,6 +331,9 @@ class PMGenerator:
             Tuple of (is_valid, error_message)
         """
         try:
+            if schema_file is None:
+                from app_paths import get_xsd_path
+                schema_file = get_xsd_path('pm.xsd')
             # Check if schema file exists
             if not os.path.exists(schema_file):
                 return False, f"Schema file not found: {schema_file}"

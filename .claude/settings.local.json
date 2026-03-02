@@ -34,7 +34,18 @@
       "Bash(where node)",
       "Bash(comm -23 /tmp/js_ids.txt /tmp/html_ids.txt)",
       "Bash(comm -13 /tmp/js_ids.txt /tmp/html_ids.txt)",
-      "Bash(taskkill //F //IM WINWORD.EXE)"
+      "Bash(taskkill //F //IM WINWORD.EXE)",
+      "Bash(source venv/Scripts/activate)",
+      "Bash(pyinstaller word_to_s1000d.spec --noconfirm)",
+      "Bash(timeout 15 ./word_to_s1000d.exe)",
+      "Bash(ping -n 6 127.0.0.1)",
+      "Bash(tasklist)",
+      "Bash(ping -n 3 127.0.0.)",
+      "Bash(taskkill //f //im tgwebserver.exe)",
+      "Bash(taskkill //f //im word_to_s1000d.exe)",
+      "Bash(ping -n 8 127.0.0.1)",
+      "Bash(ping -n 10 127.0.0.1)",
+      "Bash(timeout 8 ./word_to_s1000d.exe)"
     ]
   }
 }

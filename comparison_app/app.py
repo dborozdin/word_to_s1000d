@@ -10,11 +10,14 @@ os.environ.setdefault('PYTHONUTF8', '1')
 import sys
 import configparser
 
-from flask import Flask, render_template, send_from_directory, send_file, abort, request, jsonify
+# Add project root / internal root to path for imports
+from app_paths import get_app_root, get_internal_root, get_config_path, get_xsd_path
 
-# Add project root to path
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, PROJECT_ROOT)
+PROJECT_ROOT = get_app_root()
+_INTERNAL_ROOT = get_internal_root()
+sys.path.insert(0, _INTERNAL_ROOT)
+
+from flask import Flask, render_template, send_from_directory, send_file, abort, request, jsonify
 
 from comparison_app.pair_resolver import get_comparison_pairs, get_pair_by_dmc
 from comparison_app.docx_renderer import (
@@ -28,7 +31,9 @@ from comparison_app.s1000d_renderer import render_s1000d_to_html
 from comparison_app.reference_store import get_reference, save_reference, init_reference_from_auto, delete_reference
 from comparison_app.headless_comparator import extract_xml_elements, compare_elements, ElementInfo
 
-app = Flask(__name__)
+app = Flask(__name__,
+            template_folder=os.path.join(_INTERNAL_ROOT, 'comparison_app', 'templates'),
+            static_folder=os.path.join(_INTERNAL_ROOT, 'comparison_app', 'static'))
 
 # Fix MIME types for ES modules (.mjs) — Windows registry often misses these
 import mimetypes
@@ -38,9 +43,41 @@ mimetypes.add_type('application/javascript', '.js')
 # In-memory progress tracking for verification loops
 _loop_progress = {}  # dmc_string -> {cycle, max_cycles, status}
 
+# Global tg_web process handle (set in __main__, used by restart)
+_tg_web_proc = None
+
+
+def restart_tg_web():
+    """Restart tg_web server so it re-indexes suites after XML generation."""
+    import subprocess
+    global _tg_web_proc
+
+    tg_web_dir = os.path.join(PROJECT_ROOT, 'tg_web')
+    tg_web_exe = os.path.join(tg_web_dir, 'bin', 'tgwebserver.exe')
+    if not os.path.isfile(tg_web_exe):
+        return
+
+    # Kill existing
+    if _tg_web_proc and _tg_web_proc.poll() is None:
+        _tg_web_proc.terminate()
+        try:
+            _tg_web_proc.wait(timeout=5)
+        except Exception:
+            _tg_web_proc.kill()
+
+    _CREATE_NEW_CONSOLE = 0x00000010
+    try:
+        _tg_web_proc = subprocess.Popen(
+            [tg_web_exe, '-e'],
+            cwd=os.path.join(tg_web_dir, 'bin'),
+            creationflags=_CREATE_NEW_CONSOLE,
+        )
+    except Exception:
+        pass
+
 # Read config
 config = configparser.ConfigParser()
-config.read(os.path.join(PROJECT_ROOT, 'config.ini'), encoding='utf-8')
+config.read(get_config_path(), encoding='utf-8')
 
 INPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'input_dir', fallback='doc_source'))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
@@ -100,8 +137,8 @@ def update_config_api():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    config_path = os.path.join(PROJECT_ROOT, 'config.ini')
-    with open(config_path, 'r', encoding='utf-8') as f:
+    _cfg_path = get_config_path()
+    with open(_cfg_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
     # Regex-replace known keys (preserves comments and structure)
@@ -120,11 +157,11 @@ def update_config_api():
                 content, flags=_re.MULTILINE,
             )
 
-    with open(config_path, 'w', encoding='utf-8') as f:
+    with open(_cfg_path, 'w', encoding='utf-8') as f:
         f.write(content)
 
     # Re-read config cleanly
-    config.read(config_path, encoding='utf-8')
+    config.read(_cfg_path, encoding='utf-8')
     INPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'input_dir', fallback='doc_source'))
     OUTPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
     GRAPHICS_DIR = os.path.join(OUTPUT_DIR, 'graphics')
@@ -145,8 +182,7 @@ def reload_config_api():
     global INPUT_DIR, OUTPUT_DIR, GRAPHICS_DIR, ELEMENT_SOURCE
     global TG_WEB_URL, TG_WEB_SUITE_ID, TG_WEB_PM_CODE
 
-    config_path = os.path.join(PROJECT_ROOT, 'config.ini')
-    config.read(config_path, encoding='utf-8')
+    config.read(get_config_path(), encoding='utf-8')
 
     INPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'input_dir', fallback='doc_source'))
     OUTPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
@@ -385,7 +421,7 @@ def regenerate_xml_api(dmc_string: str):
         )
         import configparser as _cp
         _cfg = _cp.ConfigParser()
-        _cfg.read(os.path.join(PROJECT_ROOT, 'config.ini'), encoding='utf-8')
+        _cfg.read(get_config_path(), encoding='utf-8')
         llm_config = get_llm_config(_cfg)
 
         dmc_info = parse_dmc_from_folder_name(pair['folder_name'])
@@ -428,7 +464,20 @@ def regenerate_xml_api(dmc_string: str):
         except Exception as pmc_err:
             pmc_msg = f'PMC error: {pmc_err}'
 
+        # Restart tg_web so it re-indexes new XML files
+        restart_tg_web()
+
         return jsonify({'status': 'ok', 'xml_path': pair['xml_path'], 'pmc': pmc_msg}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/restart-tgweb', methods=['POST'])
+def restart_tgweb_api():
+    """Restart tg_web server to re-index suites."""
+    try:
+        restart_tg_web()
+        return jsonify({'status': 'ok'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -524,7 +573,7 @@ def run_verification_api(dmc_string: str):
             from generators.s1000d_generator import S1000DGenerator
             from parsers.dmc_parser import is_procedure_info_code
             info_code = pair.get('info_code', '')
-            schema = 'xsd/proced.xsd' if is_procedure_info_code(info_code) else 'xsd/descript.xsd'
+            schema = get_xsd_path('proced.xsd') if is_procedure_info_code(info_code) else get_xsd_path('descript.xsd')
             xsd_valid, xsd_structured = S1000DGenerator.validate_xml_with_details(
                 pair['xml_path'], schema_file=schema)
 
@@ -653,26 +702,56 @@ def get_s1000d_html(dmc_string: str):
 
 
 if __name__ == '__main__':
+    import socket
     import subprocess
+    from urllib.parse import urlparse
 
     port = config.getint('comparison', 'port', fallback=5000)
     debug = config.getboolean('comparison', 'debug', fallback=True)
 
-    # Start tg_web viewer server (if run_consoled.bat exists)
+    # Start tg_web viewer server (if not already running on its port)
     tg_web_dir = os.path.join(PROJECT_ROOT, 'tg_web')
     tg_web_bat = os.path.join(tg_web_dir, 'run_consoled.bat')
-    tg_web_proc = None
-    if os.path.isfile(tg_web_bat):
-        try:
-            tg_web_proc = subprocess.Popen(
-                ['cmd', '/c', 'run_consoled.bat'],
-                cwd=tg_web_dir,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            print(f'tg_web server started (PID {tg_web_proc.pid})')
-        except Exception as e:
-            print(f'Warning: could not start tg_web: {e}')
+
+    _parsed_tg = urlparse(TG_WEB_URL)
+    _tg_host = _parsed_tg.hostname or 'localhost'
+    _tg_port = _parsed_tg.port or 8082
+
+    def _is_port_in_use(host: str, p: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            return s.connect_ex((host, p)) == 0
+
+    if _is_port_in_use(_tg_host, _tg_port):
+        print(f'tg_web already running on {_tg_host}:{_tg_port}')
+    else:
+        # Try direct binary first (works in both dev and frozen modes),
+        # fall back to bat script
+        tg_web_exe = os.path.join(tg_web_dir, 'bin', 'tgwebserver.exe')
+        # Launch in a separate visible console window so output/errors are visible
+        _CREATE_NEW_CONSOLE = 0x00000010
+        if os.path.isfile(tg_web_exe):
+            try:
+                _tg_web_proc = subprocess.Popen(
+                    [tg_web_exe, '-e'],
+                    cwd=os.path.join(tg_web_dir, 'bin'),
+                    creationflags=_CREATE_NEW_CONSOLE,
+                )
+                print(f'tg_web server started (PID {_tg_web_proc.pid})')
+            except Exception as e:
+                print(f'Warning: could not start tg_web: {e}')
+        elif os.path.isfile(tg_web_bat):
+            try:
+                _tg_web_proc = subprocess.Popen(
+                    ['cmd', '/c', 'run_consoled.bat'],
+                    cwd=tg_web_dir,
+                    creationflags=_CREATE_NEW_CONSOLE,
+                )
+                print(f'tg_web server started via bat (PID {_tg_web_proc.pid})')
+            except Exception as e:
+                print(f'Warning: could not start tg_web: {e}')
+        else:
+            print(f'Warning: tg_web not found in {tg_web_dir}')
 
     print(f'Comparison app starting on http://localhost:{port}')
     print(f'Input dir: {INPUT_DIR}')

@@ -7,8 +7,9 @@ import os
 import sys
 from typing import Dict, List, Optional
 
-# Add project root to path so we can import parsers
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root / internal root to path so we can import parsers
+from app_paths import get_internal_root
+sys.path.insert(0, get_internal_root())
 
 from parsers.dmc_parser import parse_dmc_from_folder_name, dm_code_to_string
 

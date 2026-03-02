@@ -429,7 +429,8 @@ def main():
     """Main entry point."""
     # Read configuration
     config = configparser.ConfigParser()
-    config.read('config.ini', encoding='utf-8')
+    from app_paths import get_config_path
+    config.read(get_config_path(), encoding='utf-8')
     output_dir = config.get('processing', 'output_dir', fallback='./tg_web/publications')
     input_dir = config.get('processing', 'input_dir', fallback='./docs')
 

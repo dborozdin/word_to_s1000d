@@ -12,9 +12,11 @@ import configparser
 from typing import Dict, List, Optional
 
 # Ensure project root is on path
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+from app_paths import get_app_root, get_internal_root, get_config_path, get_xsd_path
+PROJECT_ROOT = get_app_root()
+_internal = get_internal_root()
+if _internal not in sys.path:
+    sys.path.insert(0, _internal)
 
 from comparison_app.headless_comparator import (
     extract_xml_elements,
@@ -253,7 +255,7 @@ def run_verification_loop(
 
     try:
         from generators.s1000d_generator import S1000DGenerator
-        schema = 'xsd/proced.xsd' if module_type == 'procedure' else 'xsd/descript.xsd'
+        schema = get_xsd_path('proced.xsd') if module_type == 'procedure' else get_xsd_path('descript.xsd')
         xsd_valid, xsd_structured = S1000DGenerator.validate_xml_with_details(
             xml_path, schema_file=schema)
     except Exception as e:
@@ -305,7 +307,7 @@ def main():
 
     # Read config
     config = configparser.ConfigParser()
-    config.read(os.path.join(PROJECT_ROOT, 'config.ini'), encoding='utf-8')
+    config.read(get_config_path(), encoding='utf-8')
 
     input_dir = os.path.join(PROJECT_ROOT,
                              config.get('processing', 'input_dir', fallback='doc_source'))

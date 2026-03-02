@@ -33,7 +33,8 @@
       "Bash(git log --all --oneline --grep=\"warning\\\\|caution\" -i)",
       "Bash(where node)",
       "Bash(comm -23 /tmp/js_ids.txt /tmp/html_ids.txt)",
-      "Bash(comm -13 /tmp/js_ids.txt /tmp/html_ids.txt)"
+      "Bash(comm -13 /tmp/js_ids.txt /tmp/html_ids.txt)",
+      "Bash(taskkill //F //IM WINWORD.EXE)"
     ]
   }
 }

@@ -35,20 +35,37 @@ def _save_mtime(mtime_path: str, docx_mtime: str):
 
 def _word_com_convert(docx_path: str, output_path: str, file_format: int):
     """Convert docx via Word COM to a given format. Reusable for PDF and HTML."""
+    import shutil
+    import tempfile
     import pythoncom
     import win32com.client
 
     docx_abs = os.path.abspath(docx_path)
     output_abs = os.path.abspath(output_path)
 
+    # Copy to temp dir to avoid lock-file conflicts when the original
+    # is open in Word or has orphaned ~$ lock files
+    tmp_dir = tempfile.mkdtemp(prefix='word_conv_')
+    tmp_docx = os.path.join(tmp_dir, os.path.basename(docx_abs))
+    try:
+        shutil.copy2(docx_abs, tmp_docx)
+    except Exception as e:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise RuntimeError(f'Failed to copy docx to temp: {e}') from e
+
     pythoncom.CoInitialize()
     word = None
     try:
         word = win32com.client.Dispatch("Word.Application")
         word.Visible = False
-        word.DisplayAlerts = 0
+        word.DisplayAlerts = 0  # wdAlertsNone
 
-        doc = word.Documents.Open(docx_abs)
+        doc = word.Documents.Open(
+            tmp_docx,
+            ConfirmConversions=False,
+            ReadOnly=True,
+            AddToRecentFiles=False,
+        )
         # Force UTF-8 for HTML formats (10 = wdFormatFilteredHTML)
         if file_format in (8, 10):
             doc.WebOptions.Encoding = 65001  # msoEncodingUTF8
@@ -63,6 +80,7 @@ def _word_com_convert(docx_path: str, output_path: str, file_format: int):
             except Exception:
                 pass
         pythoncom.CoUninitialize()
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 # ==========================================================================

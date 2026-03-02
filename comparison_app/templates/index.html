@@ -23,8 +23,15 @@
             padding: 10px 24px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
             border-bottom: 1px solid #ddd;
+            gap: 8px;
+        }
+        .config-paths {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            flex: 1;
+            gap: 24px;
         }
         .config-path {
             display: flex;
@@ -45,23 +52,22 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .config-actions {
+        .gear-btn {
+            width: 32px;
+            height: 32px;
             display: flex;
-            gap: 8px;
-            flex-shrink: 0;
-            margin-left: 16px;
-        }
-        .config-btn {
-            padding: 5px 14px;
-            background: #fff;
+            align-items: center;
+            justify-content: center;
+            background: none;
             border: 1px solid #bdc3c7;
-            border-radius: 3px;
-            font-size: 13px;
+            border-radius: 4px;
+            font-size: 18px;
             cursor: pointer;
-            color: #2c3e50;
-            white-space: nowrap;
+            color: #666;
+            flex-shrink: 0;
+            transition: background .15s;
         }
-        .config-btn:hover { background: #d5dbdb; }
+        .gear-btn:hover { background: #d5dbdb; color: #2c3e50; }
         .container { max-width: 1400px; margin: 24px auto; padding: 0 24px; }
         table {
             width: 100%;
@@ -126,6 +132,25 @@
         .gen-btn.generating { background: #f39c12; cursor: wait; }
         .gen-btn.error { background: #e74c3c; }
         .gen-btn.success { background: #27ae60; }
+        a.view-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            text-decoration: none;
+            font-size: 16px;
+            color: #3498db;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            transition: background .15s;
+        }
+        a.view-link:hover { background: #eaf2f8; }
+        a.view-link.disabled {
+            color: #bdc3c7;
+            pointer-events: none;
+            border-color: #eee;
+        }
         /* Settings modal */
         .settings-overlay {
             position: fixed;
@@ -140,8 +165,8 @@
             background: #fff;
             border-radius: 6px;
             padding: 24px 28px;
-            min-width: 480px;
-            max-width: 600px;
+            min-width: 520px;
+            max-width: 640px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.25);
         }
         .settings-title {
@@ -150,14 +175,23 @@
             margin-bottom: 14px;
             color: #2c3e50;
         }
+        .settings-section {
+            font-size: 13px;
+            font-weight: 600;
+            color: #7f8c8d;
+            margin-top: 14px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
         .settings-field {
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
         .settings-field label {
             display: block;
             font-size: 13px;
             color: #666;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
         }
         .settings-field input {
             width: 100%;
@@ -216,14 +250,17 @@
         <p>Генерация и сравнение модулей данных</p>
     </div>
     <div class="config-bar">
-        <div class="config-path">
-            <span class="config-label">Исходные документы:</span>
-            <span id="config-input-dir" class="config-value">{{ input_dir }}</span>
+        <div class="config-paths">
+            <div class="config-path">
+                <span class="config-label">Исходные:</span>
+                <span id="config-input-dir" class="config-value">{{ input_dir }}</span>
+            </div>
+            <div class="config-path">
+                <span class="config-label">Выходные:</span>
+                <span id="config-output-dir" class="config-value">{{ output_dir }}</span>
+            </div>
         </div>
-        <div class="config-actions">
-            <button id="btn-settings" class="config-btn">Открыть настройки</button>
-            <button id="btn-reload" class="config-btn">Перечитать конфигурацию</button>
-        </div>
+        <button id="btn-settings" class="gear-btn" title="Настройки">&#9881;</button>
     </div>
     <div class="container">
         <div class="gen-all-bar">
@@ -239,6 +276,7 @@
                     <th>DOCX</th>
                     <th>XML</th>
                     <th>Генерация</th>
+                    <th>Просмотр</th>
                     <th></th>
                 </tr>
             </thead>
@@ -278,6 +316,13 @@
                         <button class="gen-btn" disabled title="DOCX не найден">Сгенерировать XML</button>
                         {% endif %}
                     </td>
+                    <td class="view-cell">
+                        {% if pair.xml_exists %}
+                        <a class="view-link" data-dmc="{{ pair.dmc_string }}" href="#" target="_blank" title="Открыть в tg_web">&#128065;</a>
+                        {% else %}
+                        <a class="view-link disabled" title="XML ещё не сгенерирован">&#128065;</a>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if pair.docx_exists and pair.xml_exists %}
                         <a href="/compare/{{ pair.dmc_string }}" class="compare-link">Сравнить</a>
@@ -295,6 +340,8 @@
     <div id="settings-modal" class="settings-overlay" style="display:none">
         <div class="settings-box">
             <div class="settings-title">Настройки</div>
+
+            <div class="settings-section">Пути</div>
             <div class="settings-field">
                 <label>Каталог исходных документов (input_dir):</label>
                 <input id="settings-input-dir" type="text">
@@ -303,6 +350,21 @@
                 <label>Каталог выходных XML (output_dir):</label>
                 <input id="settings-output-dir" type="text">
             </div>
+
+            <div class="settings-section">tg_web (сервер просмотра)</div>
+            <div class="settings-field">
+                <label>URL сервера:</label>
+                <input id="settings-tgweb-url" type="text">
+            </div>
+            <div class="settings-field">
+                <label>Suite ID:</label>
+                <input id="settings-tgweb-suite" type="text">
+            </div>
+            <div class="settings-field">
+                <label>PM Code:</label>
+                <input id="settings-tgweb-pm" type="text">
+            </div>
+
             <div class="settings-actions">
                 <button id="settings-save" class="settings-btn settings-btn-save">Сохранить</button>
                 <button id="settings-cancel" class="settings-btn settings-btn-cancel">Отмена</button>
@@ -312,6 +374,23 @@
 
 <script>
 (function() {
+    // ── tg_web config (injected from Flask) ──
+    var TG_WEB_URL = {{ tg_web_url|tojson }};
+    var TG_WEB_SUITE = {{ tg_web_suite_id|tojson }};
+    var TG_WEB_PM = {{ tg_web_pm_code|tojson }};
+
+    function buildViewUrl(dmcString) {
+        // DMC-S5-A-029-00-00-00A-012A-A_001 → S5-A-029-00-00-00A-012A-A
+        var short = dmcString.replace(/^DMC-/, '').replace(/_\d+$/, '');
+        return TG_WEB_URL + '/suite/' + TG_WEB_SUITE + '/pm/' + TG_WEB_PM +
+               '/version/001/dm/' + short + '/versionDm/001';
+    }
+
+    // Set initial hrefs for view links
+    document.querySelectorAll('a.view-link[data-dmc]').forEach(function(a) {
+        a.href = buildViewUrl(a.getAttribute('data-dmc'));
+    });
+
     // ── Helper: generate single DMC, returns promise ──
     function generateOne(btn) {
         var dmc = btn.getAttribute('data-dmc');
@@ -327,14 +406,25 @@
             .then(function(data) {
                 if (data.error) throw new Error(data.error);
                 var row = btn.closest('tr');
+                // Update XML status
                 var xmlCell = row.querySelector('.xml-status');
                 if (xmlCell) {
                     xmlCell.innerHTML = '<span class="status-ok">&#10003;</span>';
                 }
+                // Enable compare link
                 var link = row.querySelector('a.compare-link');
                 if (link && link.classList.contains('disabled')) {
                     link.classList.remove('disabled');
                     link.href = '/compare/' + dmc;
+                }
+                // Enable view link
+                var viewLink = row.querySelector('a.view-link');
+                if (viewLink) {
+                    viewLink.classList.remove('disabled');
+                    viewLink.setAttribute('data-dmc', dmc);
+                    viewLink.setAttribute('target', '_blank');
+                    viewLink.title = 'Открыть в tg_web';
+                    viewLink.href = buildViewUrl(dmc);
                 }
                 btn.textContent = 'Готово';
                 btn.classList.remove('generating');
@@ -403,23 +493,22 @@
     document.addEventListener('click', function(e) {
         var btn = e.target.closest('.gen-btn');
         if (!btn || btn.disabled) return;
-        // Skip if "generate all" is running (buttons handled by generateOne already)
         if (document.getElementById('btn-gen-all').disabled) return;
-
         generateOne(btn);
     });
 
     // ── Settings modal ──
     var settingsModal = document.getElementById('settings-modal');
-    var settingsInputDir = document.getElementById('settings-input-dir');
-    var settingsOutputDir = document.getElementById('settings-output-dir');
 
     document.getElementById('btn-settings').addEventListener('click', function() {
         fetch('/api/config')
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                settingsInputDir.value = data.input_dir_raw;
-                settingsOutputDir.value = data.output_dir_raw;
+                document.getElementById('settings-input-dir').value = data.input_dir_raw;
+                document.getElementById('settings-output-dir').value = data.output_dir_raw;
+                document.getElementById('settings-tgweb-url').value = data.tg_web_url || '';
+                document.getElementById('settings-tgweb-suite').value = data.tg_web_suite_id || '';
+                document.getElementById('settings-tgweb-pm').value = data.tg_web_pm_code || '';
                 settingsModal.style.display = 'flex';
             });
     });
@@ -428,15 +517,17 @@
         settingsModal.style.display = 'none';
     });
 
-    // Close modal on overlay click
     settingsModal.addEventListener('click', function(e) {
         if (e.target === settingsModal) settingsModal.style.display = 'none';
     });
 
     document.getElementById('settings-save').addEventListener('click', function() {
         var payload = {
-            input_dir: settingsInputDir.value.trim(),
-            output_dir: settingsOutputDir.value.trim()
+            input_dir: document.getElementById('settings-input-dir').value.trim(),
+            output_dir: document.getElementById('settings-output-dir').value.trim(),
+            tg_web_url: document.getElementById('settings-tgweb-url').value.trim(),
+            tg_web_suite_id: document.getElementById('settings-tgweb-suite').value.trim(),
+            tg_web_pm_code: document.getElementById('settings-tgweb-pm').value.trim(),
         };
         fetch('/api/config', {
             method: 'POST',
@@ -447,38 +538,18 @@
         .then(function(data) {
             if (data.error) throw new Error(data.error);
             settingsModal.style.display = 'none';
-            document.getElementById('config-input-dir').textContent = data.input_dir;
-            // Reload table with new config
+            // Auto-reload config and rebuild table
             return fetch('/api/reload-config', { method: 'POST' });
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
+            document.getElementById('config-input-dir').textContent = data.input_dir;
+            document.getElementById('config-output-dir').textContent = data.output_dir;
             if (data.pairs) rebuildTable(data.pairs);
         })
         .catch(function(err) {
             alert('Ошибка сохранения: ' + err.message);
         });
-    });
-
-    // ── Reload config ──
-    document.getElementById('btn-reload').addEventListener('click', function() {
-        var btn = this;
-        btn.disabled = true;
-        btn.textContent = 'Загрузка...';
-        fetch('/api/reload-config', { method: 'POST' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) throw new Error(data.error);
-                document.getElementById('config-input-dir').textContent = data.input_dir;
-                if (data.pairs) rebuildTable(data.pairs);
-            })
-            .catch(function(err) {
-                alert('Ошибка: ' + err.message);
-            })
-            .finally(function() {
-                btn.disabled = false;
-                btn.textContent = 'Перечитать конфигурацию';
-            });
     });
 
     // ── Rebuild table from JSON ──
@@ -505,6 +576,15 @@
                 ? '<button class="gen-btn" data-dmc="' + escAttr(pair.dmc_string) + '" title="Сгенерировать XML из DOCX">Сгенерировать XML</button>'
                 : '<button class="gen-btn" disabled title="DOCX не найден">Сгенерировать XML</button>';
 
+            var viewLink;
+            if (pair.xml_exists) {
+                viewLink = '<a class="view-link" data-dmc="' + escAttr(pair.dmc_string) +
+                    '" href="' + escAttr(buildViewUrl(pair.dmc_string)) +
+                    '" target="_blank" title="Открыть в tg_web">&#128065;</a>';
+            } else {
+                viewLink = '<a class="view-link disabled" title="XML ещё не сгенерирован">&#128065;</a>';
+            }
+
             var compareLink = (pair.docx_exists && pair.xml_exists)
                 ? '<a href="/compare/' + escAttr(pair.dmc_string) + '" class="compare-link">Сравнить</a>'
                 : '<a class="compare-link disabled">Сравнить</a>';
@@ -517,6 +597,7 @@
                 '<td>' + docxStatus + '</td>' +
                 '<td class="xml-status">' + xmlStatus + '</td>' +
                 '<td>' + genBtn + '</td>' +
+                '<td class="view-cell">' + viewLink + '</td>' +
                 '<td>' + compareLink + '</td>';
             tbody.appendChild(tr);
         });

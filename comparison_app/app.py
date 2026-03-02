@@ -47,6 +47,11 @@ OUTPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'output_dir', f
 GRAPHICS_DIR = os.path.join(OUTPUT_DIR, 'graphics')
 ELEMENT_SOURCE = config.get('processing', 'element_source', fallback='docx_only')
 
+# tg_web viewer config
+TG_WEB_URL = config.get('tg_web', 'url', fallback='http://localhost:8082')
+TG_WEB_SUITE_ID = config.get('tg_web', 'suite_id', fallback='66935')
+TG_WEB_PM_CODE = config.get('tg_web', 'pm_code', fallback='S5-SFX44-ETP05-00')
+
 # Lazy MS Word availability check (avoids COM issues with Flask reloader)
 _word_available_cache = None
 
@@ -66,7 +71,9 @@ def index():
     """Module pair selector page."""
     pairs = get_comparison_pairs(INPUT_DIR, OUTPUT_DIR)
     return render_template('index.html', pairs=pairs, word_available=_is_word_available(),
-                           input_dir=INPUT_DIR, output_dir=OUTPUT_DIR)
+                           input_dir=INPUT_DIR, output_dir=OUTPUT_DIR,
+                           tg_web_url=TG_WEB_URL, tg_web_suite_id=TG_WEB_SUITE_ID,
+                           tg_web_pm_code=TG_WEB_PM_CODE)
 
 
 @app.route('/api/config', methods=['GET'])
@@ -77,14 +84,17 @@ def get_config_api():
         'output_dir': OUTPUT_DIR,
         'input_dir_raw': config.get('processing', 'input_dir', fallback='doc_source'),
         'output_dir_raw': config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'),
+        'tg_web_url': TG_WEB_URL,
+        'tg_web_suite_id': TG_WEB_SUITE_ID,
+        'tg_web_pm_code': TG_WEB_PM_CODE,
     }), 200
 
 
 @app.route('/api/config', methods=['POST'])
 def update_config_api():
-    """Update config.ini values for input_dir and/or output_dir (preserves comments)."""
+    """Update config.ini values (preserves comments via regex replacement)."""
     import re as _re
-    global INPUT_DIR, OUTPUT_DIR, GRAPHICS_DIR
+    global INPUT_DIR, OUTPUT_DIR, GRAPHICS_DIR, TG_WEB_URL, TG_WEB_SUITE_ID, TG_WEB_PM_CODE
 
     data = request.get_json()
     if not data:
@@ -94,18 +104,21 @@ def update_config_api():
     with open(config_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    if 'input_dir' in data:
-        content = _re.sub(
-            r'^(input_dir\s*=\s*).*$',
-            r'\g<1>' + data['input_dir'],
-            content, flags=_re.MULTILINE,
-        )
-    if 'output_dir' in data:
-        content = _re.sub(
-            r'^(output_dir\s*=\s*).*$',
-            r'\g<1>' + data['output_dir'],
-            content, flags=_re.MULTILINE,
-        )
+    # Regex-replace known keys (preserves comments and structure)
+    replacements = {
+        'input_dir': data.get('input_dir'),
+        'output_dir': data.get('output_dir'),
+        'url': data.get('tg_web_url'),
+        'suite_id': data.get('tg_web_suite_id'),
+        'pm_code': data.get('tg_web_pm_code'),
+    }
+    for key, value in replacements.items():
+        if value is not None:
+            content = _re.sub(
+                rf'^({_re.escape(key)}\s*=\s*).*$',
+                rf'\g<1>{value}',
+                content, flags=_re.MULTILINE,
+            )
 
     with open(config_path, 'w', encoding='utf-8') as f:
         f.write(content)
@@ -115,6 +128,9 @@ def update_config_api():
     INPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'input_dir', fallback='doc_source'))
     OUTPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
     GRAPHICS_DIR = os.path.join(OUTPUT_DIR, 'graphics')
+    TG_WEB_URL = config.get('tg_web', 'url', fallback='http://localhost:8082')
+    TG_WEB_SUITE_ID = config.get('tg_web', 'suite_id', fallback='66935')
+    TG_WEB_PM_CODE = config.get('tg_web', 'pm_code', fallback='S5-SFX44-ETP05-00')
 
     return jsonify({
         'status': 'ok',
@@ -127,6 +143,7 @@ def update_config_api():
 def reload_config_api():
     """Re-read config.ini from disk and return fresh pairs list."""
     global INPUT_DIR, OUTPUT_DIR, GRAPHICS_DIR, ELEMENT_SOURCE
+    global TG_WEB_URL, TG_WEB_SUITE_ID, TG_WEB_PM_CODE
 
     config_path = os.path.join(PROJECT_ROOT, 'config.ini')
     config.read(config_path, encoding='utf-8')
@@ -135,6 +152,9 @@ def reload_config_api():
     OUTPUT_DIR = os.path.join(PROJECT_ROOT, config.get('processing', 'output_dir', fallback='./tg_web/suites/66935'))
     GRAPHICS_DIR = os.path.join(OUTPUT_DIR, 'graphics')
     ELEMENT_SOURCE = config.get('processing', 'element_source', fallback='docx_only')
+    TG_WEB_URL = config.get('tg_web', 'url', fallback='http://localhost:8082')
+    TG_WEB_SUITE_ID = config.get('tg_web', 'suite_id', fallback='66935')
+    TG_WEB_PM_CODE = config.get('tg_web', 'pm_code', fallback='S5-SFX44-ETP05-00')
 
     pairs = get_comparison_pairs(INPUT_DIR, OUTPUT_DIR)
     return jsonify({
@@ -197,7 +217,10 @@ def compare(dmc_string: str):
                            render_mode=render_mode,
                            word_available=word_ok,
                            element_source=ELEMENT_SOURCE,
-                           errors=errors)
+                           errors=errors,
+                           tg_web_url=TG_WEB_URL,
+                           tg_web_suite_id=TG_WEB_SUITE_ID,
+                           tg_web_pm_code=TG_WEB_PM_CODE)
 
 
 @app.route('/pdf/<path:dmc_string>')
@@ -397,9 +420,75 @@ def regenerate_xml_api(dmc_string: str):
                 skip_pmc=True,
                 graphic_ident_prefix=graphic_prefix,
             )
-        return jsonify({'status': 'ok', 'xml_path': pair['xml_path']}), 200
+        # After successful generation, regenerate PMC
+        pmc_msg = ''
+        try:
+            pmc_path = _regenerate_pmc()
+            pmc_msg = os.path.basename(pmc_path)
+        except Exception as pmc_err:
+            pmc_msg = f'PMC error: {pmc_err}'
+
+        return jsonify({'status': 'ok', 'xml_path': pair['xml_path'], 'pmc': pmc_msg}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+def _regenerate_pmc() -> str:
+    """Scan all DMC-*.xml in OUTPUT_DIR, extract dm_refs and illustrations,
+    and regenerate the Publication Module (PMC) file."""
+    import re as _re
+    import glob as _glob
+    from lxml import etree
+    from generators.pm_generator import PMGenerator, create_pm_config
+
+    dmc_files = sorted(_glob.glob(os.path.join(OUTPUT_DIR, 'DMC-*_ru-RU.xml')))
+    if not dmc_files:
+        raise ValueError('No DMC files found in output directory')
+
+    parser = etree.XMLParser(resolve_entities=False, dtd_validation=False, load_dtd=False)
+    all_dm_refs = []
+    all_illustrations = {}
+    model_code = None
+
+    for dmc_file in dmc_files:
+        try:
+            tree = etree.parse(dmc_file, parser)
+            root = tree.getroot()
+
+            dm_code_elem = root.find('.//dmCode')
+            if dm_code_elem is None:
+                continue
+
+            dm_code = dict(dm_code_elem.attrib)
+            tech_name = root.findtext('.//dmTitle/techName', '')
+            info_name = root.findtext('.//dmTitle/infoName', '')
+
+            all_dm_refs.append({
+                'dm_code': dm_code,
+                'techName': tech_name,
+                'infoName': info_name,
+            })
+
+            if model_code is None:
+                model_code = dm_code.get('modelIdentCode', 'S5')
+
+            # Collect illustration entities from DOCTYPE
+            with open(dmc_file, 'r', encoding='utf-8') as f:
+                raw = f.read(4096)  # DOCTYPE is always near the top
+            doctype_m = _re.search(r'<!DOCTYPE\s+dmodule\s*\[(.*?)\]>', raw, _re.DOTALL)
+            if doctype_m:
+                for ent_name, ent_file in _re.findall(r'<!ENTITY\s+(\S+)\s+SYSTEM\s+"([^"]+)"', doctype_m.group(1)):
+                    if ent_name != 'PUBLICATION_LOGO':
+                        all_illustrations[ent_name] = ent_file
+        except Exception:
+            continue
+
+    if not all_dm_refs:
+        raise ValueError('No valid DM references extracted')
+
+    pm_gen = PMGenerator(model_ident=model_code or 'S5')
+    pm_cfg = create_pm_config(model_ident_code=model_code or 'S5', pm_title='Руководство')
+    return pm_gen.generate_publication_module(pm_cfg, all_dm_refs, OUTPUT_DIR, all_illustrations)
 
 
 @app.route('/api/verify/<path:dmc_string>', methods=['POST'])
@@ -564,8 +653,27 @@ def get_s1000d_html(dmc_string: str):
 
 
 if __name__ == '__main__':
+    import subprocess
+
     port = config.getint('comparison', 'port', fallback=5000)
     debug = config.getboolean('comparison', 'debug', fallback=True)
+
+    # Start tg_web viewer server (if run_consoled.bat exists)
+    tg_web_dir = os.path.join(PROJECT_ROOT, 'tg_web')
+    tg_web_bat = os.path.join(tg_web_dir, 'run_consoled.bat')
+    tg_web_proc = None
+    if os.path.isfile(tg_web_bat):
+        try:
+            tg_web_proc = subprocess.Popen(
+                ['cmd', '/c', 'run_consoled.bat'],
+                cwd=tg_web_dir,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            print(f'tg_web server started (PID {tg_web_proc.pid})')
+        except Exception as e:
+            print(f'Warning: could not start tg_web: {e}')
+
     print(f'Comparison app starting on http://localhost:{port}')
     print(f'Input dir: {INPUT_DIR}')
     print(f'Output dir: {OUTPUT_DIR}')

@@ -13,14 +13,6 @@
             <h1>{{ pair.tech_name }}{% if pair.info_name %} &mdash; {{ pair.info_name }}{% endif %}</h1>
         </div>
         <div class="header-controls">
-            {% if word_available %}
-            <div class="mode-switch">
-                <a href="?mode=pdf" class="mode-btn {% if render_mode == 'pdf' %}active{% endif %}"
-                   title="PDF через MS Word + pdf.js (синхронная прокрутка)">PDF</a>
-                <span class="mode-btn disabled" title="Word HTML (отключён)">Word HTML</span>
-                <span class="mode-btn disabled" title="mammoth (отключён)">mammoth</span>
-            </div>
-            {% endif %}
             <div class="anno-controls">
                 <button id="toggle-anno" class="anno-btn" title="Показать/скрыть разметку элементов">Разметка</button>
                 <select id="nav-mode" class="anno-btn nav-mode-select" title="Режим навигации">
@@ -94,6 +86,10 @@
             <div class="panel-header">
                 <span class="panel-title">S1000D модуль данных</span>
                 <span class="dmc-code">{{ pair.dmc_string }}</span>
+                {% if pair.xml_exists %}
+                <a id="tgweb-view-link" class="tgweb-view-btn" href="#" target="_blank"
+                   title="Открыть в tg_web">&#128065;</a>
+                {% endif %}
             </div>
             <div class="panel-content" id="content-s1000d">
                 {{ s1000d_html | safe }}
@@ -168,11 +164,41 @@
         <div id="xsd-issues-list" class="xsd-issues-list"></div>
     </div>
 
+    <style>
+        .tgweb-view-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            text-decoration: none;
+            font-size: 15px;
+            color: #3498db;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 3px;
+            margin-left: 8px;
+            transition: background .15s;
+        }
+        .tgweb-view-btn:hover { background: rgba(255,255,255,0.15); }
+    </style>
     <script>
         window.RENDER_MODE = '{{ render_mode }}';
         window.PDF_URL = '/pdf/{{ pair.dmc_string }}';
         window.DMC_STRING = '{{ pair.dmc_string }}';
         window.ELEMENT_SOURCE = '{{ element_source }}';
+
+        // Build tg_web viewer URL
+        (function() {
+            var link = document.getElementById('tgweb-view-link');
+            if (!link) return;
+            var tgUrl = {{ tg_web_url|tojson }};
+            var suite = {{ tg_web_suite_id|tojson }};
+            var pm = {{ tg_web_pm_code|tojson }};
+            var dmc = {{ pair.dmc_string|tojson }};
+            var short = dmc.replace(/^DMC-/, '').replace(/_\d+$/, '');
+            link.href = tgUrl + '/suite/' + suite + '/pm/' + pm +
+                        '/version/001/dm/' + short + '/versionDm/001';
+        })();
     </script>
     {% if render_mode == 'pdf' %}
     <script type="module">

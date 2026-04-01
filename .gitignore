@@ -238,3 +238,7 @@ index-*.js
 /comparison_app/_references
 /output_test
 /demo_video_release
+dmrl/_dump2.json
+dmrl/_dump.json
+/dmrl/output
+/dmrl/source_docs

@@ -240,3 +240,7 @@ index-*.js
 /demo_video_release
 /doc_source_29_raw
 /doc_source_29_reference
+dmrl/_dump2.json
+dmrl/_dump.json
+/dmrl/output
+/dmrl/source_docs

@@ -74,11 +74,10 @@ function loadReference() {
 export function enterEditMode() {
     state.setEditMode(true);
     document.body.classList.add('ref-editing');
-    if (dom.saveRefBtn) dom.saveRefBtn.style.display = '';
+    // saveRefBtn и editRefBtn остаются скрытыми (авто-сохранение, авто-эталон)
     if (dom.resetRefBtn) dom.resetRefBtn.style.display = '';
     if (dom.verifyBtn) dom.verifyBtn.style.display = '';
     if (dom.loopBtn) dom.loopBtn.style.display = '';
-    if (dom.editRefBtn) dom.editRefBtn.classList.add('active');
 
     // Make sure annotations are visible
     if (!state.isAnnotationsVisible()) {
@@ -442,6 +441,7 @@ export function initEditMode() {
                 var updNt = normType(elem.type);
                 if (dom.ctxLabel) dom.ctxLabel.textContent = (ANNO_TYPE_LABELS[updNt] || updNt) + ' ' + elem.idx;
                 rebuildBadges(dom.docxPanel);
+                saveReference();
             }
         });
     }
@@ -737,7 +737,7 @@ export function initEditMode() {
     }
 }
 
-/** Auto-load reference if one already exists for this DMC */
+/** Auto-load or auto-create reference for this DMC */
 export function autoLoadReference() {
     var dmc = window.DMC_STRING;
     if (!dmc) return;
@@ -748,6 +748,9 @@ export function autoLoadReference() {
             if (data.exists) {
                 state.setReferenceData(data.reference);
                 enterEditMode();
+            } else {
+                // Авто-создание эталона при первом открытии
+                loadReference();
             }
         })
         .catch(function () { /* silently fail */ });

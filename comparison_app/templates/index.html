@@ -310,7 +310,7 @@
                                 <td>{% if pair.docx_exists %}<button class="gen-btn" data-dmc="{{ pair.dmc_string }}">XML</button>{% else %}<button class="gen-btn" disabled>XML</button>{% endif %}</td>
                                 <td>{% if pair.xml_exists %}<a class="view-link" data-dmc="{{ pair.dmc_string }}" href="#" target="_blank">&#128065;</a>{% else %}<a class="view-link disabled">&#128065;</a>{% endif %}</td>
                                 <td>{% if pair.docx_exists and pair.xml_exists %}<a href="/compare/{{ pair.dmc_string }}" class="compare-link">Сравнить</a>{% else %}<a class="compare-link disabled">Сравнить</a>{% endif %}</td>
-                                <td><button class="verified-btn{% if pair.verified %} checked{% endif %}" data-dmc="{{ pair.dmc_string }}" onclick="toggleVerified(this)">{% if pair.verified %}&#10003; Проверен{% else %}Проверить{% endif %}</button></td>
+                                <td><button class="verified-btn{% if pair.verified %} checked{% endif %}" data-dmc="{{ pair.dmc_string }}" onclick="toggleVerified(this)">{% if pair.verified %}&#10003; Проверено{% else %}Проверено{% endif %}</button></td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -335,7 +335,7 @@
                         <td>{% if pair.docx_exists %}<button class="gen-btn" data-dmc="{{ pair.dmc_string }}">XML</button>{% else %}<button class="gen-btn" disabled>XML</button>{% endif %}</td>
                         <td>{% if pair.xml_exists %}<a class="view-link" data-dmc="{{ pair.dmc_string }}" href="#" target="_blank">&#128065;</a>{% else %}<a class="view-link disabled">&#128065;</a>{% endif %}</td>
                         <td>{% if pair.docx_exists and pair.xml_exists %}<a href="/compare/{{ pair.dmc_string }}" class="compare-link">Сравнить</a>{% else %}<a class="compare-link disabled">Сравнить</a>{% endif %}</td>
-                                <td><button class="verified-btn{% if pair.verified %} checked{% endif %}" data-dmc="{{ pair.dmc_string }}" onclick="toggleVerified(this)">{% if pair.verified %}&#10003; Проверен{% else %}Проверить{% endif %}</button></td>
+                                <td><button class="verified-btn{% if pair.verified %} checked{% endif %}" data-dmc="{{ pair.dmc_string }}" onclick="toggleVerified(this)">{% if pair.verified %}&#10003; Проверено{% else %}Проверено{% endif %}</button></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -464,10 +464,10 @@
             .then(function(data) {
                 if (data.verified) {
                     btn.classList.add('checked');
-                    btn.innerHTML = '&#10003; Проверен';
+                    btn.innerHTML = '&#10003; Проверено';
                 } else {
                     btn.classList.remove('checked');
-                    btn.textContent = 'Проверить';
+                    btn.textContent = 'Проверено';
                 }
                 updateCounters();
             });
@@ -476,9 +476,28 @@
     // ── Accordion toggle ──
     window.toggleSubsystem = function(el) {
         el.classList.toggle('open');
-        var content = el.nextElementSibling;
-        content.classList.toggle('open');
+        el.nextElementSibling.classList.toggle('open');
+        // Persist open accordion states
+        var openKeys = [];
+        document.querySelectorAll('.subsystem-toggle.open').forEach(function(t) {
+            openKeys.push(t.textContent.trim().split('\u2014')[0].trim());
+        });
+        sessionStorage.setItem('openAccordions', JSON.stringify(openKeys));
     };
+
+    // Restore accordion states
+    (function() {
+        var saved = sessionStorage.getItem('openAccordions');
+        if (!saved) return;
+        try { var keys = JSON.parse(saved); } catch(e) { return; }
+        document.querySelectorAll('.subsystem-toggle').forEach(function(el) {
+            var code = el.textContent.trim().split('\u2014')[0].trim();
+            if (keys.indexOf(code) >= 0) {
+                el.classList.add('open');
+                el.nextElementSibling.classList.add('open');
+            }
+        });
+    })();
 
     // ── Generate single XML ──
     function generateOne(btn) {

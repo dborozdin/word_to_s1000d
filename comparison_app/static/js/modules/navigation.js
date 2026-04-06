@@ -27,7 +27,14 @@ export function makeNavHandler(idx) {
 export function toggleAnnotations() {
     state.setAnnotationsVisible(!state.isAnnotationsVisible());
     document.body.classList.toggle('show-annotations', state.isAnnotationsVisible());
-    if (dom.toggleBtn) dom.toggleBtn.classList.toggle('active', state.isAnnotationsVisible());
+    if (dom.toggleBtn) {
+        // Support both button (.active class) and checkbox (.checked)
+        if (dom.toggleBtn.type === 'checkbox') {
+            dom.toggleBtn.checked = state.isAnnotationsVisible();
+        } else {
+            dom.toggleBtn.classList.toggle('active', state.isAnnotationsVisible());
+        }
+    }
 }
 
 /** Navigate to a specific annotation index */
@@ -104,7 +111,10 @@ export function initNavigation() {
     _rebuildHooks.makeNavHandler = makeNavHandler;
 
     if (dom.toggleBtn) {
-        dom.toggleBtn.addEventListener('click', toggleAnnotations);
+        dom.toggleBtn.addEventListener(
+            dom.toggleBtn.type === 'checkbox' ? 'change' : 'click',
+            toggleAnnotations
+        );
     }
 
     if (dom.prevBtn) {

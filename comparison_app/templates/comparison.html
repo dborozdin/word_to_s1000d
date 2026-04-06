@@ -7,6 +7,14 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/comparison.css') }}?v=7">
 </head>
 <body>
+    <style>
+        .settings-spoiler { position: relative; }
+        .display-settings-dropdown { display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 8px 12px; z-index: 100; min-width: 200px; }
+        .display-settings-dropdown.open { display: block; }
+        .display-settings-dropdown label { display: block; font-size: 13px; padding: 4px 0; cursor: pointer; white-space: nowrap; color: #333; }
+        .display-settings-dropdown label input { margin-right: 6px; }
+        .verified-active { background: #27ae60 !important; color: white !important; }
+    </style>
     <header class="app-header">
         <div class="header-left">
             <a href="/" class="back-link">&larr; К списку</a>
@@ -15,7 +23,6 @@
         </div>
         <div class="header-controls">
             <div class="anno-controls">
-                <button id="toggle-anno" class="anno-btn" title="Показать/скрыть разметку элементов">Разметка</button>
                 <select id="nav-mode" class="anno-btn nav-mode-select" title="Режим навигации">
                     <option value="all">Все элементы</option>
                     <option value="issues">Расхождения</option>
@@ -26,26 +33,29 @@
             </div>
             <span id="mismatch-badge" class="mismatch-badge" style="display:none"></span>
             <div class="ref-controls">
-                <button id="edit-ref-btn" class="anno-btn" title="Загрузить / создать эталонную разметку">Эталон</button>
-                <button id="save-ref-btn" class="anno-btn" style="display:none" title="Сохранить изменения в эталоне">Сохранить</button>
-                <button id="reset-ref-btn" class="anno-btn" style="display:none" title="Инициализация эталона по XML — удалить пользовательскую разметку и пересоздать из XML">Сбросить эталон</button>
-                <button id="reset-xml-btn" class="anno-btn" title="Повторно сгенерировать XML из DOCX с нуля">Сбросить XML</button>
-                <button id="run-verify-btn" class="anno-btn" style="display:none" title="Сверить XML с эталоном">Проверить</button>
+                <!-- Эталон и Сохранить убраны: авто-создание и авто-сохранение -->
+                <button id="edit-ref-btn" class="anno-btn" style="display:none">Эталон</button>
+                <button id="save-ref-btn" class="anno-btn" style="display:none">Сохранить</button>
+                <button id="reset-ref-btn" class="anno-btn" style="display:none" title="Пересоздать эталон из XML">Сбросить эталон</button>
+                <button id="reset-xml-btn" class="anno-btn" title="Повторно сгенерировать XML из DOCX">Сбросить XML</button>
+                <button id="run-verify-btn" class="anno-btn" style="display:none" title="Сверить XML с эталоном">Сверить XML с эталоном</button>
                 <button id="run-loop-btn" class="anno-btn" style="display:none" title="Применить разбиение и типы элементов из эталона к XML">Форматировать согласно эталону</button>
                 <div id="loop-progress" class="loop-progress" style="display:none">
                     <div class="loop-progress-bar" id="loop-progress-bar"></div>
                     <span class="loop-progress-text" id="loop-progress-text"></span>
                 </div>
                 <span id="verify-score" class="mismatch-badge" style="display:none"></span>
+                <button id="verified-toggle-btn" class="anno-btn {% if verified %}verified-active{% endif %}" title="Отметить документ как проверенный" onclick="toggleVerifiedComparison(this)">{% if verified %}&#10003; Проверено{% else %}Проверено{% endif %}</button>
             </div>
-            <label class="sync-label">
-                <input type="checkbox" id="sync-scroll" checked>
-                Синхронная прокрутка
-            </label>
-            <label class="sync-label">
-                <input type="checkbox" id="anno-frame" checked>
-                Рамка элемента
-            </label>
+            <!-- Спойлер для экспертных настроек -->
+            <div class="settings-spoiler">
+                <button id="display-settings-btn" class="anno-btn" title="Настройки отображения" onclick="this.nextElementSibling.classList.toggle('open')">&#9881;</button>
+                <div class="display-settings-dropdown">
+                    <label><input type="checkbox" id="toggle-anno" checked> Разметка</label>
+                    <label><input type="checkbox" id="sync-scroll" checked> Синхронная прокрутка</label>
+                    <label><input type="checkbox" id="anno-frame" checked> Рамка элемента</label>
+                </div>
+            </div>
         </div>
     </header>
     <div id="issue-tooltip" class="issue-tooltip" style="display:none"></div>
@@ -307,4 +317,27 @@
     {% endif %}
     <script type="module" src="{{ url_for('static', filename='js/comparison.js') }}?v=12"></script>
 </body>
+<script>
+// Toggle verified in comparison page
+function toggleVerifiedComparison(btn) {
+    fetch('/api/toggle-verified/' + window.DMC_STRING, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.verified) {
+                btn.classList.add('verified-active');
+                btn.innerHTML = '&#10003; Проверено';
+            } else {
+                btn.classList.remove('verified-active');
+                btn.textContent = 'Проверено';
+            }
+        });
+}
+// Close display settings dropdown on outside click
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.settings-spoiler')) {
+        var dd = document.querySelector('.display-settings-dropdown');
+        if (dd) dd.classList.remove('open');
+    }
+});
+</script>
 </html>

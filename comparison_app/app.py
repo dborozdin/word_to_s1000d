@@ -404,6 +404,9 @@ def compare(dmc_string: str):
     else:
         errors.append('Сгенерированный XML файл не найден')
 
+    verified_set = _load_verified_set()
+    is_verified = dmc_string in verified_set
+
     return render_template('comparison.html',
                            pair=pair,
                            docx_html=docx_html,
@@ -412,6 +415,7 @@ def compare(dmc_string: str):
                            word_available=word_ok,
                            element_source=ELEMENT_SOURCE,
                            errors=errors,
+                           verified=is_verified,
                            tg_web_url=TG_WEB_URL,
                            tg_web_suite_id=TG_WEB_SUITE_ID,
                            tg_web_pm_code=TG_WEB_PM_CODE)

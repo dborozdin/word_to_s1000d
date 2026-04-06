@@ -46,9 +46,9 @@ REM config.ini (user-editable)
 copy /y config.ini "%DIST%\config.ini" >nul
 echo   config.ini - OK
 
-REM doc_source (example documents)
-xcopy /E /I /Y /Q doc_source "%DIST%\doc_source" >nul
-echo   doc_source\ - OK
+REM doc_source_29_raw (raw source documents)
+xcopy /E /I /Y /Q doc_source_29_raw "%DIST%\doc_source_29_raw" >nul
+echo   doc_source_29_raw\ - OK
 
 REM tg_web (viewer server with binaries, excluding generated XML in suites)
 xcopy /E /I /Y /Q tg_web "%DIST%\tg_web" /EXCLUDE:build_exclude.tmp >nul 2>&1
@@ -82,7 +82,7 @@ echo ============================================
 echo.
 echo  word_to_s1000d.exe  - Launch comparison app
 echo  config.ini          - Configuration (editable)
-echo  doc_source\         - Source documents
+echo  doc_source_29_raw\  - Source documents
 echo  tg_web\             - TG Web viewer
 echo  _internal\          - Bundled dependencies
 echo ============================================

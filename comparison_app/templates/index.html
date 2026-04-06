@@ -12,14 +12,19 @@
             color: #333;
         }
         /* ── Header ── */
-        .header { background: #2c3e50; color: white; padding: 16px 24px; }
+        .header { background: #2c3e50; color: white; padding: 16px 0; }
+        .header-inner { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
         .header h1 { font-size: 20px; font-weight: 500; }
         .header p { font-size: 13px; opacity: 0.7; margin-top: 4px; }
 
         /* ── Config bar (3 paths) ── */
         .config-bar {
-            background: #ecf0f1; padding: 10px 24px;
-            display: flex; align-items: center; border-bottom: 1px solid #ddd; gap: 8px;
+            background: #ecf0f1; padding: 10px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .config-bar-inner {
+            max-width: 1400px; margin: 0 auto; padding: 0 24px;
+            display: flex; align-items: center; gap: 8px;
         }
         .config-paths { display: flex; align-items: center; min-width: 0; flex: 1; gap: 20px; flex-wrap: wrap; }
         .config-path { display: flex; align-items: center; min-width: 0; }
@@ -185,12 +190,15 @@
 <body>
     <!-- ── Секция 1: Шапка ── -->
     <div class="header">
-        <h1>Генерация модулей данных S1000D (XML) на основе документов MS Word</h1>
-        <p>Генерация и сравнение модулей данных <span style="opacity:0.5; margin-left:12px;">v{{ app_version }}</span></p>
+        <div class="header-inner">
+            <h1>Генерация модулей данных S1000D (XML) на основе документов MS Word</h1>
+            <p>Генерация и сравнение модулей данных <span style="opacity:0.5; margin-left:12px;">v{{ app_version }}</span></p>
+        </div>
     </div>
 
     <!-- ── Config bar: 3 пути ── -->
     <div class="config-bar">
+        <div class="config-bar-inner">
         <div class="config-paths">
             <div class="config-path">
                 <span class="config-label">Сырые документы:</span>
@@ -206,6 +214,7 @@
             </div>
         </div>
         <button id="btn-settings" class="gear-btn" title="Настройки">&#9881;</button>
+        </div>
     </div>
 
     <div class="container">

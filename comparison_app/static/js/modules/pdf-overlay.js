@@ -225,7 +225,9 @@ function _buildServerBlocks(pageIndex, viewport) {
             yTopPct: yTopPct,
             yBottomPct: yBottomPct,
             text: b.text || '',
-            elementId: b._hybrid_element_id || null
+            elementId: b._hybrid_element_id || null,
+            typeSource: b._type_source || '',
+            forcedIdx: b._forced_idx || null
         });
     }
     return blocks;
@@ -247,9 +249,18 @@ function createPdfOverlayFn(wrapper, textContent, viewport, startIdx, pageIndex)
     var overlay = document.createElement('div');
     overlay.className = 'pdf-overlay';
 
+    // Check if any block has forcedIdx (procedural mode)
+    var hasForcedIdx = blocks.some(function(b) { return !!b.forcedIdx; });
+    if (blocks.length > 0) {
+        console.log('[PDF-overlay] Page blocks:', blocks.length, 'hasForcedIdx:', hasForcedIdx,
+            'first forcedIdx:', blocks[0].forcedIdx, 'first typeSource:', blocks[0].typeSource);
+    }
+
     for (var i = 0; i < blocks.length; i++) {
         var block = blocks[i];
-        var idx = startIdx + i + 1; // 1-based
+        // In procedural mode: skip blocks without forcedIdx (unmatched PDF cells)
+        if (hasForcedIdx && !block.forcedIdx) continue;
+        var idx = block.forcedIdx || (startIdx + i + 1);
         var type = normType(block.type);
         var label = ANNO_TYPE_LABELS[type] || type;
         var color = getAnnoColor(idx);
@@ -258,6 +269,9 @@ function createPdfOverlayFn(wrapper, textContent, viewport, startIdx, pageIndex)
         marker.className = 'anno-marker';
         marker.style.top = block.yTopPct + '%';
         marker.style.height = Math.max(block.yBottomPct - block.yTopPct, 1.5) + '%';
+        marker.style.width = '100%';
+        marker.style.opacity = '1';
+        marker.style.background = 'rgba(200, 200, 100, 0.12)';
         marker.style.setProperty('--anno-clr', color);
         marker.setAttribute('data-anno-idx', String(idx));
         marker.setAttribute('data-anno-type', type);
@@ -267,10 +281,16 @@ function createPdfOverlayFn(wrapper, textContent, viewport, startIdx, pageIndex)
         if (block.elementId) {
             marker.setAttribute('data-element-id', block.elementId);
         }
+        if (block.typeSource === 'xml_matched') {
+            marker.setAttribute('data-anno-source', 'xml_derived');
+        }
 
         var labelSpan = document.createElement('span');
         labelSpan.className = 'marker-label';
         labelSpan.textContent = label + ' ' + idx;
+        if (block.forcedIdx) {
+            console.log('[PDF-overlay] Marker created: forcedIdx=' + block.forcedIdx + ' label="' + labelSpan.textContent + '" text="' + (block.text || '').substring(0, 40) + '"');
+        }
         marker.appendChild(labelSpan);
 
         marker.addEventListener('click', makeNavHandler(idx));
@@ -297,7 +317,15 @@ export function createPdfOverlay(wrapper, textContent, viewport, startIdx, pageI
     var refData = state.getReferenceData();
     if (refData && refData.elements) {
         var allMarkers = dom.docxPanel.querySelectorAll('.anno-marker');
-        if (allMarkers.length > 0) {
+        // Skip sync if markers are pre-synced (procedural xml_matched)
+        var hasPreSynced = false;
+        for (var si = 0; si < allMarkers.length; si++) {
+            if (allMarkers[si].getAttribute('data-anno-source') === 'xml_derived') {
+                hasPreSynced = true;
+                break;
+            }
+        }
+        if (allMarkers.length > 0 && !hasPreSynced) {
             syncPdfMarkers(allMarkers);
         }
     }

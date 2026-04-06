@@ -473,8 +473,10 @@ def get_pdf_blocks(dmc_string: str):
         abort(503, 'MS Word not available for PDF rendering')
 
     try:
-        pdf_path = render_docx_to_pdf(pair['docx_path'], dmc_string)
-        pages = extract_pdf_blocks(pdf_path)
+        doc_file = pair.get('docx_path') or pair.get('doc_path')
+        pdf_path = render_docx_to_pdf(doc_file, dmc_string)
+        is_procedural = int(pair.get('info_code', '0')) >= 100
+        pages = extract_pdf_blocks(pdf_path, collapse_tables=not is_procedural)
         return jsonify(pages=pages)
     except Exception as e:
         abort(500, f'PDF block extraction failed: {e}')
@@ -496,16 +498,23 @@ def get_hybrid_blocks(dmc_string: str):
         abort(503, 'MS Word not available for PDF rendering')
 
     try:
+        doc_file = pair.get('docx_path') or pair.get('doc_path')
+        pdf_path = render_docx_to_pdf(doc_file, dmc_string)
+        is_procedural = int(pair.get('info_code', '0')) >= 100
+
         # Extract PDF blocks (full text, font metadata)
-        pdf_path = render_docx_to_pdf(pair['docx_path'], dmc_string)
-        pdf_pages = extract_pdf_blocks_full(pdf_path)
+        pdf_pages = extract_pdf_blocks_full(pdf_path, collapse_tables=not is_procedural)
 
-        # Extract DOCX elements (types, text)
-        doc = Document(pair['docx_path'])
-        docx_elements = analyze_document_elements(doc)
-
-        # Match
-        unified = match_pdf_to_docx(pdf_pages, docx_elements)
+        if is_procedural and pair.get('xml_exists'):
+            # Процедурные МД: match PDF blocks → XML elements напрямую
+            from comparison_app.procedural_pdf_matcher import match_pdf_to_xml
+            unified = match_pdf_to_xml(pdf_pages, pair['xml_path'])
+        else:
+            # Описательные МД: стандартный path через DOCX matching
+            docx_path = pair.get('docx_path') or pair.get('doc_path')
+            doc = Document(docx_path)
+            docx_elements = analyze_document_elements(doc)
+            unified = match_pdf_to_docx(pdf_pages, docx_elements)
 
         return jsonify(
             element_source='hybrid',

@@ -6,6 +6,7 @@ PyMuPDF faithfully reports these as individual blocks.  We post-process to:
   2. Merge adjacent lines into logical paragraphs/blocks using gap and
      indentation (x-position) analysis.
 """
+import re
 import fitz  # pymupdf
 
 
@@ -110,11 +111,12 @@ def _extract_raw_pages(pdf_path: str, full_mode: bool = False) -> list:
     return raw_pages
 
 
-def extract_pdf_blocks(pdf_path: str) -> list:
+def extract_pdf_blocks(pdf_path: str, collapse_tables: bool = True) -> list:
     """
     Returns per-page list of text blocks with bbox coordinates.
     Each page: {page_num, width, height, blocks: [{x0, y0, x1, y1, text, lines, max_font_size}, ...]}
     Text is truncated to 80 chars for JSON transport.
+    If collapse_tables=False, table cells are kept as individual blocks (for procedural modules).
     """
     raw_pages = _extract_raw_pages(pdf_path, full_mode=False)
     hf_zones = _detect_header_footer_zones(raw_pages)
@@ -122,7 +124,9 @@ def extract_pdf_blocks(pdf_path: str) -> list:
     pages = []
     for rp in raw_pages:
         filtered = _filter_header_footer(rp["blocks"], rp["height"], hf_zones)
-        merged = _merge_lines_into_blocks(filtered)
+        merged = _merge_lines_into_blocks(filtered, collapse_tables=collapse_tables)
+        if not collapse_tables:
+            merged = _filter_tk_service_blocks(merged, rp["height"])
         # Truncate text for JSON transport
         for b in merged:
             b["text"] = b["text"][:80]
@@ -136,10 +140,11 @@ def extract_pdf_blocks(pdf_path: str) -> list:
     return pages
 
 
-def extract_pdf_blocks_full(pdf_path: str) -> list:
+def extract_pdf_blocks_full(pdf_path: str, collapse_tables: bool = True) -> list:
     """
     Extended extraction: full text (no truncation), bold/italic metadata.
     Each block: {x0, y0, x1, y1, text, lines, max_font_size, is_bold, is_italic}
+    If collapse_tables=False, table cells are kept as individual blocks (for procedural modules).
     """
     raw_pages = _extract_raw_pages(pdf_path, full_mode=True)
     hf_zones = _detect_header_footer_zones(raw_pages)
@@ -147,7 +152,10 @@ def extract_pdf_blocks_full(pdf_path: str) -> list:
     pages = []
     for rp in raw_pages:
         filtered = _filter_header_footer(rp["blocks"], rp["height"], hf_zones)
-        merged = _merge_lines_into_blocks(filtered, preserve_font_info=True)
+        merged = _merge_lines_into_blocks(filtered, preserve_font_info=True,
+                                          collapse_tables=collapse_tables)
+        if not collapse_tables:
+            merged = _filter_tk_service_blocks(merged, rp["height"])
         pages.append({
             "page_num": rp["page_num"],
             "width": rp["width"],
@@ -156,6 +164,37 @@ def extract_pdf_blocks_full(pdf_path: str) -> list:
         })
 
     return pages
+
+
+# Служебные тексты бланка технологической карты
+_TK_SERVICE_PATTERNS = re.compile(
+    r'^(ТЕХНОЛОГИЧЕСКАЯ\s+КАРТА|Продолжение\s+ТК|'
+    r'Содержание\s+операци|Работы,?\s+выполняем|'
+    r'Контр|Трудоёмкость|чел\.\s*ч|'
+    r'при\s+отклонени|К\s+РО|Пункт\s+РО|'
+    r'Наименование\s+работы|На\s+страницах|'
+    r'РУКОВОДСТВО\s+ПО\s+ТЕХН|'
+    r'ДЕЙСТВИТЕЛЬНО\s+ВСЕ|'
+    r'\d{3}\.\d{2}\.\d{2}$)',  # код типа "029.00.00" без продолжения
+    re.IGNORECASE
+)
+
+
+def _filter_tk_service_blocks(blocks: list, page_height: float) -> list:
+    """Фильтрует служебные блоки бланка ТК (заголовки, колонтитулы, метки столбцов)."""
+    result = []
+    for b in blocks:
+        text = b["text"].strip()
+        if not text:
+            continue
+        # Слишком короткий текст (1-2 символа) — вероятно номер или разделитель
+        if len(text) <= 2:
+            continue
+        # Совпадение с шаблонами служебных текстов ТК
+        if _TK_SERVICE_PATTERNS.match(text):
+            continue
+        result.append(b)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +335,8 @@ def _collapse_table_blocks(blocks: list, preserve_font_info: bool = False) -> li
     return result
 
 
-def _merge_lines_into_blocks(blocks: list, preserve_font_info: bool = False) -> list:
+def _merge_lines_into_blocks(blocks: list, preserve_font_info: bool = False,
+                             collapse_tables: bool = True) -> list:
     """
     Merge adjacent line-level blocks into logical text blocks.
 
@@ -310,14 +350,20 @@ def _merge_lines_into_blocks(blocks: list, preserve_font_info: bool = False) -> 
         a new block (even at the same indent level as previous).
 
     If preserve_font_info is True, is_bold/is_italic are propagated.
+    If collapse_tables is False, table cell blocks are kept individual
+    (for procedural modules where table cells contain step text).
     """
     if not blocks:
         return []
 
     blocks = sorted(blocks, key=lambda b: b["y0"])
 
-    # Collapse table blocks into single composite blocks before merging
-    blocks = _collapse_table_blocks(blocks, preserve_font_info)
+    if collapse_tables:
+        blocks = _collapse_table_blocks(blocks, preserve_font_info)
+    else:
+        # Убираем _in_table флаг чтобы ячейки обрабатывались как обычные блоки
+        for b in blocks:
+            b.pop("_in_table", None)
 
     # Compute median font size
     font_sizes = sorted(b["max_font_size"] for b in blocks)

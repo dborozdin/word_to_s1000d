@@ -176,8 +176,15 @@ export function rebuildBadges(panel) {
         var allAnno = panel.querySelectorAll('[data-anno-idx]');
 
         if (pdfMarkers.length > 0) {
-            // PDF mode: sync all markers by position
-            if (_rebuildHooks.syncPdfMarkers) {
+            // PDF mode: check if markers are pre-synced (procedural xml_matched)
+            var hasPreSynced = false;
+            for (var mi = 0; mi < pdfMarkers.length; mi++) {
+                if (pdfMarkers[mi].getAttribute('data-anno-source') === 'xml_derived') {
+                    hasPreSynced = true;
+                    break;
+                }
+            }
+            if (!hasPreSynced && _rebuildHooks.syncPdfMarkers) {
                 _rebuildHooks.syncPdfMarkers(pdfMarkers);
             }
         } else {

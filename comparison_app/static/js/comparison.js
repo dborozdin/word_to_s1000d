@@ -50,6 +50,9 @@ document.addEventListener('DOMContentLoaded', function () {
     initLayout();
 
     // Initial annotation setup (inject badges into both panels)
+    // For PDF mode, docxPanel has no annotatable elements yet (PDF loads async)
+    var docxAnnoElements = dom.docxPanel.querySelectorAll('[data-anno-idx]');
+    console.log('[init] docxPanel elements with data-anno-idx:', docxAnnoElements.length);
     injectBadges(dom.docxPanel);
     injectBadges(dom.s1000dPanel);
     recalcMaxIdx();

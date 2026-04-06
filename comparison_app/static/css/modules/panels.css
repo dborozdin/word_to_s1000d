@@ -48,7 +48,7 @@ body.ref-editing [data-anno-idx-cleared]:hover {
 .anno-marker-unassigned {
     border-style: dashed !important;
     border-color: #27ae60 !important;
-    opacity: 0.6 !important;
+    opacity: 1 !important;
 }
 .anno-marker-unassigned .marker-label {
     color: #27ae60 !important;

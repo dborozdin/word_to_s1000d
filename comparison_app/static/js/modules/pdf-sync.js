@@ -385,11 +385,14 @@ function _syncPdfMarkersBbox(sorted) {
     }
 
     // Remaining unused markers -> unassigned (available for Create)
+    // Skip markers pre-matched by procedural_pdf_matcher (have data-anno-source="xml_derived")
     var claimedCount = 0;
     var unassigned = 0;
     for (var ui = 0; ui < allInfos.length; ui++) {
         if (allInfos[ui].used) {
             claimedCount++;
+        } else if (allInfos[ui].marker.getAttribute('data-anno-source') === 'xml_derived') {
+            claimedCount++;  // Pre-matched, keep as-is
         } else {
             markUnassigned(allInfos[ui].marker);
             unassigned++;

@@ -91,11 +91,20 @@ body.show-anno-frame [data-anno-idx].anno-highlight {
     background: color-mix(in srgb, var(--anno-clr, #e67e22) 10%, transparent);
 }
 
+/* All markers — full width with visible fill when frame enabled */
+body.show-anno-frame .anno-marker {
+    width: 100% !important;
+    background: rgba(200, 200, 100, 0.12);
+    border-right: 2px solid var(--anno-clr, #999);
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Current highlighted marker — brighter */
 body.show-anno-frame .anno-marker.anno-highlight {
-    /* Extend to full text width across the PDF page */
     width: 100% !important;
     border-left-width: 5px;
     border-right: 3px solid var(--anno-clr, #e67e22);
-    background: color-mix(in srgb, var(--anno-clr, #e67e22) 10%, transparent);
+    background: rgba(255, 200, 50, 0.25);
     box-shadow: 0 0 8px rgba(0,0,0,0.15);
 }

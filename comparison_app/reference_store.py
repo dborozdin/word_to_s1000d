@@ -200,8 +200,32 @@ def init_reference_from_auto(dmc_string: str, docx_path: str,
     element_dicts = None
     source_label = 'auto'
 
+    # Path 0: Procedural modules — reference from rendered HTML (idx must match renderer)
+    if xml_path and os.path.isfile(xml_path):
+        from parsers.dmc_parser import parse_dmc_from_folder_name
+        # Determine if procedural from DMC string
+        info_code_str = dmc_string.split('-')[-2] if '-' in dmc_string else ''  # e.g. "222A"
+        info_code_num = int(''.join(c for c in info_code_str if c.isdigit()) or '0')
+        if info_code_num >= 100:
+            try:
+                from comparison_app.procedural_pdf_matcher import _extract_rendered_elements
+                rendered = _extract_rendered_elements(xml_path)
+                element_dicts = []
+                for r_idx, r_type, r_text in rendered:
+                    element_dicts.append({
+                        'idx': r_idx,
+                        'type': r_type,
+                        'text_start': r_text[:60],
+                        'text_end': r_text[-40:] if len(r_text) > 40 else '',
+                        'stable_id': hashlib.md5(f'{r_idx}|{r_type}|{r_text[:60]}'.encode()).hexdigest()[:12],
+                    })
+                source_label = 'auto_xml_derived'
+                print(f'[reference_store] Procedural: created {len(element_dicts)} elements from rendered HTML')
+            except Exception as e:
+                print(f'[reference_store] Procedural rendered init failed ({e})')
+
     # Path 1: XML-derived — requires XML file + hybrid mode + MS Word
-    if xml_path and os.path.isfile(xml_path) and element_source == 'hybrid':
+    if element_dicts is None and xml_path and os.path.isfile(xml_path) and element_source == 'hybrid':
         try:
             element_dicts = _init_reference_xml_derived(dmc_string, docx_path, xml_path)
             source_label = 'auto_xml_derived'

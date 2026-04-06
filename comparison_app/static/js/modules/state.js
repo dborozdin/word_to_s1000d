@@ -75,6 +75,10 @@ export function initState() {
     dom.resetRefBtn = document.getElementById('reset-ref-btn');
     dom.resetXmlBtn = document.getElementById('reset-xml-btn');
     dom.verifyScore = document.getElementById('verify-score');
+
+    // Разметка включена по умолчанию
+    document.body.classList.add('show-annotations');
+    document.body.classList.add('show-anno-frame');
 }
 
 // ── Navigation state ────────────────────────────────────────────────
@@ -82,7 +86,7 @@ let _currentIdx = 0;
 let _maxLeftIdx = 0;
 let _maxRightIdx = 0;
 let _maxIdx = 0;
-let _annotationsVisible = false;
+let _annotationsVisible = true;
 
 export function getCurrentIdx() { return _currentIdx; }
 export function setCurrentIdx(v) { _currentIdx = v; }

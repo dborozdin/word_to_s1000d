@@ -346,36 +346,60 @@ def _walk_procedure(proc, elements, counter):
                                        text_start='Требования по завершении', text_end='завершении'))
 
 
+_RQMT_TITLES = {
+    'reqSupportEquips': 'Средства наземного обслуживания',
+    'reqSupplies': 'Расходные материалы',
+    'reqSpares': 'Запасные части',
+    'reqSafety': 'Требования безопасности',
+}
+
+
 def _walk_preliminary_rqmts(prelim, elements, counter):
-    """Walk preliminary requirements."""
+    """Walk preliminary requirements (synced with s1000d_renderer)."""
     for child in prelim:
         tag = _local_tag(child)
-        if tag in ('reqSupportEquips', 'reqSupplies', 'reqSpares'):
-            items = child.findall('.//' + tag.replace('req', '').rstrip('s').lower() + 'Descr')
-            if not items:
-                # Try alternate element names
-                for desc_elem in child.iter():
-                    dt = _local_tag(desc_elem)
-                    if dt.endswith('Descr') and dt != tag:
-                        items.append(desc_elem)
+
+        if tag in ('reqSupportEquips', 'reqSupplies'):
+            descr_tag = {'reqSupportEquips': 'supportEquipDescr',
+                         'reqSupplies': 'supplyDescr'}[tag]
+            items = child.findall('.//' + descr_tag)
+            title = _RQMT_TITLES.get(tag, tag)
             if items:
                 counter[0] += 1
                 elements.append(ElementInfo(idx=counter[0], type='heading',
-                                           text_start=tag, text_end=tag))
+                                           text_start=title, text_end=title.split()[-1]))
                 counter[0] += 1
                 elements.append(ElementInfo(idx=counter[0], type='table',
                                            text_start=f'{len(items)} items', text_end=''))
+
+        elif tag == 'reqSpares':
+            title = _RQMT_TITLES['reqSpares']
+            counter[0] += 1
+            elements.append(ElementInfo(idx=counter[0], type='heading',
+                                       text_start=title, text_end='части'))
+            if child.find('.//noSpares') is not None:
+                counter[0] += 1
+                elements.append(ElementInfo(idx=counter[0], type='para',
+                                           text_start='Не требуются', text_end=''))
+            else:
+                items = child.findall('.//spareDescr')
+                if items:
+                    counter[0] += 1
+                    elements.append(ElementInfo(idx=counter[0], type='table',
+                                               text_start=f'{len(items)} items', text_end=''))
+
         elif tag == 'reqSafety':
-            for safety_child in child:
+            title = _RQMT_TITLES['reqSafety']
+            counter[0] += 1
+            elements.append(ElementInfo(idx=counter[0], type='heading',
+                                       text_start=title, text_end='безопасности'))
+            for safety_child in child.iter():
                 st = _local_tag(safety_child)
-                if st == 'warning':
+                if st in ('warning', 'caution', 'note'):
                     counter[0] += 1
                     ts, te = _text_snippet(safety_child)
-                    elements.append(ElementInfo(idx=counter[0], type='warning', text_start=ts, text_end=te))
-                elif st == 'caution':
-                    counter[0] += 1
-                    ts, te = _text_snippet(safety_child)
-                    elements.append(ElementInfo(idx=counter[0], type='caution', text_start=ts, text_end=te))
+                    elements.append(ElementInfo(idx=counter[0], type=st,
+                                               text_start=ts, text_end=te))
 
 
 def _walk_main_procedure(main_proc, elements, counter):
@@ -386,15 +410,24 @@ def _walk_main_procedure(main_proc, elements, counter):
     for child in main_proc:
         tag = _local_tag(child)
         if tag == 'proceduralStep':
-            _walk_procedural_step(child, elements, counter)
+            _walk_procedural_step(child, elements, counter, top_level=True)
 
 
-def _walk_procedural_step(step, elements, counter):
-    """Walk a single procedural step."""
+def _walk_procedural_step(step, elements, counter, top_level=False):
+    """Walk a single procedural step (synced with renderer)."""
+    first_para = True
     for child in step:
         tag = _local_tag(child)
         if tag == 'para':
-            _walk_para(child, elements, counter)
+            if top_level and first_para:
+                # Renderer рендерит первый para top-level step как heading (<h3>)
+                counter[0] += 1
+                ts, te = _text_snippet(child)
+                elements.append(ElementInfo(idx=counter[0], type='heading',
+                                           text_start=ts, text_end=te))
+                first_para = False
+            else:
+                _walk_para(child, elements, counter)
         elif tag == 'table':
             counter[0] += 1
             ts, te = _text_snippet(child)
@@ -416,4 +449,4 @@ def _walk_procedural_step(step, elements, counter):
             ts, te = _text_snippet(child)
             elements.append(ElementInfo(idx=counter[0], type='note', text_start=ts, text_end=te))
         elif tag == 'proceduralStep':
-            _walk_procedural_step(child, elements, counter)
+            _walk_procedural_step(child, elements, counter, top_level=False)

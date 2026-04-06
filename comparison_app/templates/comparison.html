@@ -6,7 +6,7 @@
     <title>{{ pair.tech_name }} &mdash; {{ pair.info_name }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/comparison.css') }}?v=7">
 </head>
-<body>
+<body class="show-annotations show-anno-frame">
     <style>
         .settings-spoiler { position: relative; }
         .display-settings-dropdown { display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 8px 12px; z-index: 100; min-width: 200px; }
@@ -247,7 +247,9 @@
                                     text: el.text || '',
                                     max_font_size: (el.font_info && el.font_info.max_size) || 12,
                                     _hybrid_type: el.type,
-                                    _hybrid_element_id: el.element_id
+                                    _hybrid_element_id: el.element_id,
+                                    _type_source: el.type_source || '',
+                                    _forced_idx: (el.type_source === 'xml_matched') ? el.idx : null
                                 });
                             }
                         }
@@ -315,7 +317,7 @@
         }
     </script>
     {% endif %}
-    <script type="module" src="{{ url_for('static', filename='js/comparison.js') }}?v=12"></script>
+    <script type="module" src="{{ url_for('static', filename='js/comparison.js') }}?v=16"></script>
 </body>
 <script>
 // Toggle verified in comparison page

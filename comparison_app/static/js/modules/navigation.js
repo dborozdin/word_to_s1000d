@@ -122,8 +122,11 @@ export function initNavigation() {
             if (state.getNavMode() === 'issues') {
                 if (_navHooks.navigateToPrevIssue) _navHooks.navigateToPrevIssue();
             } else {
-                if (state.getCurrentIdx() <= 0) state.setCurrentIdx(getVisibleIdx());
-                navigateTo(state.getCurrentIdx() - 1);
+                if (state.getCurrentIdx() <= 0) {
+                    navigateTo(1);  // Start from beginning
+                } else {
+                    navigateTo(state.getCurrentIdx() - 1);
+                }
             }
         });
     }
@@ -133,8 +136,11 @@ export function initNavigation() {
             if (state.getNavMode() === 'issues') {
                 if (_navHooks.navigateToNextIssue) _navHooks.navigateToNextIssue();
             } else {
-                if (state.getCurrentIdx() <= 0) state.setCurrentIdx(getVisibleIdx());
-                navigateTo(state.getCurrentIdx() + 1);
+                if (state.getCurrentIdx() <= 0) {
+                    navigateTo(1);  // Start from beginning
+                } else {
+                    navigateTo(state.getCurrentIdx() + 1);
+                }
             }
         });
     }

@@ -7,10 +7,14 @@ import os
 import re
 import base64
 import logging
+import threading
 
 import mammoth
 
 logger = logging.getLogger(__name__)
+
+# Lock для сериализации доступа к Word COM (один вызов Word одновременно)
+_word_lock = threading.Lock()
 
 # Cache directory (at app root level, writable at runtime)
 from app_paths import get_app_root
@@ -35,7 +39,16 @@ def _save_mtime(mtime_path: str, docx_mtime: str):
 
 
 def _word_com_convert(docx_path: str, output_path: str, file_format: int):
-    """Convert docx via Word COM to a given format. Reusable for PDF and HTML."""
+    """Convert docx via Word COM to a given format. Reusable for PDF and HTML.
+
+    Uses a threading lock to prevent concurrent Word COM access.
+    """
+    with _word_lock:
+        return _word_com_convert_impl(docx_path, output_path, file_format)
+
+
+def _word_com_convert_impl(docx_path: str, output_path: str, file_format: int):
+    """Actual Word COM conversion (called under lock)."""
     import shutil
     import tempfile
     import pythoncom

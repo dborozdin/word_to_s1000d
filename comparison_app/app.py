@@ -448,7 +448,16 @@ def serve_pdf(dmc_string: str):
         pdf_path = render_docx_to_pdf(doc_file, dmc_string)
         return send_file(pdf_path, mimetype='application/pdf')
     except Exception as e:
-        abort(500, f'PDF generation failed: {e}')
+        app.logger.error(f'PDF generation failed for {dmc_string}: {e}', exc_info=True)
+        # Retry once after 1 sec (Word COM race condition)
+        import time
+        time.sleep(1)
+        try:
+            pdf_path = render_docx_to_pdf(doc_file, dmc_string)
+            return send_file(pdf_path, mimetype='application/pdf')
+        except Exception as e2:
+            app.logger.error(f'PDF retry also failed for {dmc_string}: {e2}')
+            abort(500, f'PDF generation failed: {e2}')
 
 
 @app.route('/api/pdf-blocks/<path:dmc_string>')

@@ -432,7 +432,20 @@ def serve_pdf(dmc_string: str):
         abort(503, 'MS Word not available for PDF rendering')
 
     try:
-        pdf_path = render_docx_to_pdf(pair['docx_path'], dmc_string)
+        # Используем docx_path, а если нет — конвертируем .doc в .docx сначала
+        doc_file = pair['docx_path']
+        if doc_file is None and pair.get('doc_path'):
+            from parsers.doc_converter import convert_doc_to_docx_batch
+            src = pair['doc_path']
+            dst = os.path.splitext(src)[0] + '.docx'
+            if not os.path.isfile(dst):
+                results = convert_doc_to_docx_batch([(src, dst)])
+                if not results or not results[0][1]:
+                    abort(500, f'Не удалось конвертировать .doc: {src}')
+            doc_file = dst
+        if doc_file is None:
+            abort(404, 'Нет .docx/.doc файла')
+        pdf_path = render_docx_to_pdf(doc_file, dmc_string)
         return send_file(pdf_path, mimetype='application/pdf')
     except Exception as e:
         abort(500, f'PDF generation failed: {e}')
@@ -523,10 +536,28 @@ def serve_graphic(filename):
 
 @app.route('/api/reference/<path:dmc_string>', methods=['GET'])
 def get_reference_api(dmc_string: str):
-    """Get stored reference markup for a DMC."""
+    """Get stored reference markup for a DMC.
+
+    Если reference создан не из XML (auto_hybrid/auto), а XML уже существует —
+    автоматически пересоздаёт reference из XML для лучшего соответствия панелей.
+    """
     ref = get_reference(dmc_string)
     if ref is None:
         return jsonify({'exists': False}), 200
+
+    # Auto-upgrade: если reference создан автоматически (не вручную отредактирован)
+    # и не из XML, а XML уже есть — пересоздать для лучшего соответствия
+    source = ref.get('source', '')
+    if source in ('auto', 'auto_hybrid') and 'xml_derived' not in source:
+        pair = get_pair_by_dmc(dmc_string, INPUT_DIR, OUTPUT_DIR)
+        if pair and pair.get('xml_exists'):
+            try:
+                docx_path = pair.get('docx_path') or pair.get('doc_path')
+                if docx_path:
+                    ref = init_reference_from_auto(dmc_string, docx_path, xml_path=pair['xml_path'])
+            except Exception:
+                pass  # fallback to existing reference
+
     return jsonify({'exists': True, 'reference': ref}), 200
 
 
@@ -538,8 +569,9 @@ def init_reference_api(dmc_string: str):
         return jsonify({'error': 'DOCX not found'}), 404
 
     try:
+        docx_path = pair.get('docx_path') or pair.get('doc_path')
         xml_path = pair['xml_path'] if pair.get('xml_exists') else None
-        ref = init_reference_from_auto(dmc_string, pair['docx_path'], xml_path=xml_path)
+        ref = init_reference_from_auto(dmc_string, docx_path, xml_path=xml_path)
         return jsonify({'reference': ref}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

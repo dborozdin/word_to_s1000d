@@ -274,7 +274,7 @@
         </div>
         {% elif subsystem_groups %}
             {% for group in subsystem_groups %}
-            <div class="subsystem-folder">
+            <div class="subsystem-folder" id="group-{{ group.group_key.split(' - ')[0] }}">
                 <div class="subsystem-toggle" onclick="toggleSubsystem(this)">
                     <span class="arrow">&#9654;</span>
                     {{ group.group_key.split(' - ')[0] }} &mdash; {{ group.name }}
@@ -485,18 +485,30 @@
         sessionStorage.setItem('openAccordions', JSON.stringify(openKeys));
     };
 
-    // Restore accordion states
+    // Restore accordion states and scroll to last viewed
     (function() {
         var saved = sessionStorage.getItem('openAccordions');
         if (!saved) return;
         try { var keys = JSON.parse(saved); } catch(e) { return; }
+        var firstOpen = null;
         document.querySelectorAll('.subsystem-toggle').forEach(function(el) {
             var code = el.textContent.trim().split('\u2014')[0].trim();
             if (keys.indexOf(code) >= 0) {
                 el.classList.add('open');
                 el.nextElementSibling.classList.add('open');
+                if (!firstOpen) firstOpen = el.closest('.subsystem-folder');
             }
         });
+        // Scroll to last viewed group
+        var scrollTo = sessionStorage.getItem('scrollToGroup');
+        if (scrollTo) {
+            sessionStorage.removeItem('scrollToGroup');
+            var target = document.getElementById('group-' + scrollTo);
+            if (target) firstOpen = target;
+        }
+        if (firstOpen) {
+            setTimeout(function() { firstOpen.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 100);
+        }
     })();
 
     // ── Generate single XML ──
@@ -725,6 +737,16 @@
         var btn = e.target.closest('.gen-btn');
         if (!btn || btn.disabled) return;
         generateOne(btn);
+    });
+
+    // ── Remember subsystem group when navigating to compare ──
+    document.addEventListener('click', function(e) {
+        var link = e.target.closest('a.compare-link');
+        if (!link || link.classList.contains('disabled')) return;
+        var folder = link.closest('.subsystem-folder');
+        if (folder && folder.id) {
+            sessionStorage.setItem('scrollToGroup', folder.id.replace('group-', ''));
+        }
     });
 
     // ── View link: ensure tg_web is running, reuse same tab ──

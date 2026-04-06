@@ -11,360 +11,353 @@
             background: #f5f5f5;
             color: #333;
         }
-        .header {
-            background: #2c3e50;
-            color: white;
-            padding: 16px 24px;
-        }
+        /* ── Header ── */
+        .header { background: #2c3e50; color: white; padding: 16px 24px; }
         .header h1 { font-size: 20px; font-weight: 500; }
         .header p { font-size: 13px; opacity: 0.7; margin-top: 4px; }
+
+        /* ── Config bar (3 paths) ── */
         .config-bar {
-            background: #ecf0f1;
-            padding: 10px 24px;
-            display: flex;
-            align-items: center;
-            border-bottom: 1px solid #ddd;
-            gap: 8px;
+            background: #ecf0f1; padding: 10px 24px;
+            display: flex; align-items: center; border-bottom: 1px solid #ddd; gap: 8px;
         }
-        .config-paths {
-            display: flex;
-            align-items: center;
-            min-width: 0;
-            flex: 1;
-            gap: 24px;
-        }
-        .config-path {
-            display: flex;
-            align-items: center;
-            min-width: 0;
-        }
-        .config-label {
-            font-size: 13px;
-            color: #666;
-            margin-right: 8px;
-            white-space: nowrap;
-        }
-        .config-value {
-            font-family: monospace;
-            font-size: 13px;
-            color: #2c3e50;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .gear-btn {
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: none;
-            border: 1px solid #bdc3c7;
-            border-radius: 4px;
-            font-size: 18px;
-            cursor: pointer;
-            color: #666;
-            flex-shrink: 0;
-            transition: background .15s;
-        }
+        .config-paths { display: flex; align-items: center; min-width: 0; flex: 1; gap: 20px; flex-wrap: wrap; }
+        .config-path { display: flex; align-items: center; min-width: 0; }
+        .config-label { font-size: 12px; color: #666; margin-right: 6px; white-space: nowrap; }
+        .config-value { font-family: monospace; font-size: 12px; color: #2c3e50; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+        .gear-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid #bdc3c7; border-radius: 4px; font-size: 18px; cursor: pointer; color: #666; flex-shrink: 0; transition: background .15s; }
         .gear-btn:hover { background: #d5dbdb; color: #2c3e50; }
-        .container { max-width: 1400px; margin: 24px auto; padding: 0 24px; }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-            border-radius: 4px;
-            overflow: hidden;
+
+        .container { max-width: 1400px; margin: 20px auto; padding: 0 24px; }
+
+        /* ── Raw stats card ── */
+        .raw-stats-card {
+            background: white; border: 1px solid #ddd; border-radius: 4px;
+            padding: 14px 18px; margin-bottom: 16px;
         }
-        th {
-            background: #34495e;
-            color: white;
-            padding: 12px 16px;
-            text-align: left;
-            font-weight: 500;
-            font-size: 13px;
+        .raw-stats-title { font-size: 13px; font-weight: 600; color: #7f8c8d; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .raw-stats-row { display: flex; gap: 24px; font-size: 13px; color: #555; }
+        .raw-stats-row strong { color: #2c3e50; }
+        .raw-stats-loading { font-size: 13px; color: #999; }
+
+        /* ── Pipeline progress ── */
+        .pipeline-bar {
+            display: flex; gap: 0; margin-bottom: 16px; background: white;
+            border: 1px solid #ddd; border-radius: 4px; overflow: hidden;
         }
-        td {
-            padding: 10px 16px;
-            border-bottom: 1px solid #eee;
-            font-size: 14px;
+        .pipeline-step {
+            flex: 1; padding: 10px 14px; text-align: center; font-size: 13px;
+            border-right: 1px solid #ddd; position: relative;
         }
-        tr:hover td { background: #f0f7ff; }
-        .dmc-code { font-family: monospace; font-size: 12px; color: #666; }
-        .status-ok { color: #27ae60; }
+        .pipeline-step:last-child { border-right: none; }
+        .pipeline-step-label { font-weight: 600; color: #7f8c8d; font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
+        .pipeline-step-value { font-size: 15px; font-weight: 600; color: #2c3e50; }
+        .pipeline-step-value.ok { color: #27ae60; }
+        .pipeline-step-value.partial { color: #f39c12; }
+        .pipeline-step-value.none { color: #bdc3c7; }
+        .pipeline-arrow { position: absolute; right: -8px; top: 50%; transform: translateY(-50%); font-size: 14px; color: #bdc3c7; z-index: 1; }
+
+        /* ── Action buttons ── */
+        .gen-all-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+        .gen-all-btn { padding: 8px 20px; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+        .gen-all-btn:hover { filter: brightness(0.9); }
+        .gen-all-btn:disabled { background: #bdc3c7 !important; cursor: not-allowed; }
+        .gen-all-btn.generating { background: #f39c12 !important; cursor: wait; }
+        .gen-all-btn.structure-btn { background: #8e44ad; }
+        .gen-all-btn.xml-btn { background: #2980b9; }
+        .gen-all-btn.all-btn { background: #27ae60; }
+        .gen-all-progress { font-size: 13px; color: #666; }
+        /* ── XML button dropdown ── */
+        .xml-btn-group { position: relative; display: inline-flex; }
+        .xml-btn-group .gen-all-btn { border-radius: 4px 0 0 4px; }
+        .xml-btn-arrow { padding: 8px 8px; background: #2980b9; color: white; border: none; border-left: 1px solid rgba(255,255,255,0.3); border-radius: 0 4px 4px 0; cursor: pointer; font-size: 12px; }
+        .xml-btn-arrow:hover { filter: brightness(0.9); }
+        .xml-btn-arrow:disabled { background: #bdc3c7 !important; cursor: not-allowed; }
+        .xml-dropdown { display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100; min-width: 220px; }
+        .xml-dropdown.open { display: block; }
+        .xml-dropdown-item { padding: 8px 14px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+        .xml-dropdown-item:hover { background: #f0f7ff; }
+        .xml-dropdown-item:first-child { border-radius: 4px 4px 0 0; }
+        .xml-dropdown-item:last-child { border-radius: 0 0 4px 4px; }
+
+        /* ── Verified button ── */
+        .verified-btn { padding: 2px 8px; border: 1px solid #bdc3c7; border-radius: 3px; font-size: 11px; cursor: pointer; background: #f5f5f5; color: #999; }
+        .verified-btn:hover { background: #e8f5e9; }
+        .verified-btn.checked { background: #e8f5e9; color: #27ae60; border-color: #27ae60; }
+        /* ── Subsystem stats ── */
+        .subsystem-stats { margin-left: auto; font-size: 11px; opacity: 0.8; display: flex; gap: 12px; }
+        /* ── Mismatch panel ── */
+        .mismatch-panel { background: #fff8e1; border: 1px solid #ffe082; border-radius: 4px; margin-top: 10px; }
+        .mismatch-panel h3 { font-size: 13px; padding: 10px 14px; color: #e65100; cursor: pointer; user-select: none; margin: 0; }
+        .mismatch-panel h3:hover { background: rgba(0,0,0,0.03); }
+        .mismatch-panel h3 .arrow { font-size: 11px; margin-right: 6px; display: inline-block; transition: transform .2s; }
+        .mismatch-panel h3 .arrow.open { transform: rotate(90deg); }
+        .mismatch-list { padding: 0 14px 14px; max-height: 300px; overflow-y: auto; display: none; }
+        .mismatch-list.open { display: block; }
+        .mismatch-item { font-size: 12px; margin-bottom: 6px; padding: 4px 8px; background: #fff; border-radius: 3px; border: 1px solid #f0f0f0; }
+        .mismatch-item .dmc { font-family: monospace; font-size: 11px; color: #888; }
+        .mismatch-item .ref-name { color: #27ae60; }
+        .mismatch-item .gen-name { color: #2980b9; }
+
+        /* ── Progress bar ── */
+        .progress-container { display: none; background: white; border: 1px solid #ddd; border-radius: 4px; padding: 14px 18px; margin-bottom: 16px; }
+        .progress-container.visible { display: block; }
+        .progress-track { height: 24px; background: #ecf0f1; border-radius: 12px; overflow: hidden; margin-bottom: 8px; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #27ae60, #2ecc71); border-radius: 12px; transition: width .3s; min-width: 0; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600; }
+        .progress-label { font-size: 13px; color: #555; }
+        .progress-label strong { color: #2c3e50; }
+
+        /* ── Structure result panel ── */
+        .structure-result { background: white; border: 1px solid #ddd; border-radius: 4px; padding: 14px 18px; margin-bottom: 16px; display: none; }
+        .structure-result.visible { display: block; }
+        .structure-result h3 { font-size: 14px; margin-bottom: 8px; color: #2c3e50; }
+        .structure-stats { display: flex; gap: 24px; margin-bottom: 6px; }
+        .structure-stat { font-size: 13px; color: #555; }
+        .structure-stat strong { color: #2c3e50; }
+        .structure-issues { font-size: 12px; color: #e74c3c; margin-top: 4px; }
+
+        /* ── Empty state ── */
+        .empty-state {
+            background: white; border: 2px dashed #bdc3c7; border-radius: 6px;
+            padding: 48px 24px; text-align: center; color: #7f8c8d;
+        }
+        .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: #555; }
+        .empty-state p { font-size: 14px; }
+
+        /* ── Subsystem accordion ── */
+        .subsystem-folder { background: white; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px; overflow: hidden; }
+        .subsystem-toggle {
+            display: flex; align-items: center; padding: 10px 16px;
+            background: #34495e; color: white; cursor: pointer; user-select: none;
+            font-size: 14px; font-weight: 500; transition: background .15s;
+        }
+        .subsystem-toggle:hover { background: #2c3e50; }
+        .subsystem-toggle .arrow { margin-right: 10px; font-size: 12px; transition: transform .2s; width: 14px; }
+        .subsystem-toggle.open .arrow { transform: rotate(90deg); }
+        .subsystem-count { font-weight: 400; opacity: 0.7; margin-left: 8px; font-size: 12px; }
+        .subsystem-content { display: none; }
+        .subsystem-content.open { display: block; }
+
+        /* ── DM table inside accordion ── */
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #ecf0f1; color: #555; padding: 8px 14px; text-align: left; font-weight: 500; font-size: 12px; }
+        td { padding: 8px 14px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+        tr:hover td { background: #f7faff; }
+        .dmc-code { font-family: monospace; font-size: 11px; color: #888; }
+        .status-ok { color: #27ae60; font-weight: bold; }
         .status-missing { color: #e74c3c; }
-        a.compare-link {
-            display: inline-block;
-            padding: 4px 12px;
-            background: #3498db;
-            color: white;
-            text-decoration: none;
-            border-radius: 3px;
-            font-size: 13px;
-        }
-        a.compare-link:hover { background: #2980b9; }
-        a.compare-link.disabled {
-            background: #bdc3c7;
-            pointer-events: none;
-        }
-        .info-code-badge {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 11px;
-            font-weight: 500;
-        }
+        .info-code-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 500; }
         .info-code-descr { background: #e8f5e9; color: #2e7d32; }
         .info-code-proc { background: #fff3e0; color: #e65100; }
-        .gen-btn {
-            padding: 4px 12px;
-            background: #27ae60;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            font-size: 13px;
-            cursor: pointer;
-            white-space: nowrap;
-        }
+        .gen-btn { padding: 3px 10px; background: #27ae60; color: white; border: none; border-radius: 3px; font-size: 12px; cursor: pointer; white-space: nowrap; }
         .gen-btn:hover { background: #219a52; }
         .gen-btn:disabled { background: #bdc3c7; cursor: not-allowed; }
         .gen-btn.generating { background: #f39c12; cursor: wait; }
         .gen-btn.error { background: #e74c3c; }
         .gen-btn.success { background: #27ae60; }
-        a.view-link {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 28px;
-            height: 28px;
-            text-decoration: none;
-            font-size: 16px;
-            color: #3498db;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-            transition: background .15s;
-        }
+        a.compare-link { display: inline-block; padding: 3px 10px; background: #3498db; color: white; text-decoration: none; border-radius: 3px; font-size: 12px; }
+        a.compare-link:hover { background: #2980b9; }
+        a.compare-link.disabled { background: #bdc3c7; pointer-events: none; }
+        a.view-link { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; text-decoration: none; font-size: 14px; color: #3498db; border: 1px solid #ddd; border-radius: 3px; }
         a.view-link:hover { background: #eaf2f8; }
-        a.view-link.disabled {
-            color: #bdc3c7;
-            pointer-events: none;
-            border-color: #eee;
-        }
-        /* Settings modal */
-        .settings-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.45);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 9000;
-        }
-        .settings-box {
-            background: #fff;
-            border-radius: 6px;
-            padding: 24px 28px;
-            min-width: 520px;
-            max-width: 640px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.25);
-        }
-        .settings-title {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 14px;
-            color: #2c3e50;
-        }
-        .settings-section {
-            font-size: 13px;
-            font-weight: 600;
-            color: #7f8c8d;
-            margin-top: 14px;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .settings-field {
-            margin-bottom: 10px;
-        }
-        .settings-field label {
-            display: block;
-            font-size: 13px;
-            color: #666;
-            margin-bottom: 3px;
-        }
-        .settings-field input {
-            width: 100%;
-            padding: 6px 8px;
-            font-size: 13px;
-            border: 1px solid #bdc3c7;
-            border-radius: 3px;
-            font-family: monospace;
-        }
-        .settings-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-            margin-top: 16px;
-        }
-        .settings-btn {
-            padding: 6px 14px;
-            border: 1px solid #bdc3c7;
-            border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
-        }
+        a.view-link.disabled { color: #bdc3c7; pointer-events: none; border-color: #eee; }
+
+        /* ── Flat table (no subsystems) ── */
+        .flat-table { background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.12); border-radius: 4px; overflow: hidden; }
+        .flat-table th { background: #34495e; color: white; }
+
+        /* ── Settings modal ── */
+        .settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 9000; }
+        .settings-box { background: #fff; border-radius: 6px; padding: 24px 28px; min-width: 520px; max-width: 640px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); }
+        .settings-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; color: #2c3e50; }
+        .settings-section { font-size: 13px; font-weight: 600; color: #7f8c8d; margin-top: 14px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .settings-field { margin-bottom: 10px; }
+        .settings-field label { display: block; font-size: 13px; color: #666; margin-bottom: 3px; }
+        .settings-field input { width: 100%; padding: 6px 8px; font-size: 13px; border: 1px solid #bdc3c7; border-radius: 3px; font-family: monospace; }
+        .settings-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+        .settings-btn { padding: 6px 14px; border: 1px solid #bdc3c7; border-radius: 4px; font-size: 13px; cursor: pointer; }
         .settings-btn-save { background: #27ae60; color: white; border-color: #219a52; }
         .settings-btn-save:hover { background: #219a52; }
         .settings-btn-cancel { background: #ecf0f1; color: #2c3e50; }
         .settings-btn-cancel:hover { background: #d5dbdb; }
-        .gen-all-bar {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            margin-bottom: 16px;
-        }
-        .gen-all-btn {
-            padding: 10px 28px;
-            background: #27ae60;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 15px;
-            font-weight: 500;
-            cursor: pointer;
-            white-space: nowrap;
-        }
-        .gen-all-btn:hover { background: #219a52; }
-        .gen-all-btn:disabled { background: #bdc3c7; cursor: not-allowed; }
-        .gen-all-btn.generating { background: #f39c12; cursor: wait; }
-        .gen-all-progress {
-            font-size: 13px;
-            color: #666;
-        }
     </style>
 </head>
 <body>
+    <!-- ── Секция 1: Шапка ── -->
     <div class="header">
         <h1>Генерация модулей данных S1000D (XML) на основе документов MS Word</h1>
         <p>Генерация и сравнение модулей данных <span style="opacity:0.5; margin-left:12px;">v{{ app_version }}</span></p>
     </div>
+
+    <!-- ── Config bar: 3 пути ── -->
     <div class="config-bar">
         <div class="config-paths">
             <div class="config-path">
-                <span class="config-label">Исходные:</span>
+                <span class="config-label">Сырые документы:</span>
+                <span class="config-value">{{ raw_input_dir or '—' }}</span>
+            </div>
+            <div class="config-path">
+                <span class="config-label">Структура S1000D:</span>
                 <span id="config-input-dir" class="config-value">{{ input_dir }}</span>
             </div>
             <div class="config-path">
-                <span class="config-label">Выходные:</span>
+                <span class="config-label">Выходные XML:</span>
                 <span id="config-output-dir" class="config-value">{{ output_dir }}</span>
             </div>
         </div>
         <button id="btn-settings" class="gear-btn" title="Настройки">&#9881;</button>
     </div>
+
     <div class="container">
+        <!-- ── Секция 2: Статистика сырых документов ── -->
+        <div id="raw-stats" class="raw-stats-card">
+            <div class="raw-stats-title">Исходные документы</div>
+            <div class="raw-stats-loading">Загрузка...</div>
+        </div>
+
+        <!-- ── Секция 3: Прогресс конвейера ── -->
+        <div class="pipeline-bar">
+            <div class="pipeline-step">
+                <div class="pipeline-step-label">Кодирование</div>
+                <div class="pipeline-step-value {% if structure_exists %}ok{% else %}none{% endif %}">
+                    {% if structure_exists %}&#10003; {{ total_pairs }} МД{% else %}— не выполнено{% endif %}
+                </div>
+                <span class="pipeline-arrow">&#9654;</span>
+            </div>
+            <div class="pipeline-step">
+                <div class="pipeline-step-label">DOCX</div>
+                <div class="pipeline-step-value {% if docx_ready == total_pairs and total_pairs > 0 %}ok{% elif docx_ready > 0 %}partial{% else %}none{% endif %}">
+                    {% if structure_exists %}{{ docx_ready }}/{{ total_pairs }}{% else %}—{% endif %}
+                </div>
+                <span class="pipeline-arrow">&#9654;</span>
+            </div>
+            <div class="pipeline-step">
+                <div class="pipeline-step-label">XML</div>
+                <div id="pipeline-xml" class="pipeline-step-value {% if xml_ready == total_pairs and total_pairs > 0 %}ok{% elif xml_ready > 0 %}partial{% else %}none{% endif %}">
+                    {% if structure_exists %}{{ xml_ready }}/{{ total_pairs }}{% else %}—{% endif %}
+                </div>
+                <span class="pipeline-arrow">&#9654;</span>
+            </div>
+            <div class="pipeline-step">
+                <div class="pipeline-step-label">Проверен</div>
+                <div id="pipeline-verified" class="pipeline-step-value {% if verified_count == total_pairs and total_pairs > 0 %}ok{% elif verified_count > 0 %}partial{% else %}none{% endif %}">
+                    {% if structure_exists %}{{ verified_count }}/{{ total_pairs }}{% else %}—{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Секция 4: Кнопки ── -->
         <div class="gen-all-bar">
-            <button id="btn-gen-all" class="gen-all-btn">Генерировать все</button>
+            <button id="btn-gen-structure" class="gen-all-btn structure-btn" title="Преобразовать сырые документы в структуру S1000D">Сгенерировать структуру</button>
+            <div class="xml-btn-group">
+                <button id="btn-gen-xml" class="gen-all-btn xml-btn" title="Сгенерировать XML">Генерировать XML</button>
+                <button id="btn-xml-arrow" class="xml-btn-arrow" title="Варианты генерации">&#9660;</button>
+                <div id="xml-dropdown" class="xml-dropdown">
+                    <div class="xml-dropdown-item" data-mode="all">Генерировать все XML</div>
+                    <div class="xml-dropdown-item" data-mode="missing">Только отсутствующие XML</div>
+                </div>
+            </div>
+            <button id="btn-gen-all" class="gen-all-btn all-btn" title="Структура + XML последовательно">Генерировать все (структура+XML)</button>
             <span id="gen-all-progress" class="gen-all-progress"></span>
         </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>DMC код</th>
-                    <th>Тип</th>
-                    <th>Наименование</th>
-                    <th>DOCX</th>
-                    <th>XML</th>
-                    <th>Генерация</th>
-                    <th>Просмотр</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for pair in pairs %}
-                <tr>
-                    <td class="dmc-code">{{ pair.dmc_string }}</td>
-                    <td>
-                        {% if pair.info_code|int < 100 %}
-                        <span class="info-code-badge info-code-descr">Описание</span>
-                        {% else %}
-                        <span class="info-code-badge info-code-proc">Процедура</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <strong>{{ pair.tech_name }}</strong>
-                        {% if pair.info_name %}&mdash; {{ pair.info_name }}{% endif %}
-                    </td>
-                    <td>
-                        {% if pair.docx_exists %}
-                        <span class="status-ok">&#10003;</span>
-                        {% else %}
-                        <span class="status-missing">&#10007;</span>
-                        {% endif %}
-                    </td>
-                    <td class="xml-status">
-                        {% if pair.xml_exists %}
-                        <span class="status-ok">&#10003;</span>
-                        {% else %}
-                        <span class="status-missing">&#10007;</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if pair.docx_exists %}
-                        <button class="gen-btn" data-dmc="{{ pair.dmc_string }}" title="Сгенерировать XML из DOCX">Сгенерировать XML</button>
-                        {% else %}
-                        <button class="gen-btn" disabled title="DOCX не найден">Сгенерировать XML</button>
-                        {% endif %}
-                    </td>
-                    <td class="view-cell">
-                        {% if pair.xml_exists %}
-                        <a class="view-link" data-dmc="{{ pair.dmc_string }}" href="#" target="_blank" title="Открыть в tg_web">&#128065;</a>
-                        {% else %}
-                        <a class="view-link disabled" title="XML ещё не сгенерирован">&#128065;</a>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if pair.docx_exists and pair.xml_exists %}
-                        <a href="/compare/{{ pair.dmc_string }}" class="compare-link">Сравнить</a>
-                        {% else %}
-                        <a class="compare-link disabled">Сравнить</a>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div id="progress-bar" class="progress-container">
+            <div class="progress-track"><div id="progress-fill" class="progress-fill" style="width:0%"></div></div>
+            <div class="progress-label"><span id="progress-text"></span></div>
+        </div>
+        <div id="structure-result" class="structure-result"></div>
+
+        <!-- ── Секция 5: Навигация по документам ── -->
+        {% if not structure_exists %}
+        <div class="empty-state">
+            <h3>Структура не сгенерирована</h3>
+            <p>Выполните &laquo;Сгенерировать структуру&raquo; или &laquo;Генерировать все (структура+XML)&raquo; для начала работы.</p>
+        </div>
+        {% elif subsystem_groups %}
+            {% for group in subsystem_groups %}
+            <div class="subsystem-folder">
+                <div class="subsystem-toggle" onclick="toggleSubsystem(this)">
+                    <span class="arrow">&#9654;</span>
+                    {{ group.group_key.split(' - ')[0] }} &mdash; {{ group.name }}
+                    <span class="subsystem-count">({{ group.pairs|length }} МД)</span>
+                    <span class="subsystem-stats">
+                        <span>XML: {{ group.xml_ready }}/{{ group.pairs|length }}</span>
+                        <span>&#10003; {{ group.verified }}/{{ group.pairs|length }}</span>
+                    </span>
+                </div>
+                <div class="subsystem-content">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>DMC код</th>
+                                <th>Тип</th>
+                                <th>Наименование</th>
+                                <th>DOCX</th>
+                                <th>XML</th>
+                                <th>Генерация</th>
+                                <th>Просмотр</th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pair in group.pairs %}
+                            <tr>
+                                <td class="dmc-code">{{ pair.dmc_string }}</td>
+                                <td>{% if pair.info_code|int < 100 %}<span class="info-code-badge info-code-descr">Описание</span>{% else %}<span class="info-code-badge info-code-proc">Процедура</span>{% endif %}</td>
+                                <td><strong>{{ pair.tech_name }}</strong>{% if pair.info_name %} &mdash; {{ pair.info_name }}{% endif %}</td>
+                                <td>{% if pair.docx_exists %}<span class="status-ok">&#10003;</span>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
+                                <td class="xml-status">{% if pair.xml_exists %}<span class="status-ok">&#10003;</span>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
+                                <td>{% if pair.docx_exists %}<button class="gen-btn" data-dmc="{{ pair.dmc_string }}">XML</button>{% else %}<button class="gen-btn" disabled>XML</button>{% endif %}</td>
+                                <td>{% if pair.xml_exists %}<a class="view-link" data-dmc="{{ pair.dmc_string }}" href="#" target="_blank">&#128065;</a>{% else %}<a class="view-link disabled">&#128065;</a>{% endif %}</td>
+                                <td>{% if pair.docx_exists and pair.xml_exists %}<a href="/compare/{{ pair.dmc_string }}" class="compare-link">Сравнить</a>{% else %}<a class="compare-link disabled">Сравнить</a>{% endif %}</td>
+                                <td><button class="verified-btn{% if pair.verified %} checked{% endif %}" data-dmc="{{ pair.dmc_string }}" onclick="toggleVerified(this)">{% if pair.verified %}&#10003; Проверен{% else %}Проверить{% endif %}</button></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="flat-table">
+            <table>
+                <thead>
+                    <tr><th>DMC код</th><th>Тип</th><th>Наименование</th><th>DOCX</th><th>XML</th><th>Генерация</th><th>Просмотр</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for pair in pairs %}
+                    <tr>
+                        <td class="dmc-code">{{ pair.dmc_string }}</td>
+                        <td>{% if pair.info_code|int < 100 %}<span class="info-code-badge info-code-descr">Описание</span>{% else %}<span class="info-code-badge info-code-proc">Процедура</span>{% endif %}</td>
+                        <td><strong>{{ pair.tech_name }}</strong>{% if pair.info_name %} &mdash; {{ pair.info_name }}{% endif %}</td>
+                        <td>{% if pair.docx_exists %}<span class="status-ok">&#10003;</span>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
+                        <td class="xml-status">{% if pair.xml_exists %}<span class="status-ok">&#10003;</span>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
+                        <td>{% if pair.docx_exists %}<button class="gen-btn" data-dmc="{{ pair.dmc_string }}">XML</button>{% else %}<button class="gen-btn" disabled>XML</button>{% endif %}</td>
+                        <td>{% if pair.xml_exists %}<a class="view-link" data-dmc="{{ pair.dmc_string }}" href="#" target="_blank">&#128065;</a>{% else %}<a class="view-link disabled">&#128065;</a>{% endif %}</td>
+                        <td>{% if pair.docx_exists and pair.xml_exists %}<a href="/compare/{{ pair.dmc_string }}" class="compare-link">Сравнить</a>{% else %}<a class="compare-link disabled">Сравнить</a>{% endif %}</td>
+                                <td><button class="verified-btn{% if pair.verified %} checked{% endif %}" data-dmc="{{ pair.dmc_string }}" onclick="toggleVerified(this)">{% if pair.verified %}&#10003; Проверен{% else %}Проверить{% endif %}</button></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        {% endif %}
     </div>
 
-    <!-- Settings modal -->
+    <!-- ── Settings modal ── -->
     <div id="settings-modal" class="settings-overlay" style="display:none">
         <div class="settings-box">
             <div class="settings-title">Настройки</div>
-
             <div class="settings-section">Пути</div>
-            <div class="settings-field">
-                <label>Каталог исходных документов (input_dir):</label>
-                <input id="settings-input-dir" type="text">
-            </div>
-            <div class="settings-field">
-                <label>Каталог выходных XML (output_dir):</label>
-                <input id="settings-output-dir" type="text">
-            </div>
-
+            <div class="settings-field"><label>Структура S1000D (input_dir):</label><input id="settings-input-dir" type="text"></div>
+            <div class="settings-field"><label>Выходные XML (output_dir):</label><input id="settings-output-dir" type="text"></div>
+            <div class="settings-section">Генерация структуры</div>
+            <div class="settings-field"><label>Папка сырых документов (raw_input_dir):</label><input id="settings-raw-input" type="text"></div>
+            <div class="settings-field"><label>Эталонная папка для валидации (reference_dir):</label><input id="settings-reference" type="text"></div>
             <div class="settings-section">tg_web (сервер просмотра)</div>
-            <div class="settings-field">
-                <label>URL сервера:</label>
-                <input id="settings-tgweb-url" type="text">
-            </div>
-            <div class="settings-field">
-                <label>Suite ID:</label>
-                <input id="settings-tgweb-suite" type="text">
-            </div>
-            <div class="settings-field">
-                <label>PM Code:</label>
-                <input id="settings-tgweb-pm" type="text">
-            </div>
-
+            <div class="settings-field"><label>URL сервера:</label><input id="settings-tgweb-url" type="text"></div>
+            <div class="settings-field"><label>Suite ID:</label><input id="settings-tgweb-suite" type="text"></div>
+            <div class="settings-field"><label>PM Code:</label><input id="settings-tgweb-pm" type="text"></div>
             <div class="settings-actions">
                 <button id="settings-save" class="settings-btn settings-btn-save">Сохранить</button>
                 <button id="settings-cancel" class="settings-btn settings-btn-cancel">Отмена</button>
@@ -374,243 +367,389 @@
 
 <script>
 (function() {
-    // ── tg_web config (injected from Flask) ──
     var TG_WEB_URL = {{ tg_web_url|tojson }};
     var TG_WEB_SUITE = {{ tg_web_suite_id|tojson }};
     var TG_WEB_PM = {{ tg_web_pm_code|tojson }};
 
-    function buildViewUrl(dmcString) {
-        // DMC-S5-A-029-00-00-00A-012A-A_001 → S5-A-029-00-00-00A-012A-A
-        var short = dmcString.replace(/^DMC-/, '').replace(/_\d+$/, '');
-        return TG_WEB_URL + '/suite/' + TG_WEB_SUITE + '/pm/' + TG_WEB_PM +
-               '/version/001/dm/' + short + '/versionDm/001';
+    function buildViewUrl(dmc) {
+        var short = dmc.replace(/^DMC-/, '').replace(/_\d+$/, '');
+        return TG_WEB_URL + '/suite/' + TG_WEB_SUITE + '/pm/' + TG_WEB_PM + '/version/001/dm/' + short + '/versionDm/001';
     }
 
-    // Set initial hrefs for view links
+    // Init view links
     document.querySelectorAll('a.view-link[data-dmc]').forEach(function(a) {
         a.href = buildViewUrl(a.getAttribute('data-dmc'));
     });
 
-    // ── Helper: generate single DMC, returns promise ──
+    // ── Load raw stats (async) ──
+    fetch('/api/raw-stats').then(function(r) { return r.json(); }).then(function(data) {
+        var el = document.getElementById('raw-stats');
+        if (!data.available) {
+            el.innerHTML = '<div class="raw-stats-title">Исходные документы</div><div style="font-size:13px;color:#999;">Папка сырых документов не задана или не найдена</div>';
+            return;
+        }
+        el.innerHTML = '<div class="raw-stats-title">Исходные документы: ' + data.path + '</div>' +
+            '<div class="raw-stats-row">' +
+            '<span>Описаний: <strong>' + data.descriptions + '</strong></span>' +
+            '<span>ТК: <strong>' + data.tk + '</strong></span>' +
+            '<span>Спецфайлов: <strong>' + data.special + '</strong></span>' +
+            '<span>Рисунков: <strong>' + data.graphics + '</strong></span>' +
+            '<span>Всего: <strong>' + data.total + '</strong></span>' +
+            '</div>';
+    }).catch(function() {
+        document.getElementById('raw-stats').querySelector('.raw-stats-loading').textContent = 'Ошибка загрузки';
+    });
+
+    // ── Restore structure result from previous run ──
+    (function() {
+        var structureExists = {{ structure_exists|tojson }};
+        var hasReference = {{ (reference_dir != '')|tojson }};
+        if (!structureExists) {
+            // Структура пуста — очищаем сохранённые результаты
+            sessionStorage.removeItem('structureResult');
+            return;
+        }
+        var saved = sessionStorage.getItem('structureResult');
+        if (saved && hasReference) {
+            var res = document.getElementById('structure-result');
+            res.innerHTML = saved;
+            res.classList.add('visible');
+        } else {
+            sessionStorage.removeItem('structureResult');
+        }
+    })();
+
+    // ── Recount XML & verified from DOM and update pipeline + accordion headers ──
+    function updateCounters() {
+        var totalDm = document.querySelectorAll('.gen-btn[data-dmc]').length;
+        if (!totalDm) return;
+
+        // Count XML from DOM
+        var xmlOk = document.querySelectorAll('.xml-status .status-ok').length;
+        var pipeXml = document.getElementById('pipeline-xml');
+        if (pipeXml) {
+            pipeXml.textContent = xmlOk + '/' + totalDm;
+            pipeXml.className = 'pipeline-step-value ' + (xmlOk === totalDm ? 'ok' : xmlOk > 0 ? 'partial' : 'none');
+        }
+
+        // Count verified from DOM
+        var verOk = document.querySelectorAll('.verified-btn.checked').length;
+        var pipeVer = document.getElementById('pipeline-verified');
+        if (pipeVer) {
+            pipeVer.textContent = verOk + '/' + totalDm;
+            pipeVer.className = 'pipeline-step-value ' + (verOk === totalDm ? 'ok' : verOk > 0 ? 'partial' : 'none');
+        }
+
+        // Update accordion headers
+        document.querySelectorAll('.subsystem-folder').forEach(function(folder) {
+            var rows = folder.querySelectorAll('tbody tr');
+            var folderXml = 0, folderVer = 0;
+            rows.forEach(function(row) {
+                if (row.querySelector('.xml-status .status-ok')) folderXml++;
+                if (row.querySelector('.verified-btn.checked')) folderVer++;
+            });
+            var statsEl = folder.querySelector('.subsystem-stats');
+            if (statsEl) {
+                statsEl.innerHTML = '<span>XML: ' + folderXml + '/' + rows.length + '</span>' +
+                    '<span>&#10003; ' + folderVer + '/' + rows.length + '</span>';
+            }
+        });
+    }
+
+    // ── Toggle verified ──
+    window.toggleVerified = function(btn) {
+        var dmc = btn.getAttribute('data-dmc');
+        fetch('/api/toggle-verified/' + dmc, { method: 'POST' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.verified) {
+                    btn.classList.add('checked');
+                    btn.innerHTML = '&#10003; Проверен';
+                } else {
+                    btn.classList.remove('checked');
+                    btn.textContent = 'Проверить';
+                }
+                updateCounters();
+            });
+    };
+
+    // ── Accordion toggle ──
+    window.toggleSubsystem = function(el) {
+        el.classList.toggle('open');
+        var content = el.nextElementSibling;
+        content.classList.toggle('open');
+    };
+
+    // ── Generate single XML ──
     function generateOne(btn) {
         var dmc = btn.getAttribute('data-dmc');
         if (!dmc) return Promise.resolve('skip');
-
         btn.disabled = true;
         btn.classList.add('generating');
-        var origText = btn.textContent;
-        btn.textContent = 'Генерация...';
-
+        var orig = btn.textContent;
+        btn.textContent = '...';
         return fetch('/api/regenerate/' + dmc, { method: 'POST' })
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) throw new Error(data.error);
                 var row = btn.closest('tr');
-                // Update XML status
-                var xmlCell = row.querySelector('.xml-status');
-                if (xmlCell) {
-                    xmlCell.innerHTML = '<span class="status-ok">&#10003;</span>';
-                }
-                // Enable compare link
-                var link = row.querySelector('a.compare-link');
-                if (link && link.classList.contains('disabled')) {
-                    link.classList.remove('disabled');
-                    link.href = '/compare/' + dmc;
-                }
-                // Enable view link
-                var viewLink = row.querySelector('a.view-link');
-                if (viewLink) {
-                    viewLink.classList.remove('disabled');
-                    viewLink.setAttribute('data-dmc', dmc);
-                    viewLink.setAttribute('target', '_blank');
-                    viewLink.title = 'Открыть в tg_web';
-                    viewLink.href = buildViewUrl(dmc);
-                }
-                btn.textContent = 'Готово';
-                btn.classList.remove('generating');
-                btn.classList.add('success');
-                setTimeout(function() {
-                    btn.textContent = origText;
-                    btn.disabled = false;
-                    btn.classList.remove('success');
-                }, 2000);
+                var xc = row.querySelector('.xml-status');
+                if (xc) xc.innerHTML = '<span class="status-ok">&#10003;</span>';
+                var cl = row.querySelector('a.compare-link');
+                if (cl && cl.classList.contains('disabled')) { cl.classList.remove('disabled'); cl.href = '/compare/' + dmc; }
+                var vl = row.querySelector('a.view-link');
+                if (vl) { vl.classList.remove('disabled'); vl.setAttribute('data-dmc', dmc); vl.setAttribute('target', '_blank'); vl.href = buildViewUrl(dmc); }
+                btn.textContent = '\u2713'; btn.classList.remove('generating'); btn.classList.add('success');
+                setTimeout(function() { btn.textContent = orig; btn.disabled = false; btn.classList.remove('success'); }, 2000);
+                fetch('/api/restart-tgweb', { method: 'POST' }).catch(function(){});
+                updateCounters();
                 return 'ok';
-            })
-            .catch(function(err) {
-                btn.textContent = 'Ошибка';
-                btn.classList.remove('generating');
-                btn.classList.add('error');
-                btn.title = err.message;
-                setTimeout(function() {
-                    btn.textContent = origText;
-                    btn.disabled = false;
-                    btn.classList.remove('error');
-                    btn.title = 'Сгенерировать XML из DOCX';
-                }, 3000);
+            }).catch(function(err) {
+                btn.textContent = '\u2717'; btn.classList.remove('generating'); btn.classList.add('error'); btn.title = err.message;
+                setTimeout(function() { btn.textContent = orig; btn.disabled = false; btn.classList.remove('error'); btn.title = ''; }, 3000);
                 return 'error';
             });
     }
 
-    // ── Generate All ──
-    document.getElementById('btn-gen-all').addEventListener('click', function() {
-        var allBtn = this;
-        var progressEl = document.getElementById('gen-all-progress');
-        var buttons = Array.from(document.querySelectorAll('.gen-btn[data-dmc]:not([disabled])'));
-        if (buttons.length === 0) {
-            progressEl.textContent = 'Нет доступных модулей для генерации';
-            return;
-        }
+    // ── Progress bar helpers ──
+    function showProgress(pct, text) {
+        var c = document.getElementById('progress-bar');
+        var fill = document.getElementById('progress-fill');
+        var label = document.getElementById('progress-text');
+        c.classList.add('visible');
+        fill.style.width = Math.round(pct) + '%';
+        fill.textContent = Math.round(pct) + '%';
+        label.innerHTML = text;
+    }
+    function hideProgress() {
+        document.getElementById('progress-bar').classList.remove('visible');
+    }
 
-        allBtn.disabled = true;
-        allBtn.classList.add('generating');
-        allBtn.textContent = 'Генерация...';
-
-        var total = buttons.length;
-        var done = 0;
-        var errors = 0;
-
-        function next(i) {
-            if (i >= total) {
-                allBtn.disabled = false;
-                allBtn.classList.remove('generating');
-                allBtn.textContent = 'Генерировать все';
-                var msg = 'Завершено: ' + done + ' из ' + total;
-                if (errors > 0) msg += ' (ошибок: ' + errors + ')';
-                progressEl.textContent = msg;
-                return;
-            }
-            progressEl.textContent = 'Генерация ' + (i + 1) + ' из ' + total + '...';
-            generateOne(buttons[i]).then(function(result) {
-                done++;
-                if (result === 'error') errors++;
-                next(i + 1);
+    // ── Generate Structure ──
+    function generateStructure() {
+        var prog = document.getElementById('gen-all-progress');
+        var res = document.getElementById('structure-result');
+        showProgress(0, 'Генерация структуры папок...');
+        prog.textContent = '';
+        return fetch('/api/generate-structure', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.error) throw new Error(d.error);
+                var h = '<h3>Результат генерации структуры</h3><div class="structure-stats">';
+                h += '<div class="structure-stat">Компонентов: <strong>' + d.components + '</strong></div>';
+                h += '<div class="structure-stat">Модулей данных: <strong>' + d.data_modules + '</strong></div>';
+                h += '<div class="structure-stat">Файлов: <strong>' + d.files_copied + '</strong></div></div>';
+                if (d.validation) {
+                    var v = d.validation;
+                    h += '<div class="structure-stats"><div class="structure-stat">DMC: <strong>' + v.l2_dmc_matched + '/' + v.l2_ref_count + '</strong> (' + v.dmc_score_pct.toFixed(1) + '%)</div>';
+                    h += '<div class="structure-stat">Имена L1: <strong>' + v.l1_name_matched + '/' + v.l1_code_matched + '</strong></div>';
+                    h += '<div class="structure-stat">Имена L2: <strong>' + v.l2_name_matched + '/' + v.l2_dmc_matched + '</strong></div></div>';
+                    // Панель расхождений
+                    var mismatches = (v.l1_name_mismatches || []).concat(v.l2_name_mismatches || []);
+                    if (mismatches.length > 0) {
+                        h += '<div class="mismatch-panel">';
+                        h += '<h3 onclick="var l=this.nextElementSibling;l.classList.toggle(\'open\');this.querySelector(\'.arrow\').classList.toggle(\'open\')"><span class="arrow">&#9654;</span> Расхождения именований (' + mismatches.length + ')</h3>';
+                        h += '<div class="mismatch-list">';
+                        mismatches.forEach(function(m) {
+                            h += '<div class="mismatch-item">';
+                            h += '<span class="dmc">' + (m.dmc || m.code) + '</span> ';
+                            h += 'score: ' + (m.score * 100).toFixed(0) + '%<br>';
+                            h += '<span class="ref-name">Эталон: ' + m.ref + '</span><br>';
+                            h += '<span class="gen-name">Результат: ' + m.gen + '</span>';
+                            h += '</div>';
+                        });
+                        h += '</div></div>';
+                    }
+                }
+                res.innerHTML = h; res.classList.add('visible');
+                // Сохраняем результат в sessionStorage чтобы не потерять при reload
+                sessionStorage.setItem('structureResult', h);
+                showProgress(100, '<strong>Структура сгенерирована.</strong> Перезагрузка...');
+                setTimeout(function() { window.location.reload(); }, 2000);
+                return 'ok';
+            }).catch(function(err) {
+                hideProgress();
+                res.innerHTML = '<h3 style="color:#e74c3c">Ошибка: ' + err.message + '</h3>';
+                res.classList.add('visible'); prog.textContent = '';
+                return 'error';
             });
-        }
-        next(0);
+    }
+
+    document.getElementById('btn-gen-structure').addEventListener('click', function() {
+        var b = this; b.disabled = true; b.classList.add('generating'); b.textContent = 'Генерация...';
+        generateStructure().then(function(r) {
+            if (r === 'error') { b.disabled = false; b.classList.remove('generating'); b.textContent = 'Сгенерировать структуру'; }
+        });
     });
 
-    // ── Generate XML per row (click delegation) ──
+    // ── Generate XML (all) ──
+    function generateAllXml(btn, label, missingOnly) {
+        var prog = document.getElementById('gen-all-progress');
+        var buttons = Array.from(document.querySelectorAll('.gen-btn[data-dmc]:not([disabled])'));
+        if (missingOnly) {
+            buttons = buttons.filter(function(b) {
+                var row = b.closest('tr');
+                var xmlCell = row && row.querySelector('.xml-status');
+                return xmlCell && !xmlCell.querySelector('.status-ok');
+            });
+        }
+        if (!buttons.length) { prog.textContent = 'Нет доступных модулей'; return Promise.resolve(); }
+        btn.disabled = true; btn.classList.add('generating'); btn.textContent = 'XML...';
+        var total = buttons.length, done = 0, errs = 0, errList = [];
+        return new Promise(function(resolve) {
+            (function next(i) {
+                if (i >= total) {
+                    btn.disabled = false; btn.classList.remove('generating'); btn.textContent = label;
+                    var msg = '<strong>Завершено:</strong> ' + done + '/' + total;
+                    if (errs) {
+                        msg += ' <span style="color:#e74c3c">(ошибок: ' + errs + ')</span>';
+                        msg += '<br><details style="margin-top:6px;font-size:12px"><summary style="cursor:pointer;color:#e74c3c">Показать ошибки</summary>';
+                        errList.forEach(function(e) { msg += '<div style="margin:3px 0;padding:3px 6px;background:#fff0f0;border-radius:3px">' + e + '</div>'; });
+                        msg += '</details>';
+                    }
+                    showProgress(100, msg);
+                    // Пересоздать PMC и перезапустить tg_web после пакетной генерации
+                    fetch('/api/regenerate-pmc', { method: 'POST' })
+                        .then(function() { return fetch('/api/restart-tgweb', { method: 'POST' }); })
+                        .catch(function(){});
+                    updateCounters();
+                    if (!errs) setTimeout(hideProgress, 4000);
+                    resolve(); return;
+                }
+                var dmc = buttons[i].getAttribute('data-dmc');
+                var row = buttons[i].closest('tr');
+                var name = row ? (row.querySelector('td:nth-child(3)') || {}).textContent || dmc : dmc;
+                var pct = (i / total) * 100;
+                showProgress(pct, '<strong>' + (i+1) + '/' + total + '</strong> &mdash; ' + name.trim().substring(0, 80));
+                generateOne(buttons[i]).then(function(r) {
+                    done++;
+                    if (r === 'error') { errs++; errList.push(dmc + ': ' + (buttons[i].title || 'unknown error')); }
+                    next(i+1);
+                });
+            })(0);
+        });
+    }
+
+    // ── XML button with dropdown ──
+    (function() {
+        var xmlBtn = document.getElementById('btn-gen-xml');
+        var arrowBtn = document.getElementById('btn-xml-arrow');
+        var dropdown = document.getElementById('xml-dropdown');
+
+        // Count existing XMLs
+        var xmlExists = document.querySelectorAll('.xml-status .status-ok').length;
+        var totalDm = document.querySelectorAll('.gen-btn[data-dmc]').length;
+        var hasExistingXml = xmlExists > 0 && xmlExists < totalDm;
+
+        // Main button: if some XML already exist, show dropdown; otherwise gen all
+        xmlBtn.addEventListener('click', function() {
+            if (hasExistingXml) {
+                dropdown.classList.toggle('open');
+            } else {
+                generateAllXml(xmlBtn, 'Генерировать XML');
+            }
+        });
+
+        // Arrow always toggles dropdown (if there are existing XMLs)
+        arrowBtn.style.display = hasExistingXml ? '' : 'none';
+        arrowBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            dropdown.classList.toggle('open');
+        });
+
+        // Dropdown items
+        dropdown.addEventListener('click', function(e) {
+            var item = e.target.closest('.xml-dropdown-item');
+            if (!item) return;
+            dropdown.classList.remove('open');
+            var mode = item.getAttribute('data-mode');
+            if (mode === 'all') {
+                generateAllXml(xmlBtn, 'Генерировать XML');
+            } else if (mode === 'missing') {
+                generateAllXml(xmlBtn, 'Генерировать XML', true);
+            }
+        });
+
+        // Close dropdown on outside click
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.xml-btn-group')) dropdown.classList.remove('open');
+        });
+    })();
+
+    // ── Generate All ──
+    document.getElementById('btn-gen-all').addEventListener('click', function() {
+        var b = this; b.disabled = true; b.classList.add('generating'); b.textContent = 'Генерация...';
+        // Ставим флаг: после reload страницы продолжить с генерацией XML
+        sessionStorage.setItem('continueWithXml', '1');
+        generateStructure().then(function(r) {
+            if (r === 'error') {
+                sessionStorage.removeItem('continueWithXml');
+                b.disabled = false; b.classList.remove('generating'); b.textContent = 'Генерировать все (структура+XML)';
+            }
+            // generateStructure делает reload → после reload сработает autoStartXml
+        });
+    });
+
+    // ── Auto-start XML generation after structure reload ──
+    (function() {
+        if (sessionStorage.getItem('continueWithXml')) {
+            sessionStorage.removeItem('continueWithXml');
+            var xmlBtn = document.getElementById('btn-gen-xml');
+            if (xmlBtn) {
+                setTimeout(function() { generateAllXml(xmlBtn, 'Генерировать XML'); }, 500);
+            }
+        }
+    })();
+
+    // ── Row click delegation ──
     document.addEventListener('click', function(e) {
         var btn = e.target.closest('.gen-btn');
         if (!btn || btn.disabled) return;
-        if (document.getElementById('btn-gen-all').disabled) return;
         generateOne(btn);
     });
 
-    // ── Settings modal ──
-    var settingsModal = document.getElementById('settings-modal');
+    // ── View link: ensure tg_web is running, reuse same tab ──
+    document.addEventListener('click', function(e) {
+        var link = e.target.closest('a.view-link[data-dmc]');
+        if (!link || link.classList.contains('disabled')) return;
+        e.preventDefault();
+        var href = link.href;
+        fetch('/api/ensure-tgweb', { method: 'POST' })
+            .then(function() { window.open(href, 'tgweb_viewer'); })
+            .catch(function() { window.open(href, 'tgweb_viewer'); });
+    });
 
+    // ── Settings ──
+    var modal = document.getElementById('settings-modal');
     document.getElementById('btn-settings').addEventListener('click', function() {
-        fetch('/api/config')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                document.getElementById('settings-input-dir').value = data.input_dir_raw;
-                document.getElementById('settings-output-dir').value = data.output_dir_raw;
-                document.getElementById('settings-tgweb-url').value = data.tg_web_url || '';
-                document.getElementById('settings-tgweb-suite').value = data.tg_web_suite_id || '';
-                document.getElementById('settings-tgweb-pm').value = data.tg_web_pm_code || '';
-                settingsModal.style.display = 'flex';
-            });
+        fetch('/api/config').then(function(r) { return r.json(); }).then(function(d) {
+            document.getElementById('settings-input-dir').value = d.input_dir_raw;
+            document.getElementById('settings-output-dir').value = d.output_dir_raw;
+            document.getElementById('settings-raw-input').value = d.raw_input_dir || '';
+            document.getElementById('settings-reference').value = d.reference_dir || '';
+            document.getElementById('settings-tgweb-url').value = d.tg_web_url || '';
+            document.getElementById('settings-tgweb-suite').value = d.tg_web_suite_id || '';
+            document.getElementById('settings-tgweb-pm').value = d.tg_web_pm_code || '';
+            modal.style.display = 'flex';
+        });
     });
-
-    document.getElementById('settings-cancel').addEventListener('click', function() {
-        settingsModal.style.display = 'none';
-    });
-
-    settingsModal.addEventListener('click', function(e) {
-        if (e.target === settingsModal) settingsModal.style.display = 'none';
-    });
-
+    document.getElementById('settings-cancel').addEventListener('click', function() { modal.style.display = 'none'; });
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.style.display = 'none'; });
     document.getElementById('settings-save').addEventListener('click', function() {
-        var payload = {
+        var p = {
             input_dir: document.getElementById('settings-input-dir').value.trim(),
             output_dir: document.getElementById('settings-output-dir').value.trim(),
+            raw_input_dir: document.getElementById('settings-raw-input').value.trim(),
+            reference_dir: document.getElementById('settings-reference').value.trim(),
             tg_web_url: document.getElementById('settings-tgweb-url').value.trim(),
             tg_web_suite_id: document.getElementById('settings-tgweb-suite').value.trim(),
             tg_web_pm_code: document.getElementById('settings-tgweb-pm').value.trim(),
         };
-        fetch('/api/config', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.error) throw new Error(data.error);
-            settingsModal.style.display = 'none';
-            // Auto-reload config and rebuild table
-            return fetch('/api/reload-config', { method: 'POST' });
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            document.getElementById('config-input-dir').textContent = data.input_dir;
-            document.getElementById('config-output-dir').textContent = data.output_dir;
-            if (data.pairs) rebuildTable(data.pairs);
-        })
-        .catch(function(err) {
-            alert('Ошибка сохранения: ' + err.message);
-        });
+        fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(p) })
+            .then(function(r) { return r.json(); })
+            .then(function(d) { if (d.error) throw new Error(d.error); modal.style.display = 'none'; window.location.reload(); })
+            .catch(function(err) { alert('Ошибка: ' + err.message); });
     });
-
-    // ── Rebuild table from JSON ──
-    function rebuildTable(pairs) {
-        var tbody = document.querySelector('table tbody');
-        tbody.innerHTML = '';
-        pairs.forEach(function(pair) {
-            var infoInt = parseInt(pair.info_code, 10);
-            var typeBadge = (infoInt < 100)
-                ? '<span class="info-code-badge info-code-descr">Описание</span>'
-                : '<span class="info-code-badge info-code-proc">Процедура</span>';
-
-            var nameHtml = '<strong>' + escHtml(pair.tech_name) + '</strong>';
-            if (pair.info_name) nameHtml += ' &mdash; ' + escHtml(pair.info_name);
-
-            var docxStatus = pair.docx_exists
-                ? '<span class="status-ok">&#10003;</span>'
-                : '<span class="status-missing">&#10007;</span>';
-            var xmlStatus = pair.xml_exists
-                ? '<span class="status-ok">&#10003;</span>'
-                : '<span class="status-missing">&#10007;</span>';
-
-            var genBtn = pair.docx_exists
-                ? '<button class="gen-btn" data-dmc="' + escAttr(pair.dmc_string) + '" title="Сгенерировать XML из DOCX">Сгенерировать XML</button>'
-                : '<button class="gen-btn" disabled title="DOCX не найден">Сгенерировать XML</button>';
-
-            var viewLink;
-            if (pair.xml_exists) {
-                viewLink = '<a class="view-link" data-dmc="' + escAttr(pair.dmc_string) +
-                    '" href="' + escAttr(buildViewUrl(pair.dmc_string)) +
-                    '" target="_blank" title="Открыть в tg_web">&#128065;</a>';
-            } else {
-                viewLink = '<a class="view-link disabled" title="XML ещё не сгенерирован">&#128065;</a>';
-            }
-
-            var compareLink = (pair.docx_exists && pair.xml_exists)
-                ? '<a href="/compare/' + escAttr(pair.dmc_string) + '" class="compare-link">Сравнить</a>'
-                : '<a class="compare-link disabled">Сравнить</a>';
-
-            var tr = document.createElement('tr');
-            tr.innerHTML =
-                '<td class="dmc-code">' + escHtml(pair.dmc_string) + '</td>' +
-                '<td>' + typeBadge + '</td>' +
-                '<td>' + nameHtml + '</td>' +
-                '<td>' + docxStatus + '</td>' +
-                '<td class="xml-status">' + xmlStatus + '</td>' +
-                '<td>' + genBtn + '</td>' +
-                '<td class="view-cell">' + viewLink + '</td>' +
-                '<td>' + compareLink + '</td>';
-            tbody.appendChild(tr);
-        });
-    }
-
-    function escHtml(s) {
-        var d = document.createElement('div');
-        d.textContent = s || '';
-        return d.innerHTML;
-    }
-    function escAttr(s) {
-        return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-    }
 })();
 </script>
 </body>

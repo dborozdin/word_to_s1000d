@@ -49,29 +49,101 @@ _loop_progress = {}  # dmc_string -> {cycle, max_cycles, status}
 _tg_web_proc = None
 
 
+def _get_tgweb_port() -> int:
+    """Получить порт tg_web из config."""
+    try:
+        parsed = __import__('urllib.parse', fromlist=['urlparse']).urlparse(TG_WEB_URL)
+        return parsed.port or 8082
+    except Exception:
+        return 8082
+
+
+def _find_tgweb_pids(port: int) -> list:
+    """Найти PID процессов tgwebserver.exe, слушающих заданный порт."""
+    import subprocess
+    pids = set()
+
+    # 1) Найти PID, слушающие порт (netstat)
+    listening_pids = set()
+    try:
+        out = subprocess.check_output(
+            ['netstat', '-ano', '-p', 'TCP'],
+            stderr=subprocess.DEVNULL, text=True
+        )
+        for line in out.splitlines():
+            if f':{port}' in line and 'LISTENING' in line:
+                parts = line.split()
+                if parts:
+                    try:
+                        listening_pids.add(int(parts[-1]))
+                    except ValueError:
+                        pass
+    except Exception:
+        pass
+
+    # 2) Найти PID процессов с именем tgwebserver.exe (tasklist)
+    tgweb_pids = set()
+    try:
+        out = subprocess.check_output(
+            ['tasklist', '/FI', 'IMAGENAME eq tgwebserver.exe', '/FO', 'CSV', '/NH'],
+            stderr=subprocess.DEVNULL, text=True
+        )
+        for line in out.splitlines():
+            parts = line.strip().strip('"').split('","')
+            if len(parts) >= 2:
+                try:
+                    tgweb_pids.add(int(parts[1]))
+                except ValueError:
+                    pass
+    except Exception:
+        pass
+
+    # Пересечение: tgwebserver.exe на нашем порту
+    pids = tgweb_pids & listening_pids
+    # Если порт не определился — возвращаем все tgwebserver.exe
+    if not pids and tgweb_pids:
+        pids = tgweb_pids
+
+    return list(pids)
+
+
+def _kill_tgweb_on_port(port: int):
+    """Убить процессы tgwebserver.exe, слушающие заданный порт."""
+    import subprocess
+    pids = _find_tgweb_pids(port)
+    for pid in pids:
+        try:
+            subprocess.run(
+                ['taskkill', '/F', '/PID', str(pid)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+
+
+def _is_tgweb_running(port: int) -> bool:
+    """Проверить, запущен ли tgwebserver.exe на заданном порту."""
+    return len(_find_tgweb_pids(port)) > 0
+
+
 def restart_tg_web():
-    """Restart tg_web server so it re-indexes suites after XML generation."""
+    """Restart tg_web server via run_consoled.bat (читает ini, устанавливает пути)."""
     import subprocess
     global _tg_web_proc
 
     tg_web_dir = os.path.join(PROJECT_ROOT, 'tg_web')
-    tg_web_exe = os.path.join(tg_web_dir, 'bin', 'tgwebserver.exe')
-    if not os.path.isfile(tg_web_exe):
+    tg_web_bat = os.path.join(tg_web_dir, 'run_consoled.bat')
+    if not os.path.isfile(tg_web_bat):
         return
 
-    # Kill existing
-    if _tg_web_proc and _tg_web_proc.poll() is None:
-        _tg_web_proc.terminate()
-        try:
-            _tg_web_proc.wait(timeout=5)
-        except Exception:
-            _tg_web_proc.kill()
+    port = _get_tgweb_port()
+    _kill_tgweb_on_port(port)
 
     _CREATE_NEW_CONSOLE = 0x00000010
     try:
         _tg_web_proc = subprocess.Popen(
-            [tg_web_exe, '-e'],
-            cwd=os.path.join(tg_web_dir, 'bin'),
+            ['cmd', '/c', 'run_consoled.bat'],
+            cwd=tg_web_dir,
             creationflags=_CREATE_NEW_CONSOLE,
         )
     except Exception:
@@ -104,15 +176,95 @@ def _is_word_available():
 # Valid render modes
 MODES = ('pdf', 'wordhtml', 'html')
 
+# ── Verified flags (stored as JSON set of DMC strings) ──
+_VERIFIED_FILE = os.path.join(OUTPUT_DIR, 'user_finetune', '_verified.json')
+
+
+def _load_verified_set() -> set:
+    try:
+        import json
+        with open(_VERIFIED_FILE, 'r', encoding='utf-8') as f:
+            return set(json.load(f))
+    except (FileNotFoundError, ValueError):
+        return set()
+
+
+def _save_verified_set(verified: set):
+    import json
+    os.makedirs(os.path.dirname(_VERIFIED_FILE), exist_ok=True)
+    with open(_VERIFIED_FILE, 'w', encoding='utf-8') as f:
+        json.dump(sorted(verified), f, ensure_ascii=False, indent=2)
+
+
+@app.route('/api/toggle-verified/<dmc_string>', methods=['POST'])
+def api_toggle_verified(dmc_string):
+    """Переключает флаг 'проверено' для данного DMC."""
+    verified = _load_verified_set()
+    if dmc_string in verified:
+        verified.discard(dmc_string)
+        state = False
+    else:
+        verified.add(dmc_string)
+        state = True
+    _save_verified_set(verified)
+    return jsonify({'verified': state})
+
 
 @app.route('/')
 def index():
     """Module pair selector page."""
     pairs = get_comparison_pairs(INPUT_DIR, OUTPUT_DIR)
+    structure_exists = len(pairs) > 0
+
+    # Группируем pairs по подсистемам для иерархического отображения
+    subsystem_groups = []
+    if pairs and pairs[0].get('subsystem_group'):
+        from collections import OrderedDict
+        groups = OrderedDict()
+        for pair in pairs:
+            key = pair.get('subsystem_group', '')
+            if key not in groups:
+                groups[key] = {
+                    'name': pair.get('subsystem_name', key),
+                    'group_key': key,
+                    'pairs': []
+                }
+            groups[key]['pairs'].append(pair)
+        subsystem_groups = list(groups.values())
+
+    # Прогресс-данные
+    total_pairs = len(pairs)
+    docx_ready = sum(1 for p in pairs if p['docx_exists'])
+    xml_ready = sum(1 for p in pairs if p['xml_exists'])
+    verified_set = _load_verified_set()
+    for p in pairs:
+        p['verified'] = p['dmc_string'] in verified_set
+    verified_count = sum(1 for p in pairs if p['verified'])
+
+    # Per-group статистика
+    if subsystem_groups:
+        for g in subsystem_groups:
+            g['xml_ready'] = sum(1 for p in g['pairs'] if p['xml_exists'])
+            g['verified'] = sum(1 for p in g['pairs'] if p['verified'])
+
+    raw_input_dir = config.get('raw_import', 'raw_input_dir', fallback='')
+    reference_dir = config.get('raw_import', 'reference_dir', fallback='')
+
+    input_dir_raw = config.get('processing', 'input_dir', fallback='doc_source')
+    output_dir_raw = config.get('processing', 'output_dir', fallback='./tg_web/suites/66935')
+
     return render_template('index.html', pairs=pairs, word_available=_is_word_available(),
-                           input_dir=INPUT_DIR, output_dir=OUTPUT_DIR,
+                           input_dir=input_dir_raw, output_dir=output_dir_raw,
                            tg_web_url=TG_WEB_URL, tg_web_suite_id=TG_WEB_SUITE_ID,
-                           tg_web_pm_code=TG_WEB_PM_CODE)
+                           tg_web_pm_code=TG_WEB_PM_CODE,
+                           subsystem_groups=subsystem_groups,
+                           raw_input_dir=raw_input_dir,
+                           reference_dir=reference_dir,
+                           structure_exists=structure_exists,
+                           total_pairs=total_pairs,
+                           docx_ready=docx_ready,
+                           xml_ready=xml_ready,
+                           verified_count=verified_count)
 
 
 @app.route('/api/config', methods=['GET'])
@@ -126,6 +278,8 @@ def get_config_api():
         'tg_web_url': TG_WEB_URL,
         'tg_web_suite_id': TG_WEB_SUITE_ID,
         'tg_web_pm_code': TG_WEB_PM_CODE,
+        'raw_input_dir': config.get('raw_import', 'raw_input_dir', fallback=''),
+        'reference_dir': config.get('raw_import', 'reference_dir', fallback=''),
     }), 200
 
 
@@ -147,6 +301,8 @@ def update_config_api():
     replacements = {
         'input_dir': data.get('input_dir'),
         'output_dir': data.get('output_dir'),
+        'raw_input_dir': data.get('raw_input_dir'),
+        'reference_dir': data.get('reference_dir'),
         'url': data.get('tg_web_url'),
         'suite_id': data.get('tg_web_suite_id'),
         'pm_code': data.get('tg_web_pm_code'),
@@ -434,10 +590,26 @@ def regenerate_xml_api(dmc_string: str):
         info_code = dm_code['infoCode']
         graphic_prefix = build_graphic_ident_prefix(dm_code)
 
+        # Определяем путь к документу (docx или doc с конвертацией)
+        doc_path = pair['docx_path']
+        if doc_path is None and pair.get('doc_path'):
+            # .doc файл — нужна конвертация в .docx
+            from parsers.doc_converter import convert_doc_to_docx_batch
+            src = pair['doc_path']
+            dst = os.path.splitext(src)[0] + '.docx'
+            if not os.path.isfile(dst):
+                results = convert_doc_to_docx_batch([(src, dst)])
+                if not results or not results[0][1]:
+                    return jsonify({'error': f'Не удалось конвертировать .doc в .docx: {src}'}), 500
+            doc_path = dst
+
+        if doc_path is None:
+            return jsonify({'error': 'Нет .docx/.doc файла'}), 404
+
         if is_procedure_info_code(info_code):
             from processing_scripts import procedure_processor
             procedure_processor.process_procedure_document(
-                doc_path=pair['docx_path'],
+                doc_path=doc_path,
                 output_dir=OUTPUT_DIR,
                 llm_config=llm_config,
                 dm_code_override=dm_code,
@@ -449,7 +621,7 @@ def regenerate_xml_api(dmc_string: str):
         else:
             from processing_scripts import descriptive_processor
             descriptive_processor.process_descriptive_document(
-                doc_path=pair['docx_path'],
+                doc_path=doc_path,
                 output_dir=OUTPUT_DIR,
                 llm_config=llm_config,
                 dm_code_override=dm_code,
@@ -466,10 +638,82 @@ def regenerate_xml_api(dmc_string: str):
         except Exception as pmc_err:
             pmc_msg = f'PMC error: {pmc_err}'
 
-        # Restart tg_web so it re-indexes new XML files
-        restart_tg_web()
-
         return jsonify({'status': 'ok', 'xml_path': pair['xml_path'], 'pmc': pmc_msg}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/raw-stats')
+def api_raw_stats():
+    """Статистика по сырым исходным документам."""
+    import sys as _sys
+    _sys.path.insert(0, PROJECT_ROOT)
+    raw_dir = config.get('raw_import', 'raw_input_dir', fallback='')
+    if not raw_dir:
+        return jsonify({'available': False})
+    raw_abs = os.path.join(PROJECT_ROOT, raw_dir) if not os.path.isabs(raw_dir) else raw_dir
+    if not os.path.isdir(raw_abs):
+        return jsonify({'available': False, 'path': raw_dir})
+    from raw_to_structured import scan_raw_folder
+    docs = scan_raw_folder(raw_abs)
+    return jsonify({
+        'available': True,
+        'path': raw_dir,
+        'total': len(docs),
+        'descriptions': sum(1 for d in docs if d.doc_type == 'description'),
+        'tk': sum(1 for d in docs if d.doc_type == 'tk'),
+        'special': sum(1 for d in docs if d.doc_type in ('piun', 'tk_to', 'special')),
+        'graphics': sum(1 for d in docs if d.doc_type == 'graphic'),
+    })
+
+
+@app.route('/api/generate-structure', methods=['POST'])
+def api_generate_structure():
+    """Запуск raw_to_structured.py: генерация структуры папок с DMC-кодами."""
+    import sys as _sys
+    _sys.path.insert(0, PROJECT_ROOT)
+    from raw_to_structured import (scan_raw_folder, build_data_modules,
+                                    create_folder_structure, validate_against_reference)
+
+    data = request.get_json() or {}
+    raw_input = data.get('raw_input_dir',
+                         config.get('raw_import', 'raw_input_dir', fallback=''))
+    reference = data.get('reference_dir',
+                         config.get('raw_import', 'reference_dir', fallback=''))
+
+    if not raw_input:
+        return jsonify({'error': 'raw_input_dir не задан'}), 400
+
+    raw_input_abs = os.path.join(PROJECT_ROOT, raw_input) if not os.path.isabs(raw_input) else raw_input
+    if not os.path.isdir(raw_input_abs):
+        return jsonify({'error': f'Папка не найдена: {raw_input}'}), 400
+
+    output_abs = INPUT_DIR  # результат пишется в input_dir текущего pipeline
+
+    try:
+        # Очистка выходной папки перед генерацией
+        import shutil
+        if os.path.isdir(output_abs):
+            shutil.rmtree(output_abs)
+
+        docs = scan_raw_folder(raw_input_abs)
+        components = build_data_modules(docs)
+        created = create_folder_structure(components, output_abs)
+
+        result = {
+            'status': 'ok',
+            'components': len(components),
+            'data_modules': sum(len(c.data_modules) for c in components),
+            'files_copied': len(created),
+        }
+
+        # Валидация (если задан reference)
+        if reference:
+            ref_abs = os.path.join(PROJECT_ROOT, reference) if not os.path.isabs(reference) else reference
+            if os.path.isdir(ref_abs):
+                result['validation'] = validate_against_reference(output_abs, ref_abs, silent=True)
+
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -480,6 +724,29 @@ def restart_tgweb_api():
     try:
         restart_tg_web()
         return jsonify({'status': 'ok'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/regenerate-pmc', methods=['POST'])
+def regenerate_pmc_api():
+    """Принудительно пересоздать PMC из всех XML в output_dir."""
+    try:
+        pmc_path = _regenerate_pmc()
+        return jsonify({'status': 'ok', 'pmc': os.path.basename(pmc_path)}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ensure-tgweb', methods=['POST'])
+def ensure_tgweb_api():
+    """Проверить, запущен ли tg_web. Если нет — запустить."""
+    port = _get_tgweb_port()
+    if _is_tgweb_running(port):
+        return jsonify({'status': 'already_running'}), 200
+    try:
+        restart_tg_web()
+        return jsonify({'status': 'started'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -536,6 +803,25 @@ def _regenerate_pmc() -> str:
 
     if not all_dm_refs:
         raise ValueError('No valid DM references extracted')
+
+    # Тегируем dm_refs подсистемами для иерархического PMC
+    from pair_resolver import get_comparison_pairs
+    pairs = get_comparison_pairs(INPUT_DIR, OUTPUT_DIR)
+    dmc_to_subsystem = {}
+    for pair in pairs:
+        if pair.get('subsystem_group'):
+            dmc_to_subsystem[pair['dmc_string']] = {
+                'group': pair['subsystem_group'],
+                'name': pair.get('subsystem_name', '')
+            }
+    if dmc_to_subsystem:
+        from parsers.dmc_parser import dm_code_to_string as _dmc_str
+        for ref in all_dm_refs:
+            dmc_str = _dmc_str(ref['dm_code'])
+            info = dmc_to_subsystem.get(dmc_str)
+            if info:
+                ref['_subsystem_group'] = info['group']
+                ref['_subsystem_name'] = info['name']
 
     pm_gen = PMGenerator(model_ident=model_code or 'S5')
     pm_cfg = create_pm_config(model_ident_code=model_code or 'S5', pm_title='Руководство')
@@ -724,32 +1010,23 @@ if __name__ == '__main__':
             s.settimeout(1)
             return s.connect_ex((host, p)) == 0
 
+    # Убить оставшиеся tgwebserver.exe на нашем порту (сироты от предыдущих запусков)
+    _kill_tgweb_on_port(_tg_port)
+    import time; time.sleep(0.5)
+
     if _is_port_in_use(_tg_host, _tg_port):
-        print(f'tg_web already running on {_tg_host}:{_tg_port}')
+        print(f'tg_web port {_tg_port} still in use (external process?)')
     else:
-        # Try direct binary first (works in both dev and frozen modes),
-        # fall back to bat script
-        tg_web_exe = os.path.join(tg_web_dir, 'bin', 'tgwebserver.exe')
-        # Launch in a separate visible console window so output/errors are visible
+        # Единственный способ запуска — через run_consoled.bat (читает ini, устанавливает пути)
         _CREATE_NEW_CONSOLE = 0x00000010
-        if os.path.isfile(tg_web_exe):
-            try:
-                _tg_web_proc = subprocess.Popen(
-                    [tg_web_exe, '-e'],
-                    cwd=os.path.join(tg_web_dir, 'bin'),
-                    creationflags=_CREATE_NEW_CONSOLE,
-                )
-                print(f'tg_web server started (PID {_tg_web_proc.pid})')
-            except Exception as e:
-                print(f'Warning: could not start tg_web: {e}')
-        elif os.path.isfile(tg_web_bat):
+        if os.path.isfile(tg_web_bat):
             try:
                 _tg_web_proc = subprocess.Popen(
                     ['cmd', '/c', 'run_consoled.bat'],
                     cwd=tg_web_dir,
                     creationflags=_CREATE_NEW_CONSOLE,
                 )
-                print(f'tg_web server started via bat (PID {_tg_web_proc.pid})')
+                print(f'tg_web server started via run_consoled.bat (PID {_tg_web_proc.pid})')
             except Exception as e:
                 print(f'Warning: could not start tg_web: {e}')
         else:

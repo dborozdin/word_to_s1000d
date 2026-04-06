@@ -149,60 +149,93 @@ def find_doc_in_folder(folder_path: str) -> Optional[str]:
     return None
 
 
+def _detect_hierarchical_structure(input_dir: str) -> bool:
+    """Определяет, содержит ли input_dir двухуровневую структуру (подсистема/DMC)."""
+    for entry in os.listdir(input_dir):
+        path = os.path.join(input_dir, entry)
+        if not os.path.isdir(path):
+            continue
+        if entry.startswith('['):
+            return False
+        for child in os.listdir(path):
+            if child.startswith('[') and os.path.isdir(os.path.join(path, child)):
+                return True
+    return False
+
+
+def _build_task(folder_path: str, folder_name: str,
+                subsystem_group: str = None, subsystem_name: str = '') -> Dict:
+    """Формирует task dict для одной DMC-папки."""
+    task = {
+        'folder_path': folder_path,
+        'folder_name': folder_name,
+        'dmc_info': None,
+        'docx_path': None,
+        'skip_reason': None,
+        'subsystem_group': subsystem_group,
+        'subsystem_name': subsystem_name,
+    }
+
+    dmc_info = parse_dmc_from_folder_name(folder_name)
+    task['dmc_info'] = dmc_info
+
+    if dmc_info is None:
+        task['skip_reason'] = 'Нет кода DMC в имени папки'
+        return task
+
+    info_code = dmc_info['dm_code']['infoCode']
+    if is_descriptive_info_code(info_code):
+        task['module_type'] = 'descriptive'
+    elif is_procedure_info_code(info_code):
+        task['module_type'] = 'procedure'
+    else:
+        task['skip_reason'] = f'Неизвестный тип модуля (infoCode={info_code})'
+        return task
+
+    docx_path = find_docx_in_folder(folder_path)
+    if docx_path is None:
+        doc_path = find_doc_in_folder(folder_path)
+        if doc_path:
+            task['doc_path'] = doc_path
+            task['needs_conversion'] = True
+        else:
+            task['skip_reason'] = 'Нет .docx/.doc файла в папке'
+        return task
+
+    task['docx_path'] = docx_path
+    return task
+
+
 def collect_batch_tasks(input_dir: str) -> List[Dict]:
     """
     Scan input_dir for processable folders.
+    Supports both flat and hierarchical (subsystem/DM) structures.
 
     Returns list of task dicts:
-        folder_path, folder_name, docx_path, dmc_info, skip_reason
+        folder_path, folder_name, docx_path, dmc_info, skip_reason,
+        subsystem_group, subsystem_name
     """
     tasks = []
-    for entry in sorted(os.listdir(input_dir)):
-        folder_path = os.path.join(input_dir, entry)
-        if not os.path.isdir(folder_path):
-            continue
+    entries = sorted(os.listdir(input_dir))
 
-        task = {
-            'folder_path': folder_path,
-            'folder_name': entry,
-            'dmc_info': None,
-            'docx_path': None,
-            'skip_reason': None,
-        }
-
-        # Try to parse DMC from folder name
-        dmc_info = parse_dmc_from_folder_name(entry)
-        task['dmc_info'] = dmc_info
-
-        if dmc_info is None:
-            task['skip_reason'] = 'Нет кода DMC в имени папки'
-            tasks.append(task)
-            continue
-
-        info_code = dmc_info['dm_code']['infoCode']
-        if is_descriptive_info_code(info_code):
-            task['module_type'] = 'descriptive'
-        elif is_procedure_info_code(info_code):
-            task['module_type'] = 'procedure'
-        else:
-            task['skip_reason'] = f'Неизвестный тип модуля (infoCode={info_code})'
-            tasks.append(task)
-            continue
-
-        docx_path = find_docx_in_folder(folder_path)
-        if docx_path is None:
-            doc_path = find_doc_in_folder(folder_path)
-            if doc_path:
-                # .doc найден — будет сконвертирован в .docx перед обработкой
-                task['doc_path'] = doc_path
-                task['needs_conversion'] = True
-            else:
-                task['skip_reason'] = 'Нет .docx/.doc файла в папке'
-            tasks.append(task)
-            continue
-
-        task['docx_path'] = docx_path
-        tasks.append(task)
+    if _detect_hierarchical_structure(input_dir):
+        for l1_entry in entries:
+            l1_path = os.path.join(input_dir, l1_entry)
+            if not os.path.isdir(l1_path):
+                continue
+            parts = l1_entry.split(' - ', 1)
+            subsystem_name = parts[1].strip() if len(parts) == 2 else l1_entry
+            for l2_entry in sorted(os.listdir(l1_path)):
+                l2_path = os.path.join(l1_path, l2_entry)
+                if not os.path.isdir(l2_path):
+                    continue
+                tasks.append(_build_task(l2_path, l2_entry, l1_entry, subsystem_name))
+    else:
+        for entry in entries:
+            folder_path = os.path.join(input_dir, entry)
+            if not os.path.isdir(folder_path):
+                continue
+            tasks.append(_build_task(folder_path, entry))
 
     return tasks
 
@@ -338,6 +371,10 @@ def run_batch(config: configparser.ConfigParser, input_dir: str, output_dir: str
                     skip_pmc=True,
                     graphic_ident_prefix=graphic_prefix,
                 )
+            # Тегируем dm_refs подсистемой для иерархического PMC
+            for ref in dm_refs:
+                ref['_subsystem_group'] = task.get('subsystem_group')
+                ref['_subsystem_name'] = task.get('subsystem_name', '')
             all_dm_refs.extend(dm_refs)
             all_illustrations.update(illustrations)
             logger.info(f"  УСПЕХ: Сгенерировано {len(dm_refs)} модуль(ей) данных ({module_type})")

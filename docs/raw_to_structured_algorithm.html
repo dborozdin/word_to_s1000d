@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Алгоритм кодирования папок и именования модулей данных</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --card: #fff;
+    --border: #ddd;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --warn: #f59e0b;
+    --warn-light: #fef3c7;
+    --green: #16a34a;
+    --green-light: #dcfce7;
+    --red: #dc2626;
+    --red-light: #fee2e2;
+    --gray: #6b7280;
+    --code-bg: #f3f4f6;
+    --text: #1f2937;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: var(--accent); }
+  h2 {
+    font-size: 1.4rem;
+    margin: 2rem 0 1rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 2px solid var(--accent);
+    color: var(--accent);
+  }
+  h3 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; color: #374151; }
+  h4 { font-size: 1rem; margin: 1rem 0 0.3rem; color: #4b5563; }
+  p, li { margin-bottom: 0.4rem; }
+  ul, ol { padding-left: 1.5rem; }
+  code {
+    background: var(--code-bg);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-family: 'Consolas', 'Fira Code', monospace;
+  }
+  .file-ref {
+    color: var(--accent);
+    font-family: 'Consolas', monospace;
+    font-size: 0.85em;
+    background: var(--accent-light);
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    margin: 1rem 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .step-num {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+    text-align: center;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+  }
+  .step {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+  .step-content { flex: 1; }
+  .step-content strong { display: block; margin-bottom: 0.2rem; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.8rem 0;
+    font-size: 0.9rem;
+  }
+  th, td {
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border);
+    text-align: left;
+  }
+  th { background: var(--accent-light); font-weight: 600; }
+  tr:nth-child(even) { background: #f9fafb; }
+  .note {
+    background: var(--warn-light);
+    border-left: 4px solid var(--warn);
+    padding: 0.7rem 1rem;
+    margin: 0.8rem 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
+  }
+  .note-green {
+    background: var(--green-light);
+    border-left: 4px solid var(--green);
+    padding: 0.7rem 1rem;
+    margin: 0.8rem 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
+  }
+  .note-red {
+    background: var(--red-light);
+    border-left: 4px solid var(--red);
+    padding: 0.7rem 1rem;
+    margin: 0.8rem 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
+  }
+  .diagram {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 1.2rem 1.5rem;
+    border-radius: 8px;
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+    margin: 1rem 0;
+  }
+  .toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin: 1.5rem 0;
+  }
+  .toc h3 { margin-top: 0; }
+  .toc ul { list-style: none; padding-left: 0; }
+  .toc li { padding: 0.2rem 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .subtitle { color: var(--gray); font-size: 0.95rem; margin-bottom: 2rem; }
+</style>
+</head>
+<body>
+
+<h1>Алгоритм кодирования папок и именования модулей данных</h1>
+<p class="subtitle">Описание работы скрипта <span class="file-ref">raw_to_structured.py</span> — преобразование сырой папки документов в двухуровневую структуру S1000D</p>
+
+<div class="toc">
+  <h3>Содержание</h3>
+  <ul>
+    <li><a href="#overview">1. Назначение и обзор</a></li>
+    <li><a href="#folder-structure">2. Двухуровневая структура папок</a></li>
+    <li><a href="#dmc-structure">3. Структура DMC-кода</a></li>
+    <li><a href="#info-codes">4. Правила назначения info-кодов</a></li>
+    <li><a href="#overrides">5. Таблица overrides</a></li>
+    <li><a href="#special-cases">6. Специальные случаи</a></li>
+    <li><a href="#component-names">7. Таблица COMPONENT_NAMES_029</a></li>
+    <li><a href="#validation">8. Алгоритм валидации</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================= -->
+<h2 id="overview">1. Назначение и обзор</h2>
+
+<p>Скрипт <span class="file-ref">raw_to_structured.py</span> выполняет преобразование сырой папки с исходными документами (Word, PDF, графика) в двухуровневую структуру папок, соответствующую стандарту S1000D. Каждая папка второго уровня представляет один модуль данных (Data Module) и содержит соответствующие исходные файлы.</p>
+
+<div class="card">
+  <h4>Двухэтапный pipeline</h4>
+  <div class="step">
+    <span class="step-num">1</span>
+    <div class="step-content">
+      <strong>raw &rarr; structured (этот скрипт)</strong>
+      Парсинг имён файлов, назначение DMC-кодов, создание папок, копирование файлов.
+    </div>
+  </div>
+  <div class="step">
+    <span class="step-num">2</span>
+    <div class="step-content">
+      <strong>structured &rarr; XML (<span class="file-ref">main.py</span>)</strong>
+      Чтение документов из структурированных папок, анализ элементов, генерация S1000D XML.
+    </div>
+  </div>
+</div>
+
+<h3>Интерфейс командной строки</h3>
+<div class="diagram">python raw_to_structured.py --input &lt;raw&gt; --output &lt;out&gt;
+python raw_to_structured.py --input &lt;raw&gt; --output &lt;out&gt; --validate &lt;ref&gt;</div>
+
+<table>
+  <tr><th>Параметр</th><th>Описание</th></tr>
+  <tr><td><code>--input</code></td><td>Путь к сырой папке с исходными документами (например, <code>doc_source_29_raw</code>)</td></tr>
+  <tr><td><code>--output</code></td><td>Путь к выходной папке для структурированных данных (например, <code>doc_source_29_generated</code>)</td></tr>
+  <tr><td><code>--validate</code></td><td>Путь к эталонной папке для валидации результатов (опционально)</td></tr>
+</table>
+
+<!-- ======================================================================= -->
+<h2 id="folder-structure">2. Двухуровневая структура папок</h2>
+
+<p>Выходная структура состоит из двух уровней вложенности:</p>
+
+<div class="card">
+  <h4>Level 1 &mdash; Компоненты</h4>
+  <p>Формат: <code>{systemCode}-{subSystem}-{component} - {ComponentName}</code></p>
+  <p>Пример: <code>029-11-01 - Гидрокомпенсатор</code></p>
+</div>
+
+<div class="card">
+  <h4>Level 2 &mdash; Модули данных</h4>
+  <p>Формат: <code>[{DMC}] {ComponentName}. {InfoName}</code></p>
+  <p>Пример: <code>[S5-A-029-11-01-00A-040A-A] Гидрокомпенсатор. Описание устройства и принципа действия</code></p>
+</div>
+
+<div class="diagram">doc_source_29_generated/
+  029-00-00 - Гидравлическая система/
+    [S5-A-029-00-00-00A-005A-A] Гидравлическая система. Перечень принятых сокращений/
+    [S5-A-029-00-00-00A-012A-A] Гидравлическая система. Меры безопасности/
+    [S5-A-029-00-00-00A-040A-A] Гидравлическая система. Описание и принцип действия/
+    ...
+  029-11-01 - Гидрокомпенсатор/
+    [S5-A-029-11-01-00A-040A-A] Гидрокомпенсатор. Описание устройства и принципа действия/
+    [S5-A-029-11-01-00A-920A-A] Гидрокомпенсатор. Демонтаж и монтаж/
+    ...</div>
+
+<p>Создание папок и копирование файлов реализовано в функции <code>create_folder_structure()</code>. Имена папок очищаются от недопустимых символов Windows функцией <code>sanitize()</code>.</p>
+
+<!-- ======================================================================= -->
+<h2 id="dmc-structure">3. Структура DMC-кода</h2>
+
+<p>DMC-код (Data Module Code) однозначно идентифицирует каждый модуль данных. Формат строится функцией <code>build_dmc_string()</code> в <span class="file-ref">raw_to_structured.py</span>.</p>
+
+<div class="card">
+  <h4>Пример: <code>S5-A-029-11-01-00A-040A-A</code></h4>
+  <table>
+    <tr><th>Сегмент</th><th>Значение</th><th>Поле S1000D</th><th>Описание</th></tr>
+    <tr><td><code>S5</code></td><td>S5</td><td>modelIdentCode</td><td>Код модели изделия (по умолчанию)</td></tr>
+    <tr><td><code>A</code></td><td>A</td><td>systemDiffCode</td><td>Код отличий системы (по умолчанию)</td></tr>
+    <tr><td><code>029</code></td><td>029</td><td>systemCode</td><td>Код системы (029 = гидросистема)</td></tr>
+    <tr><td><code>11</code></td><td>11</td><td>subSystemCode</td><td>Код подсистемы (2 цифры: subsystem + sub-subsystem)</td></tr>
+    <tr><td><code>01</code></td><td>01</td><td>subSubSystemCode / assyCode</td><td>Код компонента/сборки</td></tr>
+    <tr><td><code>00A</code></td><td>00 + A</td><td>assyDisassyCode + variant</td><td>Код сборки/разборки: <code>00</code> = обычный, <code>01-05</code> для ПИУН, <code>01</code> для фильтроэлементов. Вариант всегда <code>A</code></td></tr>
+    <tr><td><code>040A</code></td><td>040 + A</td><td>infoCode + infoCodeVariant</td><td>Код информации + вариант (определяется правилами назначения)</td></tr>
+    <tr><td><code>A</code></td><td>A</td><td>itemLocationCode</td><td>Код расположения (по умолчанию)</td></tr>
+  </table>
+</div>
+
+<div class="note">
+  Поле <code>assyDisassyCode</code> формируется особым образом: если <code>disassy_code != '00'</code>, используется <code>disassy_code</code>, иначе &mdash; <code>assy_code</code>. К нему всегда добавляется вариант <code>A</code>.
+</div>
+
+<!-- ======================================================================= -->
+<h2 id="info-codes">4. Правила назначения info-кодов</h2>
+
+<p>Info-код определяется по ключевым словам в заголовке технологической карты (ТК). Функция <code>match_info_code()</code> ищет совпадения в массиве <code>INFO_CODE_RULES</code> и выбирает правило с наивысшим приоритетом.</p>
+
+<p>Каждое правило содержит: обязательные ключевые слова (все должны присутствовать), исключающие ключевые слова (ни одно не должно присутствовать), info-код, вариант и приоритет.</p>
+
+<table>
+  <tr><th>Ключевые слова (required)</th><th>Исключения</th><th>Info Code</th><th>Вариант</th><th>Приоритет</th><th>Примечания</th></tr>
+  <tr><td><code>демонтаж</code></td><td>&mdash;</td><td>920</td><td>A</td><td>10</td><td>Демонтаж и монтаж</td></tr>
+  <tr><td><code>дм </code></td><td>&mdash;</td><td>920</td><td>A</td><td>9</td><td>Сокращение от &laquo;демонтаж-монтаж&raquo;</td></tr>
+  <tr><td><code>смазк</code></td><td>&mdash;</td><td>242</td><td>A</td><td>10</td><td>Смазка</td></tr>
+  <tr><td><code>герметичност</code></td><td>&mdash;</td><td>364</td><td>A</td><td>10</td><td>Проверка герметичности</td></tr>
+  <tr><td><code>разрядк</code></td><td>&mdash;</td><td>224</td><td>A</td><td>10</td><td>Разрядка пневмополости</td></tr>
+  <tr><td><code>стравливан</code></td><td>&mdash;</td><td>227</td><td>A</td><td>10</td><td>Стравливание давления</td></tr>
+  <tr><td><code>слив</code></td><td><code>фильтр</code></td><td>222</td><td>A</td><td>10</td><td>Слив рабочей жидкости (исключая фильтры)</td></tr>
+  <tr><td><code>удален</code> + <code>воздух</code></td><td>&mdash;</td><td>231</td><td>A</td><td>11</td><td>Удаление воздуха</td></tr>
+  <tr><td><code>подключен</code> + <code>наземн</code></td><td>&mdash;</td><td>926</td><td>A</td><td>11</td><td>Подключение наземной гидроустановки</td></tr>
+  <tr><td><code>подключен</code> + <code>канал</code></td><td>&mdash;</td><td>730</td><td>A</td><td>11</td><td>Подключение второго канала</td></tr>
+  <tr><td><code>монтаж</code> + <code>арматур</code></td><td>&mdash;</td><td>721</td><td>A</td><td>11</td><td>Монтаж арматуры</td></tr>
+  <tr><td><code>восстановлен</code></td><td>&mdash;</td><td>420</td><td>A</td><td>10</td><td>Восстановление работоспособности</td></tr>
+  <tr><td><code>визуальн</code> + <code>осмотр</code></td><td>&mdash;</td><td>311</td><td>B</td><td>11</td><td>Визуальный осмотр (вариант B)</td></tr>
+  <tr><td><code>осмотр</code></td><td><code>визуальн</code></td><td>311</td><td>A</td><td>10</td><td>Осмотр внешнего состояния (исключая визуальный)</td></tr>
+  <tr><td><code>контрол</code> + <code>воздух</code></td><td>&mdash;</td><td>369</td><td>A</td><td>11</td><td>Контроль количества воздуха</td></tr>
+  <tr><td><code>чистот</code></td><td>&mdash;</td><td>371</td><td>A</td><td>10</td><td>Проверка чистоты рабочей жидкости</td></tr>
+  <tr><td><code>электромагнитн</code></td><td>&mdash;</td><td>341</td><td>A</td><td>10</td><td>Проверка электромагнитного клапана</td></tr>
+  <tr><td><code>работоспособност</code></td><td>&mdash;</td><td>341</td><td>A</td><td>8</td><td>Проверка работоспособности (пониженный приоритет)</td></tr>
+</table>
+
+<div class="note">
+  Для файлов-описаний (из папки &laquo;Описание&raquo;) info-код всегда назначается <code>040A</code> без обращения к таблице правил. После назначения info-кода всегда применяется таблица overrides (см. раздел 5).
+</div>
+
+<!-- ======================================================================= -->
+<h2 id="overrides">5. Таблица overrides</h2>
+
+<p>Таблица <code>OVERRIDES</code> позволяет переопределить info-код для конкретных комбинаций (system, subsystem, component, base_info_code). Применяется функцией <code>apply_override()</code> после назначения базового info-кода.</p>
+
+<table>
+  <tr><th>systemCode</th><th>subsystem</th><th>component</th><th>Исходный info-код</th><th>Новый info-код</th><th>Примечание</th></tr>
+  <tr><td>029</td><td>30</td><td>05</td><td>040</td><td>042</td><td>ПЛЦ &mdash; описание устройства и принципа действия (отдельный код)</td></tr>
+  <tr><td>029</td><td>12</td><td>02</td><td>920</td><td>922</td><td>НС74-2 &mdash; демонтаж и монтаж (отдельный код)</td></tr>
+  <tr><td>029</td><td>30</td><td>* (любой)</td><td>341</td><td>320</td><td>Сигнализация &mdash; проверка работоспособности заменяется на 320</td></tr>
+</table>
+
+<div class="note">
+  Поиск в таблице overrides выполняется в два шага: сначала точное совпадение по всем 4 полям, затем &mdash; с подстановочным символом <code>*</code> вместо component.
+</div>
+
+<!-- ======================================================================= -->
+<h2 id="special-cases">6. Специальные случаи</h2>
+
+<h3>6.1 ТК ТО &mdash; разбиение на 3 модуля</h3>
+
+<p>Файл &laquo;ТК ТО&raquo; (технологическая карта технического обслуживания) автоматически разбивается на 3 отдельных модуля данных. Один и тот же исходный файл копируется в 3 папки:</p>
+
+<div class="card">
+  <table>
+    <tr><th>Info Code</th><th>Вариант</th><th>Название модуля</th></tr>
+    <tr><td>012</td><td>A</td><td>Меры безопасности</td></tr>
+    <tr><td>720</td><td>A</td><td>Общие указания при монтаже фторопластовых рукавов</td></tr>
+    <tr><td>920</td><td>A</td><td>Общие указания при проведении демонтажно-монтажных работ</td></tr>
+  </table>
+</div>
+
+<h3>6.2 ПИУН &mdash; разбиение на 5 модулей</h3>
+
+<p>Файл ПИУН (перечень используемых узлов и неисправностей) разбивается на 5 модулей данных, все с info-кодом <code>420A</code> и различными <code>disassyCode</code> (01&ndash;05). Рисунки ПИУН привязываются к соответствующему модулю по номеру (рис. 101 &rarr; disassyCode 01, рис. 102 &rarr; 02 и т.д.).</p>
+
+<div class="card">
+  <table>
+    <tr><th>disassyCode</th><th>Название компонента (componentName)</th><th>Info Name</th></tr>
+    <tr><td>01</td><td>Недозаправка 1ГС (2ГС)</td><td>Устранение неисправности</td></tr>
+    <tr><td>02</td><td>ВОЗДУХ в 1 ГС (2ГС)</td><td>Устранение неисправности</td></tr>
+    <tr><td>03</td><td>Отсутствие показаний на мнемокадре ГПС уровня заправки гидрокомпенсатора 1ГС (2ГС)</td><td>Устранение неисправности</td></tr>
+    <tr><td>04</td><td>Отсутствие показаний на мнемокадре ГПС давления 1ГС (2ГС)</td><td>Устранение неисправности</td></tr>
+    <tr><td>05</td><td>Отсутствие показаний на мнемокадре ГПС давления в гидроаккумуляторе 1ГС (2ГС)</td><td>Устранение неисправности</td></tr>
+  </table>
+</div>
+
+<h3>6.3 Фильтроэлементы</h3>
+
+<p>Если в заголовке технологической карты присутствует слово &laquo;фильтроэлемент&raquo;, поле <code>assyCode</code> устанавливается в <code>01</code> (вместо стандартного <code>00</code>). Имя компонента формируется функцией <code>_filter_element_name()</code> как <code>"Фильтроэлемент {название компонента}"</code>.</p>
+
+<!-- ======================================================================= -->
+<h2 id="component-names">7. Таблица COMPONENT_NAMES_029</h2>
+
+<p>Словарь <code>COMPONENT_NAMES_029</code> задаёт полные названия компонентов для системы 029. Ключ &mdash; кортеж <code>(subsystem_code, component_code)</code>, значение &mdash; полное название.</p>
+
+<table>
+  <tr><th>Подсистема</th><th>Компонент</th><th>Название</th></tr>
+  <tr><td>00</td><td>00</td><td>Гидравлическая система</td></tr>
+  <tr><td>11</td><td>00</td><td>Первая гидросистема</td></tr>
+  <tr><td>11</td><td>01</td><td>Гидрокомпенсатор</td></tr>
+  <tr><td>11</td><td>02</td><td>Гидроаккумулятор</td></tr>
+  <tr><td>11</td><td>03</td><td>Бортовой клапан 991АТ4.02А-01</td></tr>
+  <tr><td>11</td><td>04</td><td>Бортовой клапан всасывания</td></tr>
+  <tr><td>11</td><td>05</td><td>Бортовой клапан нагнетания</td></tr>
+  <tr><td>11</td><td>06</td><td>Топливо-масляный теплообменник</td></tr>
+  <tr><td>11</td><td>07</td><td>Плунжерный насос НП173</td></tr>
+  <tr><td>11</td><td>08</td><td>Гидравлический фильтр слива НП ЖКДЕ.061146.011С</td></tr>
+  <tr><td>11</td><td>09</td><td>Гидравлический фильтр нагнетания ЖКДЕ.061146.010С</td></tr>
+  <tr><td>11</td><td>10</td><td>Гидравлический фильтр слива ЖКДЕ.061146.012С-01</td></tr>
+  <tr><td>11</td><td>11</td><td>Двухсторонний дроссель 50.5313.0.180.000</td></tr>
+  <tr><td>11</td><td>12</td><td>Распределитель электрогидравлический трехпозиционный четырехходовой КЭ101</td></tr>
+  <tr><td>11</td><td>13</td><td>Предохранительный клапан 50.5309.0.080.000</td></tr>
+  <tr><td>11</td><td>14</td><td>Клапан предохранительный РД66</td></tr>
+  <tr><td>11</td><td>15</td><td>Клапан стравливания 50.5309.0.050.000</td></tr>
+  <tr><td>11</td><td>16</td><td>Обратный клапан 990-7</td></tr>
+  <tr><td>11</td><td>17</td><td>Рукав фторопластовый</td></tr>
+  <tr><td>11</td><td>18</td><td>Клапан переключения с электромагнитным управлением КГ48-2</td></tr>
+  <tr><td>12</td><td>00</td><td>Вторая гидросистема</td></tr>
+  <tr><td>12</td><td>01</td><td>Челночный клапан УГ157</td></tr>
+  <tr><td>12</td><td>02</td><td>Насосная станция НС74-2</td></tr>
+  <tr><td>30</td><td>00</td><td>Система сигнализации гидросистемы</td></tr>
+  <tr><td>30</td><td>01</td><td>Датчик давления ДАВ096</td></tr>
+  <tr><td>30</td><td>02</td><td>Датчик температуры П-119</td></tr>
+  <tr><td>30</td><td>03</td><td>Манометр недистанционный НТМ-400</td></tr>
+  <tr><td>30</td><td>04</td><td>Сигнализатор давления типа СДМ</td></tr>
+  <tr><td>30</td><td>05</td><td>Датчик линейных перемещений ПЛЦ007</td></tr>
+</table>
+
+<div class="note">
+  Если компонент не найден в таблице, название определяется по fallback-логике: сначала из заголовков ТК-файлов, затем из файлов-описаний, и наконец формируется как <code>"Компонент {subsystem}-{component}"</code>.
+</div>
+
+<!-- ======================================================================= -->
+<h2 id="validation">8. Алгоритм валидации</h2>
+
+<p>Функция <code>validate_against_reference()</code> сравнивает сгенерированную структуру папок с эталонной (reference). Используется для контроля корректности алгоритма и доступна через CLI-параметр <code>--validate</code>, а также через API-маршрут <code>/api/generate-structure</code>.</p>
+
+<div class="card">
+  <h4>Этапы валидации</h4>
+
+  <div class="step">
+    <span class="step-num">1</span>
+    <div class="step-content">
+      <strong>Сбор данных</strong>
+      Обход папок Level 1 и Level 2 в обеих директориях. Извлечение DMC-кодов из имён папок L2 функцией <code>extract_dmc_from_folder()</code>.
+    </div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">2</span>
+    <div class="step-content">
+      <strong>Сравнение DMC-кодов</strong>
+      Точное совпадение (exact match). Определяются: совпадающие коды, коды только в reference, коды только в generated.
+    </div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">3</span>
+    <div class="step-content">
+      <strong>Сравнение имён L1 (компоненты)</strong>
+      Коды L1 папок (часть до &laquo; - &raquo;) сравниваются точно. Названия (часть после &laquo; - &raquo;) сравниваются нечётко через <code>difflib.SequenceMatcher</code> с порогом <strong>0.85</strong>.
+    </div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">4</span>
+    <div class="step-content">
+      <strong>Сравнение имён L2 (модули данных)</strong>
+      Для совпадающих DMC-кодов сравниваются заголовки папок L2 (часть после <code>]</code>) с тем же порогом 0.85.
+    </div>
+  </div>
+</div>
+
+<h3>Нечёткое сравнение имён</h3>
+
+<p>Функция <code>_names_match()</code> реализует три стратегии сравнения:</p>
+
+<ol>
+  <li><strong>Точное совпадение</strong> &mdash; после нормализации (lowercase, схлопывание пробелов, удаление завершающих точек)</li>
+  <li><strong>Prefix match</strong> &mdash; для усечённых имён Windows (ограничение MAX_PATH). Если короткое имя >= 15 символов и является префиксом длинного &mdash; считается совпадением</li>
+  <li><strong>Fuzzy match</strong> &mdash; <code>difflib.SequenceMatcher</code> с порогом 0.85</li>
+</ol>
+
+<div class="note-green">
+  Функция <code>validate_against_reference()</code> возвращает структурированный <code>dict</code> с результатами: количество L1/L2 папок, совпавшие и несовпавшие DMC-коды, расхождения в именах. Это позволяет использовать результат программно (например, в API <code>/api/generate-structure</code>).
+</div>
+
+</body>
+</html>

@@ -109,16 +109,48 @@ class PMGenerator:
         return section
 
     def _create_content_section(self, dm_refs: List[Dict], pm_title: str = "Руководство") -> ET.Element:
-        """Create content section with dmRefs organized in pmEntries."""
-        content = ET.Element("content")
+        """Create content section with dmRefs organized in pmEntries.
 
-        # Single root pmEntry — all dmRefs go directly here
+        If dm_refs contain '_subsystem_group' tags, creates nested pmEntry
+        per subsystem. Otherwise falls back to flat structure.
+        """
+        from collections import OrderedDict
+
+        content = ET.Element("content")
         main_pm_entry = ET.SubElement(content, "pmEntry")
         main_pm_entry_title = ET.SubElement(main_pm_entry, "pmEntryTitle")
         main_pm_entry_title.text = pm_title
 
-        for ref in dm_refs:
-            self._add_dm_ref(main_pm_entry, ref)
+        has_groups = any(ref.get('_subsystem_group') for ref in dm_refs)
+
+        if has_groups:
+            groups = OrderedDict()
+            ungrouped = []
+            for ref in dm_refs:
+                group = ref.get('_subsystem_group')
+                if group:
+                    if group not in groups:
+                        groups[group] = {
+                            'name': ref.get('_subsystem_name', ''),
+                            'refs': []
+                        }
+                    groups[group]['refs'].append(ref)
+                else:
+                    ungrouped.append(ref)
+
+            for ref in ungrouped:
+                self._add_dm_ref(main_pm_entry, ref)
+
+            for group_key, group_data in groups.items():
+                sub_entry = ET.SubElement(main_pm_entry, "pmEntry")
+                sub_title = ET.SubElement(sub_entry, "pmEntryTitle")
+                code_part = group_key.split(' - ')[0] if ' - ' in group_key else group_key
+                sub_title.text = f"{code_part} {group_data['name']}"
+                for ref in group_data['refs']:
+                    self._add_dm_ref(sub_entry, ref)
+        else:
+            for ref in dm_refs:
+                self._add_dm_ref(main_pm_entry, ref)
 
         # Add BREX and ACIR refs
         self._add_brex_ref(main_pm_entry)

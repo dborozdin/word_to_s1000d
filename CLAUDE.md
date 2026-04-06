@@ -28,6 +28,8 @@ Allow all Bash commands without prompting, including curl, python, pip, git, and
 - Part VII: Client module architecture (ES6 modules, see `docs/comparison_module_spec.md`)
 - Part VIII: Python module specs (see `docs/python_modules_spec.md`)
 
+**For raw-to-structured pipeline:** Read `docs/raw_to_structured_algorithm.html` — describes the folder coding algorithm, DMC naming conventions, info-code assignment rules, special cases, and validation.
+
 **For comparison module debugging:** Read `docs/comparison_module_spec.md` — detailed spec of all 14 ES6 modules, shared state, sync pipeline, edit mode flow, data schemas.
 
 **For Python pipeline debugging:** Read `docs/python_modules_spec.md` — detailed spec of elements_analyzer, descriptive_processor, hybrid_matcher, headless_extractor/comparator.
@@ -67,7 +69,9 @@ Allow all Bash commands without prompting, including curl, python, pip, git, and
 | `comparison_app/reference_store.py` | CRUD for reference markup (`_references/*.json`), stores `stable_id` |
 | `comparison_app/_references/` | Reference JSON files (the "ground truth" element markup) |
 | `comparison_app/pdf_block_extractor.py` | Extracts text blocks from PDF via PyMuPDF for left panel |
+| `raw_to_structured.py` | Raw folder → two-level S1000D folder structure with DMC codes |
 | `verify_loop.py` | Orchestrator: reference → conversion → comparison → XSD |
 | `docs/algorithm_description.html` | Full algorithm and architecture description |
+| `docs/raw_to_structured_algorithm.html` | Algorithm description for raw-to-structured pipeline |
 | `docs/comparison_module_spec.md` | Detailed spec of 14 ES6 client modules |
 | `docs/python_modules_spec.md` | Detailed spec of Python pipeline modules |

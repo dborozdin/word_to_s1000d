@@ -30,6 +30,19 @@
             "args": ["docs/РСУ_адаптированная.docx"],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Raw → S1000D structure",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "raw_to_structured.py",
+            "args": [
+                "--input", "doc_source_29_raw",
+                "--output", "doc_source_29_generated",
+                "--validate", "doc_source_29_reference"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

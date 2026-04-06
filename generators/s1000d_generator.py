@@ -449,6 +449,17 @@ class S1000DGenerator:
             para = ET.SubElement(proc_step, "para")
             para.text = text
 
+            # List items → <randomList> inside <para>
+            list_items = step.get('list_items', []) if isinstance(step, dict) else []
+            if list_items:
+                random_list = ET.SubElement(para, "randomList",
+                                           listItemPrefix="pf02")
+                for li in list_items:
+                    li_text = li.get('text', '') if isinstance(li, dict) else str(li)
+                    list_item = ET.SubElement(random_list, "listItem")
+                    li_para = ET.SubElement(list_item, "para")
+                    li_para.text = li_text
+
             substeps = step.get('substeps', []) if isinstance(step, dict) else []
             if substeps:
                 self._build_procedural_steps(proc_step, substeps, counter)

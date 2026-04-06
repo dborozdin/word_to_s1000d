@@ -520,6 +520,9 @@
         }
     })();
 
+    // ── Batch mode flag: suppress per-item tg_web restart ──
+    var _batchMode = false;
+
     // ── Generate single XML ──
     function generateOne(btn) {
         var dmc = btn.getAttribute('data-dmc');
@@ -541,7 +544,11 @@
                 if (vl) { vl.classList.remove('disabled'); vl.setAttribute('data-dmc', dmc); vl.setAttribute('target', '_blank'); vl.href = buildViewUrl(dmc); }
                 btn.textContent = '\u2713'; btn.classList.remove('generating'); btn.classList.add('success');
                 setTimeout(function() { btn.textContent = orig; btn.disabled = false; btn.classList.remove('success'); }, 2000);
-                fetch('/api/restart-tgweb', { method: 'POST' }).catch(function(){});
+                if (!_batchMode) {
+                    fetch('/api/regenerate-pmc', { method: 'POST' })
+                        .then(function() { return fetch('/api/restart-tgweb', { method: 'POST' }); })
+                        .catch(function(){});
+                }
                 updateCounters();
                 return 'ok';
             }).catch(function(err) {
@@ -625,6 +632,7 @@
     // ── Generate XML (all) ──
     function generateAllXml(btn, label, missingOnly) {
         var prog = document.getElementById('gen-all-progress');
+        _batchMode = true;  // Suppress per-item tg_web restart
         var buttons = Array.from(document.querySelectorAll('.gen-btn[data-dmc]:not([disabled])'));
         if (missingOnly) {
             buttons = buttons.filter(function(b) {
@@ -648,10 +656,12 @@
                         msg += '</details>';
                     }
                     showProgress(100, msg);
-                    // Пересоздать PMC и перезапустить tg_web после пакетной генерации
+                    _batchMode = false;
+                    // Пересоздать PMC и перезапустить tg_web один раз после пакетной генерации
                     fetch('/api/regenerate-pmc', { method: 'POST' })
-                        .then(function() { return fetch('/api/restart-tgweb', { method: 'POST' }); })
-                        .catch(function(){});
+                        .then(function(r) { console.log('[PMC] regenerate-pmc status:', r.status); return fetch('/api/restart-tgweb', { method: 'POST' }); })
+                        .then(function(r) { console.log('[PMC] restart-tgweb status:', r.status); })
+                        .catch(function(e) { console.error('[PMC] Error:', e); });
                     updateCounters();
                     if (!errs) setTimeout(hideProgress, 4000);
                     resolve(); return;
@@ -736,7 +746,9 @@
             sessionStorage.removeItem('continueWithXml');
             var xmlBtn = document.getElementById('btn-gen-xml');
             if (xmlBtn) {
-                setTimeout(function() { generateAllXml(xmlBtn, 'Генерировать XML'); }, 500);
+                setTimeout(function() {
+                    generateAllXml(xmlBtn, 'Генерировать XML');
+                }, 500);
             }
         }
     })();

@@ -127,7 +127,10 @@ def _is_tgweb_running(port: int) -> bool:
 
 
 def restart_tg_web():
-    """Restart tg_web server via run_consoled.bat (читает ini, устанавливает пути)."""
+    """Restart tg_web server via run_consoled.bat (читает ini, устанавливает пути).
+
+    Всегда запускает в видимом консольном окне для отладки.
+    """
     import subprocess
     global _tg_web_proc
 
@@ -141,10 +144,14 @@ def restart_tg_web():
 
     _CREATE_NEW_CONSOLE = 0x00000010
     try:
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 4  # SW_SHOWNOACTIVATE — visible but not focused
         _tg_web_proc = subprocess.Popen(
             ['cmd', '/c', 'run_consoled.bat'],
             cwd=tg_web_dir,
             creationflags=_CREATE_NEW_CONSOLE,
+            startupinfo=si,
         )
     except Exception:
         pass
@@ -684,15 +691,7 @@ def regenerate_xml_api(dmc_string: str):
                 skip_pmc=True,
                 graphic_ident_prefix=graphic_prefix,
             )
-        # After successful generation, regenerate PMC
-        pmc_msg = ''
-        try:
-            pmc_path = _regenerate_pmc()
-            pmc_msg = os.path.basename(pmc_path)
-        except Exception as pmc_err:
-            pmc_msg = f'PMC error: {pmc_err}'
-
-        return jsonify({'status': 'ok', 'xml_path': pair['xml_path'], 'pmc': pmc_msg}), 200
+        return jsonify({'status': 'ok', 'xml_path': pair['xml_path']}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -859,7 +858,7 @@ def _regenerate_pmc() -> str:
         raise ValueError('No valid DM references extracted')
 
     # Тегируем dm_refs подсистемами для иерархического PMC
-    from pair_resolver import get_comparison_pairs
+    from comparison_app.pair_resolver import get_comparison_pairs
     pairs = get_comparison_pairs(INPUT_DIR, OUTPUT_DIR)
     dmc_to_subsystem = {}
     for pair in pairs:
@@ -1071,20 +1070,9 @@ if __name__ == '__main__':
     if _is_port_in_use(_tg_host, _tg_port):
         print(f'tg_web port {_tg_port} still in use (external process?)')
     else:
-        # Единственный способ запуска — через run_consoled.bat (читает ini, устанавливает пути)
-        _CREATE_NEW_CONSOLE = 0x00000010
-        if os.path.isfile(tg_web_bat):
-            try:
-                _tg_web_proc = subprocess.Popen(
-                    ['cmd', '/c', 'run_consoled.bat'],
-                    cwd=tg_web_dir,
-                    creationflags=_CREATE_NEW_CONSOLE,
-                )
-                print(f'tg_web server started via run_consoled.bat (PID {_tg_web_proc.pid})')
-            except Exception as e:
-                print(f'Warning: could not start tg_web: {e}')
-        else:
-            print(f'Warning: tg_web not found in {tg_web_dir}')
+        restart_tg_web()
+        if _tg_web_proc:
+            print(f'tg_web server started (PID {_tg_web_proc.pid})')
 
     print(f'Word to S1000D v{APP_VERSION}')
     print(f'Comparison app starting on http://localhost:{port}')

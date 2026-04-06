@@ -354,6 +354,82 @@ def _looks_like_note(content: str, elements: List[Dict], current_elem: Dict) -> 
 
 
 # ---------------------------------------------------------------------------
+# List grouping for procedural steps
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+_LIST_ITEM_RE = _re.compile(
+    r'^[\-\u2013\u2014\u2212\u2022\u25CF\u25CB\u2023\u25AA\u25AB\u2043]\s+'
+)
+
+
+def _is_list_item_by_content(step: Dict) -> bool:
+    """Detect list item by type OR by text starting with dash/bullet."""
+    step_type = step.get('type', '')
+    if step_type in ('unnumbered_list', 'nested_unnumbered_list'):
+        return True
+    # Fallback: check text content (handles cases where apply_reference_markup
+    # changed type from unnumbered_list to paragraph)
+    text = step.get('text', '').strip()
+    if _LIST_ITEM_RE.match(text):
+        return True
+    # Semicolon-ending short text after a colon-intro is also a list item
+    if text.endswith(';') and len(text) < 120:
+        return True
+    return False
+
+
+def _group_list_items(steps: List[Dict]) -> List[Dict]:
+    """Group consecutive list items into the preceding step.
+
+    Before: [step_intro "Выберите:", list "от промышленной", list "от автономного"]
+    After:  [step_intro "Выберите:" with list_items=["от промышленной", "от автономного"]]
+    """
+    if not steps:
+        return steps
+
+    result = []
+    i = 0
+    while i < len(steps):
+        step = steps[i]
+
+        # Check if NEXT elements are list items
+        if i + 1 < len(steps) and _is_list_item_by_content(steps[i + 1]):
+            # Collect consecutive list items
+            list_items = []
+            j = i + 1
+            while j < len(steps) and _is_list_item_by_content(steps[j]):
+                list_items.append({'text': steps[j]['text']})
+                j += 1
+
+            # Attach list items to current step
+            step = dict(step)  # copy
+            step['list_items'] = list_items
+            result.append(step)
+            i = j
+            continue
+
+        # Current step IS a list item but no preceding intro
+        if _is_list_item_by_content(step):
+            # Check if previous result step can absorb it
+            if result and 'list_items' not in result[-1]:
+                prev = result[-1]
+                prev['list_items'] = [{'text': step['text']}]
+                j = i + 1
+                while j < len(steps) and _is_list_item_by_content(steps[j]):
+                    prev['list_items'].append({'text': steps[j]['text']})
+                    j += 1
+                i = j
+                continue
+
+        result.append(step)
+        i += 1
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Procedural steps parsing
 # ---------------------------------------------------------------------------
 
@@ -389,9 +465,13 @@ def parse_procedural_steps(elements: List[Dict], start_index: int) -> List[Dict]
 
         raw_steps.append({
             'text': content,
+            'type': elem_type,
             'is_section': is_section,
             'substeps': [],
         })
+
+    # Group consecutive list items into parent step's list_items
+    raw_steps = _group_list_items(raw_steps)
 
     # Second pass: nest steps under section headers
     if not raw_steps:
@@ -402,7 +482,8 @@ def parse_procedural_steps(elements: List[Dict], start_index: int) -> List[Dict]
 
     if not has_sections:
         # Flat structure: all steps at top level
-        return [{'text': s['text'], 'substeps': []} for s in raw_steps]
+        return [{'text': s['text'], 'substeps': [],
+                 'list_items': s.get('list_items', [])} for s in raw_steps]
 
     # Nested structure: group steps under their section headers
     result = []
@@ -416,16 +497,19 @@ def parse_procedural_steps(elements: List[Dict], start_index: int) -> List[Dict]
             current_section = {
                 'text': step['text'],
                 'substeps': [],
+                'list_items': step.get('list_items', []),
             }
         else:
             if current_section is not None:
                 current_section['substeps'].append({
                     'text': step['text'],
                     'substeps': [],
+                    'list_items': step.get('list_items', []),
                 })
             else:
                 # Steps before any section header — add at top level
-                result.append({'text': step['text'], 'substeps': []})
+                result.append({'text': step['text'], 'substeps': [],
+                               'list_items': step.get('list_items', [])})
 
     # Don't forget the last section
     if current_section is not None:

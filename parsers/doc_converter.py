@@ -9,6 +9,8 @@ import tempfile
 import shutil
 from typing import List, Optional, Tuple
 
+from app_paths import long_path
+
 logger = logging.getLogger('word_to_s1000d')
 
 _MAX_PATH = 255  # Word's own limit is 255, stricter than Windows 260
@@ -55,12 +57,12 @@ def _safe_paths_for_word(source: str, target: str):
     tmp_dir = tempfile.mkdtemp(prefix='doc_conv_')
     tmp_src = os.path.join(tmp_dir, 'input.doc')
     tmp_tgt = os.path.join(tmp_dir, 'output.docx')
-    shutil.copy2(src_abs, tmp_src)
+    shutil.copy2(long_path(src_abs), tmp_src)
 
     def cleanup(success):
         if success and os.path.isfile(tmp_tgt):
-            os.makedirs(os.path.dirname(tgt_abs), exist_ok=True)
-            shutil.move(tmp_tgt, tgt_abs)
+            os.makedirs(long_path(os.path.dirname(tgt_abs)), exist_ok=True)
+            shutil.move(tmp_tgt, long_path(tgt_abs))
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     return tmp_src, tmp_tgt, cleanup

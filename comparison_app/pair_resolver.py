@@ -8,7 +8,7 @@ import sys
 from typing import Dict, List, Optional
 
 # Add project root / internal root to path so we can import parsers
-from app_paths import get_internal_root
+from app_paths import get_internal_root, long_path
 sys.path.insert(0, get_internal_root())
 
 from parsers.dmc_parser import parse_dmc_from_folder_name, dm_code_to_string
@@ -17,38 +17,38 @@ from parsers.dmc_parser import parse_dmc_from_folder_name, dm_code_to_string
 def find_docx_in_folder(folder_path: str) -> Optional[str]:
     """Find the primary .docx file at the root level of a folder."""
     skip_names = {'signaturelistved.docx'}
-    for f in os.listdir(folder_path):
+    for f in os.listdir(long_path(folder_path)):
         if f.startswith('~$'):
             continue
         full_path = os.path.join(folder_path, f)
-        if os.path.isfile(full_path) and f.lower().endswith('.docx') and f.lower() not in skip_names:
+        if os.path.isfile(long_path(full_path)) and f.lower().endswith('.docx') and f.lower() not in skip_names:
             return full_path
     return None
 
 
 def find_doc_in_folder(folder_path: str) -> Optional[str]:
     """Find a .doc file (old Word format) at the root level of a folder."""
-    for f in os.listdir(folder_path):
+    for f in os.listdir(long_path(folder_path)):
         if f.startswith('~$'):
             continue
         full_path = os.path.join(folder_path, f)
-        if os.path.isfile(full_path) and f.lower().endswith('.doc') and not f.lower().endswith('.docx'):
+        if os.path.isfile(long_path(full_path)) and f.lower().endswith('.doc') and not f.lower().endswith('.docx'):
             return full_path
     return None
 
 
 def _detect_hierarchical(input_dir: str) -> bool:
     """Определяет, содержит ли input_dir двухуровневую структуру."""
-    for entry in os.listdir(input_dir):
+    for entry in os.listdir(long_path(input_dir)):
         path = os.path.join(input_dir, entry)
-        if not os.path.isdir(path):
+        if not os.path.isdir(long_path(path)):
             continue
         # Если папка начинается с '[' — это DMC-папка, значит flat
         if entry.startswith('['):
             return False
         # Проверяем, есть ли внутри DMC-папки
-        for child in os.listdir(path):
-            if child.startswith('[') and os.path.isdir(os.path.join(path, child)):
+        for child in os.listdir(long_path(path)):
+            if child.startswith('[') and os.path.isdir(long_path(os.path.join(path, child))):
                 return True
     return False
 
@@ -109,28 +109,28 @@ def get_comparison_pairs(input_dir: str, output_dir: str) -> List[Dict]:
     """
     pairs = []
 
-    if not os.path.isdir(input_dir):
+    if not os.path.isdir(long_path(input_dir)):
         return pairs
 
     if _detect_hierarchical(input_dir):
         # Двухуровневая структура: L1 (подсистемы) → L2 (DMC-папки)
-        for l1_entry in sorted(os.listdir(input_dir)):
+        for l1_entry in sorted(os.listdir(long_path(input_dir))):
             l1_path = os.path.join(input_dir, l1_entry)
-            if not os.path.isdir(l1_path):
+            if not os.path.isdir(long_path(l1_path)):
                 continue
             subsystem_name = _parse_subsystem_name(l1_entry)
-            for l2_entry in sorted(os.listdir(l1_path)):
+            for l2_entry in sorted(os.listdir(long_path(l1_path))):
                 l2_path = os.path.join(l1_path, l2_entry)
-                if not os.path.isdir(l2_path):
+                if not os.path.isdir(long_path(l2_path)):
                     continue
                 pair = _build_pair(l2_entry, l2_path, output_dir, l1_entry, subsystem_name)
                 if pair:
                     pairs.append(pair)
     else:
         # Плоская структура (обратная совместимость)
-        for entry in sorted(os.listdir(input_dir)):
+        for entry in sorted(os.listdir(long_path(input_dir))):
             folder_path = os.path.join(input_dir, entry)
-            if not os.path.isdir(folder_path):
+            if not os.path.isdir(long_path(folder_path)):
                 continue
             pair = _build_pair(entry, folder_path, output_dir)
             if pair:

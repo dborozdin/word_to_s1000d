@@ -11,7 +11,7 @@ import sys
 import configparser
 
 # Add project root / internal root to path for imports
-from app_paths import get_app_root, get_internal_root, get_config_path, get_xsd_path
+from app_paths import get_app_root, get_internal_root, get_config_path, get_xsd_path, long_path
 
 PROJECT_ROOT = get_app_root()
 _INTERNAL_ROOT = get_internal_root()
@@ -445,7 +445,7 @@ def serve_pdf(dmc_string: str):
             from parsers.doc_converter import convert_doc_to_docx_batch
             src = pair['doc_path']
             dst = os.path.splitext(src)[0] + '.docx'
-            if not os.path.isfile(dst):
+            if not os.path.isfile(long_path(dst)):
                 results = convert_doc_to_docx_batch([(src, dst)])
                 if not results or not results[0][1]:
                     abort(500, f'Не удалось конвертировать .doc: {src}')
@@ -658,7 +658,7 @@ def regenerate_xml_api(dmc_string: str):
             from parsers.doc_converter import convert_doc_to_docx_batch
             src = pair['doc_path']
             dst = os.path.splitext(src)[0] + '.docx'
-            if not os.path.isfile(dst):
+            if not os.path.isfile(long_path(dst)):
                 results = convert_doc_to_docx_batch([(src, dst)])
                 if not results or not results[0][1]:
                     return jsonify({'error': f'Не удалось конвертировать .doc в .docx: {src}'}), 500

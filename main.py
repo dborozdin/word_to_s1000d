@@ -9,6 +9,8 @@ import os
 import logging
 import configparser
 
+from app_paths import long_path
+
 from parsers.dmc_parser import (
     parse_dmc_from_folder_name,
     is_descriptive_info_code,
@@ -127,11 +129,11 @@ def find_docx_in_folder(folder_path: str) -> Optional[str]:
         Path to .docx file or None if not found.
     """
     skip_names = {'signaturelistved.docx'}
-    for f in os.listdir(folder_path):
+    for f in os.listdir(long_path(folder_path)):
         if f.startswith('~$'):
             continue
         full_path = os.path.join(folder_path, f)
-        if os.path.isfile(full_path) and f.lower().endswith('.docx') and f.lower() not in skip_names:
+        if os.path.isfile(long_path(full_path)) and f.lower().endswith('.docx') and f.lower() not in skip_names:
             return full_path
     return None
 
@@ -142,23 +144,23 @@ def find_doc_in_folder(folder_path: str) -> Optional[str]:
     Returns:
         Full path to .doc file or None if not found.
     """
-    for f in os.listdir(folder_path):
+    for f in os.listdir(long_path(folder_path)):
         full_path = os.path.join(folder_path, f)
-        if os.path.isfile(full_path) and f.lower().endswith('.doc') and not f.lower().endswith('.docx'):
+        if os.path.isfile(long_path(full_path)) and f.lower().endswith('.doc') and not f.lower().endswith('.docx'):
             return full_path
     return None
 
 
 def _detect_hierarchical_structure(input_dir: str) -> bool:
     """Определяет, содержит ли input_dir двухуровневую структуру (подсистема/DMC)."""
-    for entry in os.listdir(input_dir):
+    for entry in os.listdir(long_path(input_dir)):
         path = os.path.join(input_dir, entry)
-        if not os.path.isdir(path):
+        if not os.path.isdir(long_path(path)):
             continue
         if entry.startswith('['):
             return False
-        for child in os.listdir(path):
-            if child.startswith('[') and os.path.isdir(os.path.join(path, child)):
+        for child in os.listdir(long_path(path)):
+            if child.startswith('[') and os.path.isdir(long_path(os.path.join(path, child))):
                 return True
     return False
 
@@ -216,24 +218,24 @@ def collect_batch_tasks(input_dir: str) -> List[Dict]:
         subsystem_group, subsystem_name
     """
     tasks = []
-    entries = sorted(os.listdir(input_dir))
+    entries = sorted(os.listdir(long_path(input_dir)))
 
     if _detect_hierarchical_structure(input_dir):
         for l1_entry in entries:
             l1_path = os.path.join(input_dir, l1_entry)
-            if not os.path.isdir(l1_path):
+            if not os.path.isdir(long_path(l1_path)):
                 continue
             parts = l1_entry.split(' - ', 1)
             subsystem_name = parts[1].strip() if len(parts) == 2 else l1_entry
-            for l2_entry in sorted(os.listdir(l1_path)):
+            for l2_entry in sorted(os.listdir(long_path(l1_path))):
                 l2_path = os.path.join(l1_path, l2_entry)
-                if not os.path.isdir(l2_path):
+                if not os.path.isdir(long_path(l2_path)):
                     continue
                 tasks.append(_build_task(l2_path, l2_entry, l1_entry, subsystem_name))
     else:
         for entry in entries:
             folder_path = os.path.join(input_dir, entry)
-            if not os.path.isdir(folder_path):
+            if not os.path.isdir(long_path(folder_path)):
                 continue
             tasks.append(_build_task(folder_path, entry))
 

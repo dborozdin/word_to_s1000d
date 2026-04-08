@@ -9,6 +9,8 @@ import configparser
 from typing import Dict, List
 from docx import Document
 
+from app_paths import long_path
+
 # Import parser modules
 from parsers.text_parser import extract_text_by_headings, get_document_structure
 from parsers.table_parser import get_tables_by_reference
@@ -334,7 +336,7 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
     print(f"Split into modules: {split_into_modules}")
 
     # Load document
-    doc = Document(doc_path)
+    doc = Document(long_path(doc_path))
 
     # Extract organization from headers/footers
     organization = extract_organization_from_document(doc)
@@ -1276,7 +1278,7 @@ def validate_content_inclusion(doc_path: str, generated_files: List[str], illust
 
     # Load original document
     try:
-        doc = Document(doc_path)
+        doc = Document(long_path(doc_path))
     except Exception as e:
         error_msg = f"Failed to load original document {doc_path}: {e}"
         errors.append(error_msg)

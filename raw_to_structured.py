@@ -186,6 +186,12 @@ def sanitize(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', name).strip()
 
 
+def _long_path(p: str) -> str:
+    r"""Add \\?\ prefix for Windows extended-length path support (>260 chars)."""
+    from app_paths import long_path
+    return long_path(p)
+
+
 # ---------------------------------------------------------------------------
 # Этап 1: Парсинг файлов
 # ---------------------------------------------------------------------------
@@ -644,7 +650,7 @@ def create_folder_structure(components: List[Component], output_dir: str,
                             model_ident: str = DEFAULT_MODEL_IDENT,
                             system_diff: str = DEFAULT_SYSTEM_DIFF) -> Dict[str, str]:
     """Создаёт структуру папок и копирует файлы. Возвращает mapping DMC → путь папки."""
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(_long_path(output_dir), exist_ok=True)
     created = {}
 
     for comp in components:
@@ -656,7 +662,7 @@ def create_folder_structure(components: List[Component], output_dir: str,
         l1_name = f"{comp.system_code}-{comp.subsystem_code}-{comp.component_code} - {display_name}"
         l1_name = sanitize(l1_name)
         l1_path = os.path.join(output_dir, l1_name)
-        os.makedirs(l1_path, exist_ok=True)
+        os.makedirs(_long_path(l1_path), exist_ok=True)
 
         for dm in comp.data_modules:
             dmc = build_dmc_string(dm, model_ident, system_diff)
@@ -664,22 +670,22 @@ def create_folder_structure(components: List[Component], output_dir: str,
             l2_name = f"[{dmc}] {dm.component_name}. {dm.info_name}"
             l2_name = sanitize(l2_name)
             l2_path = os.path.join(l1_path, l2_name)
-            os.makedirs(l2_path, exist_ok=True)
+            os.makedirs(_long_path(l2_path), exist_ok=True)
             created[dmc] = l2_path
 
             # Копируем файлы
             for src in dm.source_files:
-                if os.path.isfile(src):
+                if os.path.isfile(_long_path(src)):
                     dst = os.path.join(l2_path, os.path.basename(src))
-                    if not os.path.exists(dst):
-                        shutil.copy2(src, dst)
+                    if not os.path.exists(_long_path(dst)):
+                        shutil.copy2(_long_path(src), _long_path(dst))
                     # Ищем парный .docx для .doc
                     if src.endswith('.doc') and not src.endswith('.docx'):
                         docx_pair = src + 'x'
-                        if os.path.isfile(docx_pair):
+                        if os.path.isfile(_long_path(docx_pair)):
                             dst2 = os.path.join(l2_path, os.path.basename(docx_pair))
-                            if not os.path.exists(dst2):
-                                shutil.copy2(docx_pair, dst2)
+                            if not os.path.exists(_long_path(dst2)):
+                                shutil.copy2(_long_path(docx_pair), _long_path(dst2))
 
     return created
 

@@ -32,6 +32,13 @@ def get_internal_root() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def long_path(p: str) -> str:
+    r"""Add \\?\ prefix for Windows extended-length path support (>260 chars)."""
+    if os.name == 'nt' and not p.startswith('\\\\?\\'):
+        return '\\\\?\\' + os.path.abspath(p)
+    return p
+
+
 def get_config_path() -> str:
     """Absolute path to config.ini."""
     return os.path.join(get_app_root(), 'config.ini')

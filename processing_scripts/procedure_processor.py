@@ -10,6 +10,8 @@ from typing import Dict, List, Tuple
 from docx import Document
 from lxml import etree
 
+from app_paths import long_path
+
 # Import parser modules
 from parsers.illustration_parser import extract_illustrations, ensure_missing_placeholders, copy_publication_logo
 from parsers.elements_analyzer import analyze_document_elements, generate_elements_log, apply_reference_markup
@@ -576,7 +578,7 @@ def process_procedure_document(doc_path: str, output_dir: str, llm_config: Dict 
     print(f"Processing procedure document: {doc_path}")
 
     # Load document
-    doc = Document(doc_path)
+    doc = Document(long_path(doc_path))
 
     # Extract organization from headers/footers (reused)
     organization = extract_organization_from_document(doc)

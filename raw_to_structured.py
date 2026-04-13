@@ -296,11 +296,27 @@ def _clean_title(text: str) -> str:
     text = text.replace('\u2212', '\u2013').replace('\u2012', '\u2013')
     # Убрать лишние пробелы
     text = re.sub(r'\s+', ' ', text).strip()
-    # Title Case если ALL CAPS (больше 5 символов и все заглавные)
-    if len(text) > 5 and text == text.upper() and any(c.isalpha() for c in text):
-        # Первое слово с заглавной, остальные со строчной
-        words = text.split()
-        text = ' '.join(w.capitalize() if w.isalpha() else w for w in words)
+    # Sentence case если ALL CAPS (больше 5 символов и все заглавные)
+    if len(text) > 5 and any(c.isalpha() for c in text):
+        alpha_chars = [c for c in text if c.isalpha()]
+        upper_ratio = sum(1 for c in alpha_chars if c.isupper()) / len(alpha_chars) if alpha_chars else 0
+        if upper_ratio >= 0.7:
+            text = text.lower()
+            # Первая буква — заглавная
+            for i, c in enumerate(text):
+                if c.isalpha():
+                    text = text[:i] + c.upper() + text[i+1:]
+                    break
+            # Заглавная после тире/двоеточия
+            for sep in ('\u2013 ', '\u2014 ', ': '):
+                parts = text.split(sep)
+                if len(parts) > 1:
+                    fixed = [parts[0]]
+                    for part in parts[1:]:
+                        if part and part[0].isalpha():
+                            part = part[0].upper() + part[1:]
+                        fixed.append(part)
+                    text = sep.join(fixed)
     # Убрать завершающую точку
     text = text.rstrip('.')
     return text
@@ -309,12 +325,10 @@ def _clean_title(text: str) -> str:
 def extract_titles_from_documents(docs: List[RawDocument]) -> Dict[str, int]:
     """Извлекает заголовки из Word-документов для файлов с пустым title_text.
 
-    Запускает отдельный subprocess для изоляции Word COM от Flask-процесса.
+    Использует python-docx для .docx файлов (без COM).
+    Для .doc файлов — конвертирует в .docx через COM (батчем), затем читает python-docx.
     Возвращает статистику: {total, extracted, failed, skipped, failed_files, word_restarts}.
     """
-    import json
-    import subprocess
-
     stats = {'total': 0, 'extracted': 0, 'failed': 0, 'skipped': 0,
              'failed_files': [], 'word_restarts': 0}
 
@@ -333,74 +347,192 @@ def extract_titles_from_documents(docs: List[RawDocument]) -> Dict[str, int]:
     if not need_title:
         return stats
 
-    # Формируем вход для воркера
-    worker_input = [{'filepath': d.filepath, 'doc_type': d.doc_type}
-                    for d in need_title]
+    # Шаг 1: конвертируем .doc → .docx через COM (батчем)
+    doc_files = [d for d in need_title if d.filepath.endswith('.doc')
+                 and not d.filepath.endswith('.docx')]
+    if doc_files:
+        converted = _convert_doc_to_docx_batch(doc_files)
+        stats['word_restarts'] = converted.get('word_restarts', 0)
 
-    # Путь к воркеру — рядом с этим файлом
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               '_extract_titles_worker.py')
+    # Шаг 2: извлекаем заголовки из .docx через python-docx
+    for d in need_title:
+        docx_path = d.filepath
+        if docx_path.endswith('.doc') and not docx_path.endswith('.docx'):
+            docx_path = docx_path + 'x'  # .doc → .docx
+
+        if not os.path.isfile(_long_path(docx_path)):
+            stats['failed'] += 1
+            stats['failed_files'].append({
+                'file': d.filename,
+                'error': 'нет .docx файла (конвертация не удалась?)'
+            })
+            continue
+
+        title = _extract_title_from_docx(docx_path, d.doc_type)
+        if title:
+            d.title_text = title
+            stats['extracted'] += 1
+        else:
+            stats['failed'] += 1
+            stats['failed_files'].append({
+                'file': d.filename,
+                'error': 'заголовок не найден в документе'
+            })
+
+    return stats
+
+
+def _convert_doc_to_docx_batch(doc_files: List[RawDocument]) -> Dict:
+    """Конвертирует .doc файлы в .docx через COM (subprocess)."""
+    import json
+    import subprocess
+
+    result_stats = {'word_restarts': 0}
+
+    # Формируем список файлов для конвертации
+    pairs = []
+    for d in doc_files:
+        docx_path = d.filepath + 'x'
+        if not os.path.isfile(_long_path(docx_path)):
+            pairs.append({'src': d.filepath, 'dst': docx_path})
+
+    if not pairs:
+        return result_stats
+
+    # Запускаем конвертацию через COM subprocess
+    worker_code = '''
+import json, os, sys, time, subprocess
+sys.stdin.reconfigure(encoding='utf-8')
+sys.stdout.reconfigure(encoding='utf-8')
+
+def kill_word():
+    try:
+        subprocess.run(['taskkill', '/F', '/IM', 'WINWORD.EXE'],
+                       capture_output=True, timeout=10)
+    except Exception:
+        pass
+
+pairs = json.loads(sys.stdin.read())
+errors = []
+restarts = 0
+
+try:
+    import pythoncom, win32com.client
+    pythoncom.CoInitialize()
+    word = win32com.client.Dispatch('Word.Application')
+    word.Visible = False
+    word.DisplayAlerts = 0
+
+    for i, p in enumerate(pairs):
+        if i > 0 and i % 5 == 0:
+            try:
+                word.Quit()
+            except Exception:
+                kill_word()
+            time.sleep(1)
+            restarts += 1
+            word = win32com.client.Dispatch('Word.Application')
+            word.Visible = False
+            word.DisplayAlerts = 0
+
+        try:
+            doc = word.Documents.Open(os.path.abspath(p['src']),
+                                       ReadOnly=True, AddToRecentFiles=False)
+            doc.SaveAs2(os.path.abspath(p['dst']), FileFormat=16)
+            doc.Close(False)
+        except Exception as e:
+            errors.append({'file': os.path.basename(p['src']), 'error': str(e)})
+
+    try:
+        word.Quit()
+    except Exception:
+        kill_word()
+    pythoncom.CoUninitialize()
+except Exception as e:
+    errors.append({'file': '(critical)', 'error': str(e)})
+    kill_word()
+
+print(json.dumps({'errors': errors, 'restarts': restarts}, ensure_ascii=False))
+'''
 
     try:
         env = os.environ.copy()
         env['PYTHONIOENCODING'] = 'utf-8'
 
-        result = subprocess.run(
-            [sys.executable, worker_path],
-            input=json.dumps(worker_input, ensure_ascii=False).encode('utf-8'),
-            capture_output=True, timeout=600,
-            env=env,
+        # Timeout: 30 сек на файл, минимум 60 сек
+        timeout = max(60, len(pairs) * 30)
+        proc = subprocess.run(
+            [sys.executable, '-c', worker_code],
+            input=json.dumps(pairs, ensure_ascii=False).encode('utf-8'),
+            capture_output=True, timeout=timeout, env=env,
         )
 
-        stdout_text = result.stdout.decode('utf-8', errors='replace')
-        stderr_text = result.stderr.decode('utf-8', errors='replace')
-
-        if result.returncode != 0:
-            stats['failed'] = len(need_title)
-            stats['failed_files'].append({
-                'file': '(subprocess)',
-                'error': f'exit code {result.returncode}: {stderr_text[:500]}'
-            })
-            return stats
-
-        output = json.loads(stdout_text)
-        title_map = output.get('results', {})
-        worker_errors = output.get('errors', [])
-        stats['word_restarts'] = output.get('word_restarts', 0)
-
-        # Заполняем title_text
-        for d in need_title:
-            title = title_map.get(d.filepath, '')
-            if title:
-                d.title_text = title
-                stats['extracted'] += 1
-            else:
-                stats['failed'] += 1
-                # Ищем ошибку для этого файла
-                err_msg = 'заголовок не найден'
-                for e in worker_errors:
-                    if e.get('file') == d.filename:
-                        err_msg = e.get('error', err_msg)
-                        break
-                stats['failed_files'].append({
-                    'file': d.filename,
-                    'error': err_msg
-                })
-
-    except subprocess.TimeoutExpired:
-        stats['failed'] = len(need_title)
-        stats['failed_files'].append({
-            'file': '(все файлы)',
-            'error': 'Timeout: воркер не завершился за 10 минут'
-        })
+        if proc.returncode == 0:
+            output = json.loads(proc.stdout.decode('utf-8', errors='replace'))
+            result_stats['word_restarts'] = output.get('restarts', 0)
+            if output.get('errors'):
+                for e in output['errors']:
+                    print(f"  ВНИМАНИЕ: конвертация {e['file']}: {e['error']}")
     except Exception as e:
-        stats['failed'] = len(need_title)
-        stats['failed_files'].append({
-            'file': '(subprocess)',
-            'error': str(e)
-        })
+        print(f"  ОШИБКА конвертации .doc -> .docx: {e}")
 
-    return stats
+    return result_stats
+
+
+def _extract_title_from_docx(docx_path: str, doc_type: str) -> str:
+    """Извлекает заголовок из .docx файла через python-docx (без COM)."""
+    from docx import Document
+
+    try:
+        doc = Document(_long_path(docx_path))
+    except Exception:
+        return ''
+
+    # Для ТК: ищем «Наименование работы» в textbox shapes через raw XML
+    if doc_type == 'tk':
+        title = _extract_tk_title_from_xml(doc)
+        if title:
+            return _clean_title(title)
+
+    # Для всех: первый содержательный параграф
+    title = _extract_first_paragraph_docx(doc)
+    if title:
+        return _clean_title(title)
+
+    return ''
+
+
+def _extract_tk_title_from_xml(doc) -> str:
+    """Ищет «Наименование работы» в Shape TextFrames через raw OOXML."""
+    WP_NS = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+
+    for txbx in doc.element.body.iter(f'{WP_NS}txbxContent'):
+        texts = []
+        for t_elem in txbx.iter(f'{WP_NS}t'):
+            if t_elem.text:
+                texts.append(t_elem.text)
+        full_text = ' '.join(texts)
+        m = re.search(
+            r'[Нн]аименование\s+работы\s*(.+?)(?:[Тт]рудо[её]мкость|$)',
+            full_text, re.DOTALL
+        )
+        if m:
+            return m.group(1).strip()
+    return ''
+
+
+def _extract_first_paragraph_docx(doc) -> str:
+    """Первый содержательный параграф из python-docx Document."""
+    for i, p in enumerate(doc.paragraphs[:15]):
+        text = p.text.strip()
+        if not text or len(text) < 4:
+            continue
+        if text.lower().rstrip('.') in _SKIP_PARAGRAPHS:
+            continue
+        if re.match(r'^\d+\.?\s', text):
+            continue
+        return text
+    return ''
 
 
 def _extract_single_title(word, filepath: str, doc_type: str) -> Optional[str]:
@@ -784,6 +916,33 @@ def scan_raw_folder(input_dir: str) -> List[RawDocument]:
                     doc_type='graphic',
                     title_text=f'рисунок {m.group(4)} {m.group(5).strip()}'
                 ))
+
+    # Дедупликация: если есть и .doc и .docx с одинаковым базовым именем,
+    # оставляем .doc (оригинал); .docx используется для извлечения заголовков
+    seen_bases = {}  # base_key → doc
+    deduped = []
+    for d in docs:
+        base = d.filename
+        if base.endswith('.docx'):
+            base_key = base[:-1]  # .docx → .doc (для сравнения с .doc)
+        elif base.endswith('.doc'):
+            base_key = base
+        else:
+            deduped.append(d)
+            continue
+
+        if base_key in seen_bases:
+            existing = seen_bases[base_key]
+            # Предпочитаем .doc (оригинал), .docx-пара используется при чтении
+            if d.filepath.endswith('.doc') and not d.filepath.endswith('.docx'):
+                deduped.remove(existing)
+                seen_bases[base_key] = d
+                deduped.append(d)
+            # Иначе оставляем существующий .doc
+        else:
+            seen_bases[base_key] = d
+            deduped.append(d)
+    docs = deduped
 
     # Извлекаем заголовки из документов, у которых title_text пустой
     title_stats = extract_titles_from_documents(docs)

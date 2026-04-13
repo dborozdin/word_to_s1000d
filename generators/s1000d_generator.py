@@ -354,9 +354,16 @@ class S1000DGenerator:
         prelim = ET.SubElement(procedure, "preliminaryRqmts")
         self._build_prelim_rqmts(prelim, procedure_data.get('preliminary_rqmts', {}))
 
-        # 2. mainProcedure (required)
+        # 2. mainProcedure (required, min 1 proceduralStep)
         main_proc = ET.SubElement(procedure, "mainProcedure")
-        self._build_procedural_steps(main_proc, procedure_data.get('procedural_steps', []))
+        steps = procedure_data.get('procedural_steps', [])
+        if steps:
+            self._build_procedural_steps(main_proc, steps)
+        else:
+            # XSD requires at least one proceduralStep
+            fallback = ET.SubElement(main_proc, "proceduralStep", id="stp-00001")
+            p = ET.SubElement(fallback, "para")
+            p.text = "Содержание документа представлено в предварительных требованиях."
 
         # 3. closeRqmts (required)
         close = ET.SubElement(procedure, "closeRqmts")
@@ -414,10 +421,7 @@ class S1000DGenerator:
         req_safety = ET.SubElement(parent, "reqSafety")
         if safety_notes or safety_warnings or safety_cautions:
             safety_rqmts = ET.SubElement(req_safety, "safetyRqmts")
-            for note_text in safety_notes:
-                note = ET.SubElement(safety_rqmts, "note")
-                note_para = ET.SubElement(note, "notePara")
-                note_para.text = note_text
+            # XSD order: warning* → caution* → note*
             for warn_text in safety_warnings:
                 warning = ET.SubElement(safety_rqmts, "warning")
                 wcp = ET.SubElement(warning, "warningAndCautionPara")
@@ -426,6 +430,10 @@ class S1000DGenerator:
                 caution = ET.SubElement(safety_rqmts, "caution")
                 wcp = ET.SubElement(caution, "warningAndCautionPara")
                 wcp.text = caut_text
+            for note_text in safety_notes:
+                note = ET.SubElement(safety_rqmts, "note")
+                note_para = ET.SubElement(note, "notePara")
+                note_para.text = note_text
         else:
             ET.SubElement(req_safety, "noSafety")
 

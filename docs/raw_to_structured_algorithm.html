@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Алгоритм кодирования папок и именования модулей данных</title>
+<title>Преобразование исходных документов в структуру S1000D</title>
 <style>
   :root {
     --bg: #fafafa;
@@ -149,295 +149,508 @@
   .toc a { color: var(--accent); text-decoration: none; }
   .toc a:hover { text-decoration: underline; }
   .subtitle { color: var(--gray); font-size: 0.95rem; margin-bottom: 2rem; }
+  details {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 1rem;
+    margin: 0.8rem 0;
+    font-size: 0.9rem;
+  }
+  details summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--gray);
+    user-select: none;
+  }
+  details summary:hover { color: var(--accent); }
+  details[open] summary { margin-bottom: 0.5rem; }
+  details table { font-size: 0.85rem; }
+  details code { font-size: 0.85em; }
+  .screenshot {
+    display: block;
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin: 1rem auto;
+  }
+  .screenshot-caption {
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--gray);
+    margin-top: -0.3rem;
+    margin-bottom: 1rem;
+  }
+  .screenshot-pair {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+  }
+  .screenshot-pair > figure {
+    flex: 1;
+    min-width: 280px;
+    margin: 0;
+    text-align: center;
+  }
+  .screenshot-pair img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  .screenshot-pair figcaption {
+    font-size: 0.85rem;
+    color: var(--gray);
+    margin-top: 0.4rem;
+  }
 </style>
 </head>
 <body>
 
-<h1>Алгоритм кодирования папок и именования модулей данных</h1>
-<p class="subtitle">Описание работы скрипта <span class="file-ref">raw_to_structured.py</span> — преобразование сырой папки документов в двухуровневую структуру S1000D</p>
+<h1>Преобразование исходных документов в структуру S1000D</h1>
+<p class="subtitle">Как работает инструмент, который раскладывает папку с &laquo;сырыми&raquo; документами Word по стандарту S1000D</p>
 
 <div class="toc">
   <h3>Содержание</h3>
   <ul>
-    <li><a href="#overview">1. Назначение и обзор</a></li>
-    <li><a href="#folder-structure">2. Двухуровневая структура папок</a></li>
-    <li><a href="#dmc-structure">3. Структура DMC-кода</a></li>
-    <li><a href="#info-codes">4. Правила назначения info-кодов</a></li>
-    <li><a href="#overrides">5. Таблица overrides</a></li>
-    <li><a href="#special-cases">6. Специальные случаи</a></li>
-    <li><a href="#component-names">7. Таблица COMPONENT_NAMES_029</a></li>
-    <li><a href="#validation">8. Алгоритм валидации</a></li>
+    <li><a href="#what">1. Что делает инструмент</a></li>
+    <li><a href="#web-ui">2. Настройка через веб-интерфейс</a></li>
+    <li><a href="#input">3. Какие входные папки поддерживаются</a></li>
+    <li><a href="#recognition">4. Как распознаются документы</a></li>
+    <li><a href="#output">5. Что получается на выходе</a></li>
+    <li><a href="#dmc">6. Как формируется код модуля данных (DMC)</a></li>
+    <li><a href="#info-codes">7. Как назначаются коды информации</a></li>
+    <li><a href="#special-cases">8. Особые случаи</a></li>
+    <li><a href="#validation">9. Проверка результата по эталону</a></li>
   </ul>
 </div>
 
-<!-- ======================================================================= -->
-<h2 id="overview">1. Назначение и обзор</h2>
 
-<p>Скрипт <span class="file-ref">raw_to_structured.py</span> выполняет преобразование сырой папки с исходными документами (Word, PDF, графика) в двухуровневую структуру папок, соответствующую стандарту S1000D. Каждая папка второго уровня представляет один модуль данных (Data Module) и содержит соответствующие исходные файлы.</p>
+<!-- ======================================================================= -->
+<h2 id="what">1. Что делает инструмент</h2>
+
+<p>Инструмент берёт обычную папку с документами Word, PDF и графикой &mdash; и автоматически раскладывает их в правильную двухуровневую структуру папок по стандарту S1000D. Каждая итоговая папка &mdash; это один модуль данных.</p>
 
 <div class="card">
-  <h4>Двухэтапный pipeline</h4>
+  <h4>Процесс в двух шагах</h4>
   <div class="step">
     <span class="step-num">1</span>
     <div class="step-content">
-      <strong>raw &rarr; structured (этот скрипт)</strong>
-      Парсинг имён файлов, назначение DMC-кодов, создание папок, копирование файлов.
+      <strong>Сырые документы &rarr; структурированные папки (этот инструмент)</strong>
+      Читает имена файлов, определяет тип каждого документа, присваивает код DMC, создаёт папки и копирует файлы.
     </div>
   </div>
   <div class="step">
     <span class="step-num">2</span>
     <div class="step-content">
-      <strong>structured &rarr; XML (<span class="file-ref">main.py</span>)</strong>
-      Чтение документов из структурированных папок, анализ элементов, генерация S1000D XML.
+      <strong>Структурированные папки &rarr; XML (следующий этап)</strong>
+      Из структурированных папок генерируется S1000D XML.
     </div>
   </div>
 </div>
 
-<h3>Интерфейс командной строки</h3>
-<div class="diagram">python raw_to_structured.py --input &lt;raw&gt; --output &lt;out&gt;
-python raw_to_structured.py --input &lt;raw&gt; --output &lt;out&gt; --validate &lt;ref&gt;</div>
+<p>Запуск &mdash; из веб-интерфейса (кнопка &laquo;Сгенерировать структуру&raquo;) или из командной строки:</p>
+
+<div class="diagram">python raw_to_structured.py --input doc_source_12_raw --output doc_source_12_generated
+python raw_to_structured.py --input doc_source_12_raw --output doc_source_12_generated --validate &lt;эталонная_папка&gt;</div>
 
 <table>
-  <tr><th>Параметр</th><th>Описание</th></tr>
-  <tr><td><code>--input</code></td><td>Путь к сырой папке с исходными документами (например, <code>doc_source_29_raw</code>)</td></tr>
-  <tr><td><code>--output</code></td><td>Путь к выходной папке для структурированных данных (например, <code>doc_source_29_generated</code>)</td></tr>
-  <tr><td><code>--validate</code></td><td>Путь к эталонной папке для валидации результатов (опционально)</td></tr>
+  <tr><th>Параметр</th><th>Что указать</th></tr>
+  <tr><td><code>--input</code></td><td>Папка с исходными (сырыми) документами</td></tr>
+  <tr><td><code>--output</code></td><td>Куда положить результат</td></tr>
+  <tr><td><code>--validate</code></td><td>Эталонная папка для проверки результата (необязательно)</td></tr>
 </table>
 
-<!-- ======================================================================= -->
-<h2 id="folder-structure">2. Двухуровневая структура папок</h2>
 
-<p>Выходная структура состоит из двух уровней вложенности:</p>
+<!-- ======================================================================= -->
+<!-- ======================================================================= -->
+<h2 id="web-ui">2. Настройка через веб-интерфейс</h2>
+
+<p>Все пути и параметры можно задать прямо в браузере, не редактируя файлы вручную. Для этого используется диалог настроек и панель исходных документов на главной странице.</p>
+
+<h3>Панель исходных документов и кнопки запуска</h3>
+
+<p>На главной странице отображается информация о найденных исходных документах и кнопки для запуска преобразования:</p>
+
+<img src="data:image/png;base64,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" alt="Панель исходных документов и кнопки генерации" class="screenshot">
+<p class="screenshot-caption">Панель статистики исходных документов, индикатор pipeline и кнопки генерации</p>
+
+<ul>
+  <li><strong>Исходные документы</strong> &mdash; показывает текущую папку и количество распознанных файлов по типам: описания, ТК, спецфайлы, рисунки.</li>
+  <li><strong>Сгенерировать структуру</strong> &mdash; запускает преобразование сырой папки в двухуровневую структуру S1000D (этап 1).</li>
+  <li><strong>Генерировать XML</strong> &mdash; запускает генерацию S1000D XML из структурированных папок (этап 2).</li>
+  <li><strong>Генерировать все</strong> &mdash; выполняет оба этапа последовательно.</li>
+</ul>
+
+<h3>Диалог настроек</h3>
+
+<p>Открывается по нажатию на шестерёнку (&#9881;) в правом верхнем углу страницы.</p>
+
+<img src="data:image/png;base64,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" alt="Диалог настроек" class="screenshot" style="max-width: 560px;">
+<p class="screenshot-caption">Диалог настроек &mdash; пути, параметры генерации и подключение к серверу просмотра</p>
+
+<table>
+  <tr><th>Поле</th><th>Что задаёт</th><th>Пример</th></tr>
+  <tr>
+    <td><strong>Структура S1000D</strong> (input_dir)</td>
+    <td>Папка со структурированными документами &mdash; результат этапа 1, вход для этапа 2</td>
+    <td><code>doc_source_12_generated</code></td>
+  </tr>
+  <tr>
+    <td><strong>Выходные XML</strong> (output_dir)</td>
+    <td>Куда складывать сгенерированные XML-файлы</td>
+    <td><code>./tg_web/suites/66935</code></td>
+  </tr>
+  <tr>
+    <td><strong>Папка сырых документов</strong> (raw_input_dir)</td>
+    <td>Исходная папка с документами Word, PDF и графикой &mdash; вход для этапа 1. Поддерживаются оба варианта организации (см.&nbsp;<a href="#input">раздел&nbsp;3</a>)</td>
+    <td><code>doc_source_12_raw</code></td>
+  </tr>
+  <tr>
+    <td><strong>Эталонная папка</strong> (reference_dir)</td>
+    <td>Папка с правильной структурой для проверки результата (необязательно, см.&nbsp;<a href="#validation">раздел&nbsp;9</a>)</td>
+    <td><em>оставить пустым, если эталона нет</em></td>
+  </tr>
+</table>
+
+<div class="note-green">
+  После изменения настроек нажмите &laquo;Сохранить&raquo; &mdash; страница перезагрузится и панель исходных документов покажет обновлённые счётчики для новой папки.
+</div>
+
+<!-- ======================================================================= -->
+<h2 id="input">3. Какие входные папки поддерживаются</h2>
+
+<p>Инструмент автоматически определяет, как организована входная папка, и работает с обоими вариантами:</p>
 
 <div class="card">
-  <h4>Level 1 &mdash; Компоненты</h4>
-  <p>Формат: <code>{systemCode}-{subSystem}-{component} - {ComponentName}</code></p>
-  <p>Пример: <code>029-11-01 - Гидрокомпенсатор</code></p>
+  <h4>Вариант А &mdash; по типам документов</h4>
+  <p>Документы разложены по отдельным папкам: описания, технологические карты, рисунки.</p>
+  <div class="diagram">doc_source_29_raw/
+├── Описания/           ← файлы описаний (Word)
+├── Технология/         ← технологические карты (Word)
+├── Рисунки/            ← графика (CDR, JPG, PNG)
+└── спецфайлы (ЛРВИ, ЛРИ, ПДС, ...)    ← на верхнем уровне</div>
+  <div class="note-green">Инструмент ищет папки, содержащие в названии слова &laquo;Описан&raquo;, &laquo;Технолог&raquo;, &laquo;Рисунк&raquo;. Точное название не важно.</div>
 </div>
 
 <div class="card">
-  <h4>Level 2 &mdash; Модули данных</h4>
-  <p>Формат: <code>[{DMC}] {ComponentName}. {InfoName}</code></p>
-  <p>Пример: <code>[S5-A-029-11-01-00A-040A-A] Гидрокомпенсатор. Описание устройства и принципа действия</code></p>
+  <h4>Вариант Б &mdash; по компонентам</h4>
+  <p>Каждый компонент &mdash; в своей папке (по коду: система.подсистема.компонент). Внутри &mdash; все типы документов вместе.</p>
+  <div class="diagram">doc_source_12_raw/
+├── 012.00.00/              ← описания, ТК, папка Рисунки/
+│   ├── 012-00-00.doc           описание
+│   ├── 012-21-00 ТК 1.doc      технологическая карта
+│   └── Рисунки/                 графика
+├── 012.91.00/              ← технологические карты
+│   ├── 012.91.00 ТК 1.doc
+│   └── ...
+├── 012.00.00 ЛРВИ.docx    ← спецфайл на верхнем уровне
+└── ...</div>
+  <div class="note-green">Если папок &laquo;Описания&raquo;/&laquo;Технология&raquo;/&laquo;Рисунки&raquo; на верхнем уровне нет, а есть папки вида <code>NNN.NN.NN</code> &mdash; включается этот режим.</div>
+</div>
+
+<h3>Какие файлы игнорируются</h3>
+<p>Временные и служебные файлы пропускаются автоматически: <code>~$...</code> (черновики Word), <code>~WRL...</code>, <code>Thumbs.db</code>, <code>desktop.ini</code>, файлы <code>*.tmp</code>.</p>
+
+
+<!-- ======================================================================= -->
+<h2 id="recognition">4. Как распознаются документы</h2>
+
+<p>Тип документа определяется по имени файла. В коде компонента допускаются как точки, так и дефисы &mdash; <code>029.11.01</code> и <code>012-00-00</code> равнозначны.</p>
+
+<table>
+  <tr><th>Тип документа</th><th>Как выглядит имя файла</th><th>Примеры</th></tr>
+  <tr>
+    <td><strong>Описание</strong></td>
+    <td>Код + &laquo;описание&raquo; / &laquo;обратный клапан&raquo;</td>
+    <td><code>029.11.01 описание гидрокомпенсатор.doc</code></td>
+  </tr>
+  <tr>
+    <td><strong>Описание</strong> (без ключевого слова)</td>
+    <td>Только код + расширение</td>
+    <td><code>012-00-00.doc</code>, <code>012-02-01.docx</code></td>
+  </tr>
+  <tr>
+    <td><strong>Технологическая карта (ТК)</strong></td>
+    <td>Код + &laquo;ТК&raquo; + номер</td>
+    <td><code>029.11.01 ТК 1 демонтаж.doc</code>, <code>012.91.00 ТК 3.doc</code></td>
+  </tr>
+  <tr>
+    <td><strong>ТК ТО</strong></td>
+    <td>Код + &laquo;ТК ТО&raquo;</td>
+    <td><code>029.00.00 ТК ТО.doc</code></td>
+  </tr>
+  <tr>
+    <td><strong>Таблица</strong></td>
+    <td>Код + &laquo;Таблица&raquo; + номер</td>
+    <td><code>012-00-00 Таблица 1.doc</code></td>
+  </tr>
+  <tr>
+    <td><strong>Рисунок</strong></td>
+    <td>Код + &laquo;рисунок&raquo;/&laquo;рис&raquo; + номер</td>
+    <td><code>029.00.00 рисунок 1.cdr</code></td>
+  </tr>
+  <tr>
+    <td><strong>ПИУН</strong></td>
+    <td>Код + &laquo;ПИУН&raquo;</td>
+    <td><code>029.00.00 ПИУН.doc</code></td>
+  </tr>
+</table>
+
+<h3>Спецфайлы верхнего уровня</h3>
+<p>Документы, лежащие прямо в корне входной папки (не в подпапках), распознаются по ключевым словам в названии:</p>
+
+<table>
+  <tr><th>Слово в названии</th><th>Что это</th><th>Пример</th></tr>
+  <tr><td>Перечень + сокращен</td><td>Перечень сокращений</td><td><code>029.00.00 Перечень принятых сокращений.docx</code></td></tr>
+  <tr><td>ЛРВИ</td><td>Лист регистрации временных изменений</td><td><code>012.00.00 ЛРВИ.docx</code></td></tr>
+  <tr><td>ЛРИ</td><td>Лист регистрации изменений</td><td><code>012.00.00 ЛРИ.docx</code></td></tr>
+  <tr><td>ПДС</td><td>Перечень действующих страниц</td><td><code>012.00.00 ПДС 11.11.2025.docx</code></td></tr>
+  <tr><td>ППС</td><td>Перечень пустых страниц</td><td><code>012.00.00 ППС.docx</code></td></tr>
+  <tr><td>Содержание</td><td>Содержание (оглавление)</td><td><code>012.00.00 Содержание.docx</code></td></tr>
+</table>
+
+<details>
+  <summary>Для разработчика: regex-паттерны распознавания</summary>
+  <p>Все паттерны определены в начале <span class="file-ref">raw_to_structured.py</span>. Разделитель кода &mdash; <code>[.\-]</code>, т.е. точка или дефис.</p>
+  <table>
+    <tr><th>Константа</th><th>Паттерн</th></tr>
+    <tr><td><code>RE_DESCRIPTION</code></td><td><code>^(\d{3})[.\-](\d{2})[.\-](\d{2})\s+(?:описани\S*|обратный\s+клапан)...</code></td></tr>
+    <tr><td><code>RE_PLAIN_DESCRIPTION</code></td><td><code>^(\d{3})[.\-](\d{2})[.\-](\d{2})\s*\.(docx?|pdf)$</code> &mdash; только в компонентном режиме</td></tr>
+    <tr><td><code>RE_TK</code></td><td><code>^(\d{3})[.\-](\d{2})[.\-](\d{2})\s+ТК\s*(\d+)\s*(.*?)...\.(docx?|pdf)$</code></td></tr>
+    <tr><td><code>RE_TABLE</code></td><td><code>^(\d{3})[.\-](\d{2})[.\-](\d{2})\s+Таблица\s*(\d+)...\.(docx?|pdf)$</code></td></tr>
+    <tr><td><code>RE_GRAPHIC</code></td><td><code>^0?(\d{2,3})[.\-](\d{2})[.\-](\d{2})\s+(?:рисунок|рис)\s*(\d+)...\.(cdr|jpg|png)$</code></td></tr>
+    <tr><td><code>RE_PIUN_GRAPHIC</code></td><td><code>^(\d{3})[.\-](\d{2})[.\-](\d{2})\s+ПИУН\s+рис\s*(\d+)...\.(cdr|jpg|png)$</code></td></tr>
+    <tr><td><code>RE_COMPONENT_FOLDER</code></td><td><code>^\d{3}\.\d{2}\.\d{2}$</code> &mdash; только для автодетекции режима</td></tr>
+  </table>
+  <p>Порядок проверки в компонентном режиме: ТК ТО &rarr; ПИУН &rarr; Таблица &rarr; ТК &rarr; Описание (с ключевым словом) &rarr; Описание (только код). Первое совпадение побеждает.</p>
+  <p>Фильтрация мусорных файлов &mdash; функция <code>_is_junk_file()</code>: <code>~$*</code>, <code>~WRL*</code>, <code>Thumbs.db</code>, <code>desktop.ini</code>, <code>*.tmp</code>.</p>
+</details>
+
+
+<!-- ======================================================================= -->
+<h2 id="output">5. Что получается на выходе</h2>
+
+<p>На выходе &mdash; двухуровневая структура папок:</p>
+
+<div class="card">
+  <h4>Уровень 1 &mdash; Компоненты</h4>
+  <p>Одна папка = один компонент (агрегат, узел).</p>
+  <p>Формат имени: <code>029-11-01 - Гидрокомпенсатор</code></p>
+</div>
+
+<div class="card">
+  <h4>Уровень 2 &mdash; Модули данных</h4>
+  <p>Внутри каждого компонента &mdash; папки модулей данных с DMC-кодом в квадратных скобках.</p>
+  <p>Формат имени: <code>[S5-A-029-11-01-00A-040A-A] Гидрокомпенсатор. Описание устройства</code></p>
 </div>
 
 <div class="diagram">doc_source_29_generated/
   029-00-00 - Гидравлическая система/
     [S5-A-029-00-00-00A-005A-A] Гидравлическая система. Перечень принятых сокращений/
-    [S5-A-029-00-00-00A-012A-A] Гидравлическая система. Меры безопасности/
     [S5-A-029-00-00-00A-040A-A] Гидравлическая система. Описание и принцип действия/
     ...
   029-11-01 - Гидрокомпенсатор/
-    [S5-A-029-11-01-00A-040A-A] Гидрокомпенсатор. Описание устройства и принципа действия/
+    [S5-A-029-11-01-00A-040A-A] Гидрокомпенсатор. Описание устройства/
     [S5-A-029-11-01-00A-920A-A] Гидрокомпенсатор. Демонтаж и монтаж/
     ...</div>
 
-<p>Создание папок и копирование файлов реализовано в функции <code>create_folder_structure()</code>. Имена папок очищаются от недопустимых символов Windows функцией <code>sanitize()</code>.</p>
 
 <!-- ======================================================================= -->
-<h2 id="dmc-structure">3. Структура DMC-кода</h2>
+<h2 id="dmc">6. Как формируется код модуля данных (DMC)</h2>
 
-<p>DMC-код (Data Module Code) однозначно идентифицирует каждый модуль данных. Формат строится функцией <code>build_dmc_string()</code> в <span class="file-ref">raw_to_structured.py</span>.</p>
+<p>Каждый модуль данных получает уникальный код &mdash; DMC (Data Module Code). Он собирается из нескольких частей:</p>
 
 <div class="card">
   <h4>Пример: <code>S5-A-029-11-01-00A-040A-A</code></h4>
   <table>
-    <tr><th>Сегмент</th><th>Значение</th><th>Поле S1000D</th><th>Описание</th></tr>
-    <tr><td><code>S5</code></td><td>S5</td><td>modelIdentCode</td><td>Код модели изделия (по умолчанию)</td></tr>
-    <tr><td><code>A</code></td><td>A</td><td>systemDiffCode</td><td>Код отличий системы (по умолчанию)</td></tr>
-    <tr><td><code>029</code></td><td>029</td><td>systemCode</td><td>Код системы (029 = гидросистема)</td></tr>
-    <tr><td><code>11</code></td><td>11</td><td>subSystemCode</td><td>Код подсистемы (2 цифры: subsystem + sub-subsystem)</td></tr>
-    <tr><td><code>01</code></td><td>01</td><td>subSubSystemCode / assyCode</td><td>Код компонента/сборки</td></tr>
-    <tr><td><code>00A</code></td><td>00 + A</td><td>assyDisassyCode + variant</td><td>Код сборки/разборки: <code>00</code> = обычный, <code>01-05</code> для ПИУН, <code>01</code> для фильтроэлементов. Вариант всегда <code>A</code></td></tr>
-    <tr><td><code>040A</code></td><td>040 + A</td><td>infoCode + infoCodeVariant</td><td>Код информации + вариант (определяется правилами назначения)</td></tr>
-    <tr><td><code>A</code></td><td>A</td><td>itemLocationCode</td><td>Код расположения (по умолчанию)</td></tr>
+    <tr><th>Часть кода</th><th>Значение</th><th>Откуда берётся</th></tr>
+    <tr><td><code>S5</code></td><td>Код модели</td><td>Настройка (по умолчанию S5)</td></tr>
+    <tr><td><code>A</code></td><td>Код отличий</td><td>Настройка (по умолчанию A)</td></tr>
+    <tr><td><code>029</code></td><td>Система</td><td>Первые 3 цифры из имени файла</td></tr>
+    <tr><td><code>11</code></td><td>Подсистема</td><td>Следующие 2 цифры из имени файла</td></tr>
+    <tr><td><code>01</code></td><td>Компонент</td><td>Последние 2 цифры из имени файла</td></tr>
+    <tr><td><code>00A</code></td><td>Код сборки</td><td>Обычно 00. Для ПИУН &mdash; 01&ndash;05. Для фильтров &mdash; 01</td></tr>
+    <tr><td><code>040A</code></td><td>Код информации</td><td>Определяется по типу документа и ключевым словам в названии ТК (см. ниже)</td></tr>
+    <tr><td><code>A</code></td><td>Расположение</td><td>Настройка (по умолчанию A)</td></tr>
   </table>
 </div>
 
-<div class="note">
-  Поле <code>assyDisassyCode</code> формируется особым образом: если <code>disassy_code != '00'</code>, используется <code>disassy_code</code>, иначе &mdash; <code>assy_code</code>. К нему всегда добавляется вариант <code>A</code>.
-</div>
+<details>
+  <summary>Для разработчика: формирование DMC в коде</summary>
+  <p>DMC формируется функцией <code>build_dmc_string()</code> в <span class="file-ref">raw_to_structured.py</span>.</p>
+  <p>Особенность поля <code>assyDisassyCode</code>: если <code>disassy_code != '00'</code>, используется <code>disassy_code</code>, иначе &mdash; <code>assy_code</code>. К нему всегда добавляется вариант <code>A</code>.</p>
+  <p>Настройки кода модели, отличий и расположения задаются в секции <code>[raw_import]</code> файла <span class="file-ref">config.ini</span>: <code>model_ident_code</code>, <code>system_diff_code</code>, <code>item_location_code</code>.</p>
+</details>
+
 
 <!-- ======================================================================= -->
-<h2 id="info-codes">4. Правила назначения info-кодов</h2>
+<h2 id="info-codes">7. Как назначаются коды информации</h2>
 
-<p>Info-код определяется по ключевым словам в заголовке технологической карты (ТК). Функция <code>match_info_code()</code> ищет совпадения в массиве <code>INFO_CODE_RULES</code> и выбирает правило с наивысшим приоритетом.</p>
+<p>Код информации (info-код) определяет <em>тип содержания</em> модуля данных: описание устройства, демонтаж, проверка и т.д.</p>
 
-<p>Каждое правило содержит: обязательные ключевые слова (все должны присутствовать), исключающие ключевые слова (ни одно не должно присутствовать), info-код, вариант и приоритет.</p>
+<ul>
+  <li><strong>Для описаний</strong> &mdash; всегда <code>040</code> (описание устройства и принципа действия).</li>
+  <li><strong>Для ТК</strong> &mdash; определяется по ключевым словам в заголовке файла. Система ищет совпадение в таблице правил и выбирает правило с наивысшим приоритетом.</li>
+</ul>
 
 <table>
-  <tr><th>Ключевые слова (required)</th><th>Исключения</th><th>Info Code</th><th>Вариант</th><th>Приоритет</th><th>Примечания</th></tr>
-  <tr><td><code>демонтаж</code></td><td>&mdash;</td><td>920</td><td>A</td><td>10</td><td>Демонтаж и монтаж</td></tr>
-  <tr><td><code>дм </code></td><td>&mdash;</td><td>920</td><td>A</td><td>9</td><td>Сокращение от &laquo;демонтаж-монтаж&raquo;</td></tr>
-  <tr><td><code>смазк</code></td><td>&mdash;</td><td>242</td><td>A</td><td>10</td><td>Смазка</td></tr>
-  <tr><td><code>герметичност</code></td><td>&mdash;</td><td>364</td><td>A</td><td>10</td><td>Проверка герметичности</td></tr>
-  <tr><td><code>разрядк</code></td><td>&mdash;</td><td>224</td><td>A</td><td>10</td><td>Разрядка пневмополости</td></tr>
-  <tr><td><code>стравливан</code></td><td>&mdash;</td><td>227</td><td>A</td><td>10</td><td>Стравливание давления</td></tr>
-  <tr><td><code>слив</code></td><td><code>фильтр</code></td><td>222</td><td>A</td><td>10</td><td>Слив рабочей жидкости (исключая фильтры)</td></tr>
-  <tr><td><code>удален</code> + <code>воздух</code></td><td>&mdash;</td><td>231</td><td>A</td><td>11</td><td>Удаление воздуха</td></tr>
-  <tr><td><code>подключен</code> + <code>наземн</code></td><td>&mdash;</td><td>926</td><td>A</td><td>11</td><td>Подключение наземной гидроустановки</td></tr>
-  <tr><td><code>подключен</code> + <code>канал</code></td><td>&mdash;</td><td>730</td><td>A</td><td>11</td><td>Подключение второго канала</td></tr>
-  <tr><td><code>монтаж</code> + <code>арматур</code></td><td>&mdash;</td><td>721</td><td>A</td><td>11</td><td>Монтаж арматуры</td></tr>
-  <tr><td><code>восстановлен</code></td><td>&mdash;</td><td>420</td><td>A</td><td>10</td><td>Восстановление работоспособности</td></tr>
-  <tr><td><code>визуальн</code> + <code>осмотр</code></td><td>&mdash;</td><td>311</td><td>B</td><td>11</td><td>Визуальный осмотр (вариант B)</td></tr>
-  <tr><td><code>осмотр</code></td><td><code>визуальн</code></td><td>311</td><td>A</td><td>10</td><td>Осмотр внешнего состояния (исключая визуальный)</td></tr>
-  <tr><td><code>контрол</code> + <code>воздух</code></td><td>&mdash;</td><td>369</td><td>A</td><td>11</td><td>Контроль количества воздуха</td></tr>
-  <tr><td><code>чистот</code></td><td>&mdash;</td><td>371</td><td>A</td><td>10</td><td>Проверка чистоты рабочей жидкости</td></tr>
-  <tr><td><code>электромагнитн</code></td><td>&mdash;</td><td>341</td><td>A</td><td>10</td><td>Проверка электромагнитного клапана</td></tr>
-  <tr><td><code>работоспособност</code></td><td>&mdash;</td><td>341</td><td>A</td><td>8</td><td>Проверка работоспособности (пониженный приоритет)</td></tr>
+  <tr><th>Ключевые слова в названии ТК</th><th>Код</th><th>Что означает</th></tr>
+  <tr><td>демонтаж</td><td>920</td><td>Демонтаж и монтаж</td></tr>
+  <tr><td>дм</td><td>920</td><td>Сокращение &laquo;демонтаж-монтаж&raquo;</td></tr>
+  <tr><td>смазк</td><td>242</td><td>Смазка</td></tr>
+  <tr><td>герметичност</td><td>364</td><td>Проверка герметичности</td></tr>
+  <tr><td>разрядк</td><td>224</td><td>Разрядка пневмополости</td></tr>
+  <tr><td>стравливан</td><td>227</td><td>Стравливание давления</td></tr>
+  <tr><td>слив (кроме &laquo;фильтр&raquo;)</td><td>222</td><td>Слив рабочей жидкости</td></tr>
+  <tr><td>удален + воздух</td><td>231</td><td>Удаление воздуха</td></tr>
+  <tr><td>подключен + наземн</td><td>926</td><td>Подключение наземной гидроустановки</td></tr>
+  <tr><td>подключен + канал</td><td>730</td><td>Подключение второго канала</td></tr>
+  <tr><td>монтаж + арматур</td><td>721</td><td>Монтаж арматуры</td></tr>
+  <tr><td>восстановлен</td><td>420</td><td>Восстановление работоспособности</td></tr>
+  <tr><td>визуальн + осмотр</td><td>311B</td><td>Визуальный осмотр</td></tr>
+  <tr><td>осмотр (кроме &laquo;визуальн&raquo;)</td><td>311</td><td>Осмотр внешнего состояния</td></tr>
+  <tr><td>контрол + воздух</td><td>369</td><td>Контроль количества воздуха</td></tr>
+  <tr><td>чистот</td><td>371</td><td>Проверка чистоты рабочей жидкости</td></tr>
+  <tr><td>электромагнитн</td><td>341</td><td>Проверка электромагнитного клапана</td></tr>
+  <tr><td>работоспособност</td><td>341</td><td>Проверка работоспособности</td></tr>
 </table>
 
 <div class="note">
-  Для файлов-описаний (из папки &laquo;Описание&raquo;) info-код всегда назначается <code>040A</code> без обращения к таблице правил. После назначения info-кода всегда применяется таблица overrides (см. раздел 5).
+  Поиск идёт по <strong>начальной части</strong> слова (корню). Например, &laquo;герметичност&raquo; подойдёт и для &laquo;герметичности&raquo;, и для &laquo;герметичность&raquo;.
 </div>
 
-<!-- ======================================================================= -->
-<h2 id="overrides">5. Таблица overrides</h2>
-
-<p>Таблица <code>OVERRIDES</code> позволяет переопределить info-код для конкретных комбинаций (system, subsystem, component, base_info_code). Применяется функцией <code>apply_override()</code> после назначения базового info-кода.</p>
+<h3>Исключения (overrides)</h3>
+<p>Для некоторых конкретных компонентов код заменяется на другой:</p>
 
 <table>
-  <tr><th>systemCode</th><th>subsystem</th><th>component</th><th>Исходный info-код</th><th>Новый info-код</th><th>Примечание</th></tr>
-  <tr><td>029</td><td>30</td><td>05</td><td>040</td><td>042</td><td>ПЛЦ &mdash; описание устройства и принципа действия (отдельный код)</td></tr>
-  <tr><td>029</td><td>12</td><td>02</td><td>920</td><td>922</td><td>НС74-2 &mdash; демонтаж и монтаж (отдельный код)</td></tr>
-  <tr><td>029</td><td>30</td><td>* (любой)</td><td>341</td><td>320</td><td>Сигнализация &mdash; проверка работоспособности заменяется на 320</td></tr>
+  <tr><th>Компонент</th><th>Было</th><th>Стало</th><th>Пояснение</th></tr>
+  <tr><td>029-30-05 (ПЛЦ)</td><td>040</td><td>042</td><td>Описание устройства &mdash; отдельный код</td></tr>
+  <tr><td>029-12-02 (НС74-2)</td><td>920</td><td>922</td><td>Демонтаж и монтаж &mdash; отдельный код</td></tr>
+  <tr><td>029-30-** (Сигнализация)</td><td>341</td><td>320</td><td>Проверка работоспособности &rarr; 320</td></tr>
 </table>
 
-<div class="note">
-  Поиск в таблице overrides выполняется в два шага: сначала точное совпадение по всем 4 полям, затем &mdash; с подстановочным символом <code>*</code> вместо component.
-</div>
+<details>
+  <summary>Для разработчика: механизм overrides</summary>
+  <p>Таблица <code>OVERRIDES</code> в <span class="file-ref">raw_to_structured.py</span> &mdash; словарь, где ключ <code>(system, subsystem, component, base_info_code)</code>. Функция <code>apply_override()</code> сначала ищет точное совпадение по 4 полям, затем &mdash; с подстановочным символом <code>*</code> вместо component.</p>
+</details>
+
 
 <!-- ======================================================================= -->
-<h2 id="special-cases">6. Специальные случаи</h2>
+<h2 id="special-cases">8. Особые случаи</h2>
 
-<h3>6.1 ТК ТО &mdash; разбиение на 3 модуля</h3>
+<h3>ТК ТО &mdash; один файл &rarr; три модуля</h3>
+<p>Файл &laquo;ТК ТО&raquo; (технологическая карта технического обслуживания) автоматически разбивается на 3 модуля данных. Один и тот же файл попадает в 3 папки:</p>
 
-<p>Файл &laquo;ТК ТО&raquo; (технологическая карта технического обслуживания) автоматически разбивается на 3 отдельных модуля данных. Один и тот же исходный файл копируется в 3 папки:</p>
+<table>
+  <tr><th>Код</th><th>Название модуля</th></tr>
+  <tr><td>012</td><td>Меры безопасности</td></tr>
+  <tr><td>720</td><td>Общие указания при монтаже фторопластовых рукавов</td></tr>
+  <tr><td>920</td><td>Общие указания при проведении демонтажно-монтажных работ</td></tr>
+</table>
 
-<div class="card">
+<h3>ПИУН &mdash; один файл &rarr; пять модулей</h3>
+<p>Файл ПИУН (перечень используемых неисправностей) разбивается на 5 модулей данных с разными кодами сборки (01&ndash;05). Рисунки ПИУН привязываются к модулю по номеру: рис. 101 &rarr; 01, рис. 102 &rarr; 02 и т.д.</p>
+
+<table>
+  <tr><th>Код сборки</th><th>Компонент</th></tr>
+  <tr><td>01</td><td>Недозаправка 1ГС (2ГС)</td></tr>
+  <tr><td>02</td><td>ВОЗДУХ в 1 ГС (2ГС)</td></tr>
+  <tr><td>03</td><td>Отсутствие показаний уровня заправки гидрокомпенсатора</td></tr>
+  <tr><td>04</td><td>Отсутствие показаний давления 1ГС (2ГС)</td></tr>
+  <tr><td>05</td><td>Отсутствие показаний давления в гидроаккумуляторе</td></tr>
+</table>
+
+<h3>Фильтроэлементы</h3>
+<p>Если в названии ТК есть слово &laquo;фильтроэлемент&raquo;, код сборки меняется с 00 на 01, а в имени компонента добавляется префикс &laquo;Фильтроэлемент&raquo;.</p>
+
+<details>
+  <summary>Для разработчика: таблица компонентов COMPONENT_NAMES_029</summary>
+  <p>Словарь <code>COMPONENT_NAMES_029</code> задаёт полные названия компонентов для системы 029. Ключ &mdash; <code>(subsystem_code, component_code)</code>. Если компонент не найден, название определяется: сначала из заголовков ТК, затем из описаний, и наконец &mdash; &laquo;Компонент NN-NN&raquo;.</p>
   <table>
-    <tr><th>Info Code</th><th>Вариант</th><th>Название модуля</th></tr>
-    <tr><td>012</td><td>A</td><td>Меры безопасности</td></tr>
-    <tr><td>720</td><td>A</td><td>Общие указания при монтаже фторопластовых рукавов</td></tr>
-    <tr><td>920</td><td>A</td><td>Общие указания при проведении демонтажно-монтажных работ</td></tr>
+    <tr><th>Подсистема</th><th>Компонент</th><th>Название</th></tr>
+    <tr><td>00</td><td>00</td><td>Гидравлическая система</td></tr>
+    <tr><td>11</td><td>00</td><td>Первая гидросистема</td></tr>
+    <tr><td>11</td><td>01</td><td>Гидрокомпенсатор</td></tr>
+    <tr><td>11</td><td>02</td><td>Гидроаккумулятор</td></tr>
+    <tr><td>11</td><td>03</td><td>Бортовой клапан 991АТ4.02А-01</td></tr>
+    <tr><td>11</td><td>04</td><td>Бортовой клапан всасывания</td></tr>
+    <tr><td>11</td><td>05</td><td>Бортовой клапан нагнетания</td></tr>
+    <tr><td>11</td><td>06</td><td>Топливо-масляный теплообменник</td></tr>
+    <tr><td>11</td><td>07</td><td>Плунжерный насос НП173</td></tr>
+    <tr><td>11</td><td>08</td><td>Гидравлический фильтр слива НП ЖКДЕ.061146.011С</td></tr>
+    <tr><td>11</td><td>09</td><td>Гидравлический фильтр нагнетания ЖКДЕ.061146.010С</td></tr>
+    <tr><td>11</td><td>10</td><td>Гидравлический фильтр слива ЖКДЕ.061146.012С-01</td></tr>
+    <tr><td>11</td><td>11</td><td>Двухсторонний дроссель 50.5313.0.180.000</td></tr>
+    <tr><td>11</td><td>12</td><td>Распределитель электрогидравлический КЭ101</td></tr>
+    <tr><td>11</td><td>13</td><td>Предохранительный клапан 50.5309.0.080.000</td></tr>
+    <tr><td>11</td><td>14</td><td>Клапан предохранительный РД66</td></tr>
+    <tr><td>11</td><td>15</td><td>Клапан стравливания 50.5309.0.050.000</td></tr>
+    <tr><td>11</td><td>16</td><td>Обратный клапан 990-7</td></tr>
+    <tr><td>11</td><td>17</td><td>Рукав фторопластовый</td></tr>
+    <tr><td>11</td><td>18</td><td>Клапан переключения КГ48-2</td></tr>
+    <tr><td>12</td><td>00</td><td>Вторая гидросистема</td></tr>
+    <tr><td>12</td><td>01</td><td>Челночный клапан УГ157</td></tr>
+    <tr><td>12</td><td>02</td><td>Насосная станция НС74-2</td></tr>
+    <tr><td>30</td><td>00</td><td>Система сигнализации гидросистемы</td></tr>
+    <tr><td>30</td><td>01</td><td>Датчик давления ДАВ096</td></tr>
+    <tr><td>30</td><td>02</td><td>Датчик температуры П-119</td></tr>
+    <tr><td>30</td><td>03</td><td>Манометр недистанционный НТМ-400</td></tr>
+    <tr><td>30</td><td>04</td><td>Сигнализатор давления типа СДМ</td></tr>
+    <tr><td>30</td><td>05</td><td>Датчик линейных перемещений ПЛЦ007</td></tr>
   </table>
-</div>
+</details>
 
-<h3>6.2 ПИУН &mdash; разбиение на 5 модулей</h3>
-
-<p>Файл ПИУН (перечень используемых узлов и неисправностей) разбивается на 5 модулей данных, все с info-кодом <code>420A</code> и различными <code>disassyCode</code> (01&ndash;05). Рисунки ПИУН привязываются к соответствующему модулю по номеру (рис. 101 &rarr; disassyCode 01, рис. 102 &rarr; 02 и т.д.).</p>
-
-<div class="card">
-  <table>
-    <tr><th>disassyCode</th><th>Название компонента (componentName)</th><th>Info Name</th></tr>
-    <tr><td>01</td><td>Недозаправка 1ГС (2ГС)</td><td>Устранение неисправности</td></tr>
-    <tr><td>02</td><td>ВОЗДУХ в 1 ГС (2ГС)</td><td>Устранение неисправности</td></tr>
-    <tr><td>03</td><td>Отсутствие показаний на мнемокадре ГПС уровня заправки гидрокомпенсатора 1ГС (2ГС)</td><td>Устранение неисправности</td></tr>
-    <tr><td>04</td><td>Отсутствие показаний на мнемокадре ГПС давления 1ГС (2ГС)</td><td>Устранение неисправности</td></tr>
-    <tr><td>05</td><td>Отсутствие показаний на мнемокадре ГПС давления в гидроаккумуляторе 1ГС (2ГС)</td><td>Устранение неисправности</td></tr>
-  </table>
-</div>
-
-<h3>6.3 Фильтроэлементы</h3>
-
-<p>Если в заголовке технологической карты присутствует слово &laquo;фильтроэлемент&raquo;, поле <code>assyCode</code> устанавливается в <code>01</code> (вместо стандартного <code>00</code>). Имя компонента формируется функцией <code>_filter_element_name()</code> как <code>"Фильтроэлемент {название компонента}"</code>.</p>
 
 <!-- ======================================================================= -->
-<h2 id="component-names">7. Таблица COMPONENT_NAMES_029</h2>
+<h2 id="validation">9. Проверка результата по эталону</h2>
 
-<p>Словарь <code>COMPONENT_NAMES_029</code> задаёт полные названия компонентов для системы 029. Ключ &mdash; кортеж <code>(subsystem_code, component_code)</code>, значение &mdash; полное название.</p>
-
-<table>
-  <tr><th>Подсистема</th><th>Компонент</th><th>Название</th></tr>
-  <tr><td>00</td><td>00</td><td>Гидравлическая система</td></tr>
-  <tr><td>11</td><td>00</td><td>Первая гидросистема</td></tr>
-  <tr><td>11</td><td>01</td><td>Гидрокомпенсатор</td></tr>
-  <tr><td>11</td><td>02</td><td>Гидроаккумулятор</td></tr>
-  <tr><td>11</td><td>03</td><td>Бортовой клапан 991АТ4.02А-01</td></tr>
-  <tr><td>11</td><td>04</td><td>Бортовой клапан всасывания</td></tr>
-  <tr><td>11</td><td>05</td><td>Бортовой клапан нагнетания</td></tr>
-  <tr><td>11</td><td>06</td><td>Топливо-масляный теплообменник</td></tr>
-  <tr><td>11</td><td>07</td><td>Плунжерный насос НП173</td></tr>
-  <tr><td>11</td><td>08</td><td>Гидравлический фильтр слива НП ЖКДЕ.061146.011С</td></tr>
-  <tr><td>11</td><td>09</td><td>Гидравлический фильтр нагнетания ЖКДЕ.061146.010С</td></tr>
-  <tr><td>11</td><td>10</td><td>Гидравлический фильтр слива ЖКДЕ.061146.012С-01</td></tr>
-  <tr><td>11</td><td>11</td><td>Двухсторонний дроссель 50.5313.0.180.000</td></tr>
-  <tr><td>11</td><td>12</td><td>Распределитель электрогидравлический трехпозиционный четырехходовой КЭ101</td></tr>
-  <tr><td>11</td><td>13</td><td>Предохранительный клапан 50.5309.0.080.000</td></tr>
-  <tr><td>11</td><td>14</td><td>Клапан предохранительный РД66</td></tr>
-  <tr><td>11</td><td>15</td><td>Клапан стравливания 50.5309.0.050.000</td></tr>
-  <tr><td>11</td><td>16</td><td>Обратный клапан 990-7</td></tr>
-  <tr><td>11</td><td>17</td><td>Рукав фторопластовый</td></tr>
-  <tr><td>11</td><td>18</td><td>Клапан переключения с электромагнитным управлением КГ48-2</td></tr>
-  <tr><td>12</td><td>00</td><td>Вторая гидросистема</td></tr>
-  <tr><td>12</td><td>01</td><td>Челночный клапан УГ157</td></tr>
-  <tr><td>12</td><td>02</td><td>Насосная станция НС74-2</td></tr>
-  <tr><td>30</td><td>00</td><td>Система сигнализации гидросистемы</td></tr>
-  <tr><td>30</td><td>01</td><td>Датчик давления ДАВ096</td></tr>
-  <tr><td>30</td><td>02</td><td>Датчик температуры П-119</td></tr>
-  <tr><td>30</td><td>03</td><td>Манометр недистанционный НТМ-400</td></tr>
-  <tr><td>30</td><td>04</td><td>Сигнализатор давления типа СДМ</td></tr>
-  <tr><td>30</td><td>05</td><td>Датчик линейных перемещений ПЛЦ007</td></tr>
-</table>
-
-<div class="note">
-  Если компонент не найден в таблице, название определяется по fallback-логике: сначала из заголовков ТК-файлов, затем из файлов-описаний, и наконец формируется как <code>"Компонент {subsystem}-{component}"</code>.
-</div>
-
-<!-- ======================================================================= -->
-<h2 id="validation">8. Алгоритм валидации</h2>
-
-<p>Функция <code>validate_against_reference()</code> сравнивает сгенерированную структуру папок с эталонной (reference). Используется для контроля корректности алгоритма и доступна через CLI-параметр <code>--validate</code>, а также через API-маршрут <code>/api/generate-structure</code>.</p>
+<p>Если есть эталонная папка (созданная вручную или ранее проверенная), инструмент может сравнить свой результат с ней и показать расхождения.</p>
 
 <div class="card">
-  <h4>Этапы валидации</h4>
-
+  <h4>Как происходит проверка</h4>
   <div class="step">
     <span class="step-num">1</span>
     <div class="step-content">
       <strong>Сбор данных</strong>
-      Обход папок Level 1 и Level 2 в обеих директориях. Извлечение DMC-кодов из имён папок L2 функцией <code>extract_dmc_from_folder()</code>.
+      Обход папок обоих уровней в сгенерированной и эталонной структурах. Из имён папок второго уровня извлекаются DMC-коды.
     </div>
   </div>
-
   <div class="step">
     <span class="step-num">2</span>
     <div class="step-content">
-      <strong>Сравнение DMC-кодов</strong>
-      Точное совпадение (exact match). Определяются: совпадающие коды, коды только в reference, коды только в generated.
+      <strong>Сравнение кодов</strong>
+      Определяются: совпадающие DMC-коды, коды только в эталоне, коды только в результате.
     </div>
   </div>
-
   <div class="step">
     <span class="step-num">3</span>
     <div class="step-content">
-      <strong>Сравнение имён L1 (компоненты)</strong>
-      Коды L1 папок (часть до &laquo; - &raquo;) сравниваются точно. Названия (часть после &laquo; - &raquo;) сравниваются нечётко через <code>difflib.SequenceMatcher</code> с порогом <strong>0.85</strong>.
+      <strong>Сравнение названий компонентов</strong>
+      Коды папок первого уровня (до &laquo; - &raquo;) сравниваются точно. Названия (после &laquo; - &raquo;) сравниваются с допуском на мелкие различия (порог 85%).
     </div>
   </div>
-
   <div class="step">
     <span class="step-num">4</span>
     <div class="step-content">
-      <strong>Сравнение имён L2 (модули данных)</strong>
-      Для совпадающих DMC-кодов сравниваются заголовки папок L2 (часть после <code>]</code>) с тем же порогом 0.85.
+      <strong>Сравнение названий модулей</strong>
+      Для совпадающих DMC-кодов сравниваются заголовки папок второго уровня с тем же порогом 85%.
     </div>
   </div>
 </div>
 
-<h3>Нечёткое сравнение имён</h3>
-
-<p>Функция <code>_names_match()</code> реализует три стратегии сравнения:</p>
-
-<ol>
-  <li><strong>Точное совпадение</strong> &mdash; после нормализации (lowercase, схлопывание пробелов, удаление завершающих точек)</li>
-  <li><strong>Prefix match</strong> &mdash; для усечённых имён Windows (ограничение MAX_PATH). Если короткое имя >= 15 символов и является префиксом длинного &mdash; считается совпадением</li>
-  <li><strong>Fuzzy match</strong> &mdash; <code>difflib.SequenceMatcher</code> с порогом 0.85</li>
-</ol>
-
-<div class="note-green">
-  Функция <code>validate_against_reference()</code> возвращает структурированный <code>dict</code> с результатами: количество L1/L2 папок, совпавшие и несовпавшие DMC-коды, расхождения в именах. Это позволяет использовать результат программно (например, в API <code>/api/generate-structure</code>).
+<div class="note">
+  Нечёткое сравнение названий учитывает: точное совпадение (после приведения к нижнему регистру), совпадение по началу (для обрезанных имён Windows) и похожесть текста (порог 85%).
 </div>
+
+<details>
+  <summary>Для разработчика: реализация валидации</summary>
+  <p>Функция <code>validate_against_reference()</code> в <span class="file-ref">raw_to_structured.py</span>. Нечёткое сравнение &mdash; <code>difflib.SequenceMatcher</code> с порогом <code>0.85</code>. Функция <code>_names_match()</code> реализует три стратегии: exact match, prefix match (для длинных путей Windows), fuzzy match.</p>
+  <p>Возвращает <code>dict</code> с полным отчётом: количество папок, совпавшие и несовпавшие DMC-коды, расхождения в именах. Используется в API-маршруте <code>/api/generate-structure</code>.</p>
+</details>
 
 </body>
 </html>

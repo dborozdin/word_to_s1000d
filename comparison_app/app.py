@@ -720,6 +720,42 @@ def api_raw_stats():
     })
 
 
+@app.route('/api/open-file', methods=['POST'])
+def api_open_file():
+    """Открывает файл средствами ОС (os.startfile на Windows).
+
+    Если файл находится внутри _generated (длинный путь), ищет оригинал
+    в raw-папке по имени файла — у него короткий путь, который Word может открыть.
+    """
+    data = request.get_json() or {}
+    file_path = data.get('path', '')
+    if not file_path:
+        return jsonify({'error': 'path is required'}), 400
+
+    abs_path = os.path.abspath(file_path)
+    open_path = abs_path
+
+    # Если файл внутри _generated — найти оригинал в raw-папке (короткий путь)
+    raw_dir = config.get('raw_import', 'raw_input_dir', fallback='')
+    if raw_dir:
+        raw_abs = os.path.join(PROJECT_ROOT, raw_dir) if not os.path.isabs(raw_dir) else raw_dir
+        if os.path.isdir(raw_abs):
+            fname = os.path.basename(abs_path)
+            for root, _dirs, files in os.walk(raw_abs):
+                if fname in files:
+                    open_path = os.path.join(root, fname)
+                    break
+
+    if not os.path.isfile(open_path):
+        return jsonify({'error': f'File not found: {file_path}'}), 404
+
+    try:
+        os.startfile(open_path)
+        return jsonify({'ok': True, 'path': open_path})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/generate-structure', methods=['POST'])
 def api_generate_structure():
     """Запуск raw_to_structured.py: генерация структуры папок с DMC-кодами."""
@@ -750,6 +786,7 @@ def api_generate_structure():
             shutil.rmtree(output_abs)
 
         docs = scan_raw_folder(raw_input_abs)
+        title_stats = getattr(scan_raw_folder, 'last_title_stats', {})
         components = build_data_modules(docs)
         created = create_folder_structure(components, output_abs)
 
@@ -758,6 +795,7 @@ def api_generate_structure():
             'components': len(components),
             'data_modules': sum(len(c.data_modules) for c in components),
             'files_copied': len(created),
+            'title_extraction': title_stats,
         }
 
         # Валидация (если задан reference)

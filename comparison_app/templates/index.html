@@ -151,6 +151,7 @@
         .dmc-code { font-family: monospace; font-size: 11px; color: #888; }
         .status-ok { color: #27ae60; font-weight: bold; }
         .status-missing { color: #e74c3c; }
+        .status-warn { color: #f39c12; cursor: help; }
         .info-code-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 500; }
         .info-code-descr { background: #e8f5e9; color: #2e7d32; }
         .info-code-proc { background: #fff3e0; color: #e65100; }
@@ -166,6 +167,11 @@
         a.view-link { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; text-decoration: none; font-size: 14px; color: #3498db; border: 1px solid #ddd; border-radius: 3px; }
         a.view-link:hover { background: #eaf2f8; }
         a.view-link.disabled { color: #bdc3c7; pointer-events: none; border-color: #eee; }
+
+        /* ── Source document column ── */
+        .source-doc-cell { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+        .source-doc-link { color: #2980b9; text-decoration: none; cursor: pointer; }
+        .source-doc-link:hover { text-decoration: underline; color: #1a5276; }
 
         /* ── Flat table (no subsystems) ── */
         .flat-table { background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.12); border-radius: 4px; overflow: hidden; }
@@ -300,6 +306,7 @@
                                 <th>DMC код</th>
                                 <th>Тип</th>
                                 <th>Наименование</th>
+                                <th>Исходный документ</th>
                                 <th>DOCX</th>
                                 <th>XML</th>
                                 <th>Генерация</th>
@@ -313,8 +320,9 @@
                             <tr>
                                 <td class="dmc-code">{{ pair.dmc_string }}</td>
                                 <td>{% if pair.info_code|int < 100 %}<span class="info-code-badge info-code-descr">Описание</span>{% else %}<span class="info-code-badge info-code-proc">Процедура</span>{% endif %}</td>
-                                <td><strong>{{ pair.tech_name }}</strong>{% if pair.info_name %} &mdash; {{ pair.info_name }}{% endif %}</td>
-                                <td>{% if pair.docx_exists %}<span class="status-ok">&#10003;</span>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
+                                <td>{% if pair.info_name %}<strong>{{ pair.info_name }}</strong>{% else %}<strong>{{ pair.tech_name }}</strong>{% endif %}</td>
+                                <td class="source-doc-cell">{% if pair.source_filename %}<a href="#" class="source-doc-link" data-path="{{ pair.source_path }}" title="{{ pair.source_path }}">{{ pair.source_filename }}</a>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
+                                <td class="docx-status">{% if pair.docx_exists and not pair.needs_conversion %}<span class="status-ok">&#10003;</span>{% elif pair.needs_conversion %}<span class="status-warn" title="Требуется конвертация .doc → .docx">&#9888;</span>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
                                 <td class="xml-status">{% if pair.xml_exists %}<span class="status-ok">&#10003;</span>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
                                 <td>{% if pair.docx_exists %}<button class="gen-btn" data-dmc="{{ pair.dmc_string }}">XML</button>{% else %}<button class="gen-btn" disabled>XML</button>{% endif %}</td>
                                 <td>{% if pair.xml_exists %}<a class="view-link" data-dmc="{{ pair.dmc_string }}" href="#" target="_blank">&#128065;</a>{% else %}<a class="view-link disabled">&#128065;</a>{% endif %}</td>
@@ -331,7 +339,7 @@
             <div class="flat-table">
             <table>
                 <thead>
-                    <tr><th>DMC код</th><th>Тип</th><th>Наименование</th><th>DOCX</th><th>XML</th><th>Генерация</th><th>Просмотр</th><th></th></tr>
+                    <tr><th>DMC код</th><th>Тип</th><th>Наименование</th><th>Исходный документ</th><th>XML</th><th>Генерация</th><th>Просмотр</th><th></th></tr>
                 </thead>
                 <tbody>
                     {% for pair in pairs %}
@@ -339,7 +347,8 @@
                         <td class="dmc-code">{{ pair.dmc_string }}</td>
                         <td>{% if pair.info_code|int < 100 %}<span class="info-code-badge info-code-descr">Описание</span>{% else %}<span class="info-code-badge info-code-proc">Процедура</span>{% endif %}</td>
                         <td><strong>{{ pair.tech_name }}</strong>{% if pair.info_name %} &mdash; {{ pair.info_name }}{% endif %}</td>
-                        <td>{% if pair.docx_exists %}<span class="status-ok">&#10003;</span>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
+                        <td class="source-doc-cell">{% if pair.source_filename %}<a href="#" class="source-doc-link" data-path="{{ pair.source_path }}" title="{{ pair.source_path }}">{{ pair.source_filename }}</a>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
+                        <td class="docx-status">{% if pair.docx_exists and not pair.needs_conversion %}<span class="status-ok">&#10003;</span>{% elif pair.needs_conversion %}<span class="status-warn" title="Требуется конвертация .doc → .docx">&#9888;</span>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
                         <td class="xml-status">{% if pair.xml_exists %}<span class="status-ok">&#10003;</span>{% else %}<span class="status-missing">&#10007;</span>{% endif %}</td>
                         <td>{% if pair.docx_exists %}<button class="gen-btn" data-dmc="{{ pair.dmc_string }}">XML</button>{% else %}<button class="gen-btn" disabled>XML</button>{% endif %}</td>
                         <td>{% if pair.xml_exists %}<a class="view-link" data-dmc="{{ pair.dmc_string }}" href="#" target="_blank">&#128065;</a>{% else %}<a class="view-link disabled">&#128065;</a>{% endif %}</td>
@@ -419,12 +428,10 @@
             return;
         }
         var saved = sessionStorage.getItem('structureResult');
-        if (saved && hasReference) {
+        if (saved) {
             var res = document.getElementById('structure-result');
             res.innerHTML = saved;
             res.classList.add('visible');
-        } else {
-            sessionStorage.removeItem('structureResult');
         }
     })();
 
@@ -538,6 +545,9 @@
                 var row = btn.closest('tr');
                 var xc = row.querySelector('.xml-status');
                 if (xc) xc.innerHTML = '<span class="status-ok">&#10003;</span>';
+                // DOCX: конвертация .doc→.docx произошла при генерации XML
+                var dc = row.querySelector('.docx-status');
+                if (dc) dc.innerHTML = '<span class="status-ok">&#10003;</span>';
                 var cl = row.querySelector('a.compare-link');
                 if (cl && cl.classList.contains('disabled')) { cl.classList.remove('disabled'); cl.href = '/compare/' + dmc; }
                 var vl = row.querySelector('a.view-link');
@@ -586,6 +596,35 @@
                 h += '<div class="structure-stat">Компонентов: <strong>' + d.components + '</strong></div>';
                 h += '<div class="structure-stat">Модулей данных: <strong>' + d.data_modules + '</strong></div>';
                 h += '<div class="structure-stat">Файлов: <strong>' + d.files_copied + '</strong></div></div>';
+                var hasErrors = false;
+                if (d.title_extraction) {
+                    var te = d.title_extraction;
+                    h += '<div class="structure-stats">';
+                    h += '<div class="structure-stat">Названия МД: извлечено <strong>' + te.extracted + '</strong>';
+                    if (te.failed > 0) {
+                        h += ', <span style="color:#e74c3c">не удалось: ' + te.failed + '</span>';
+                        hasErrors = true;
+                    }
+                    if (te.skipped > 0) {
+                        h += ', пропущено: ' + te.skipped;
+                    }
+                    h += '</div></div>';
+                    if (te.word_restarts > 0) {
+                        h += '<div class="structure-stats"><div class="structure-stat" style="color:#888">Перезапусков Word COM: ' + te.word_restarts + '</div></div>';
+                    }
+                    if (te.failed_files && te.failed_files.length > 0) {
+                        h += '<details style="margin:6px 0;font-size:12px" open>';
+                        h += '<summary style="cursor:pointer;color:#e74c3c;font-weight:600">Не удалось извлечь названия (' + te.failed_files.length + ' файлов)</summary>';
+                        h += '<table style="margin:4px 0 0 8px;border-collapse:collapse;font-size:12px;width:100%">';
+                        h += '<tr style="background:#fee2e2"><th style="padding:2px 8px;text-align:left">Файл</th><th style="padding:2px 8px;text-align:left">Ошибка</th></tr>';
+                        te.failed_files.forEach(function(f) {
+                            var fname = typeof f === 'string' ? f : f.file;
+                            var err = typeof f === 'string' ? '' : (f.error || '');
+                            h += '<tr><td style="padding:2px 8px;color:#333">' + fname + '</td><td style="padding:2px 8px;color:#999">' + err + '</td></tr>';
+                        });
+                        h += '</table></details>';
+                    }
+                }
                 if (d.validation) {
                     var v = d.validation;
                     h += '<div class="structure-stats"><div class="structure-stat">DMC: <strong>' + v.l2_dmc_matched + '/' + v.l2_ref_count + '</strong> (' + v.dmc_score_pct.toFixed(1) + '%)</div>';
@@ -608,11 +647,14 @@
                         h += '</div></div>';
                     }
                 }
-                res.innerHTML = h; res.classList.add('visible');
-                // Сохраняем результат в sessionStorage чтобы не потерять при reload
-                sessionStorage.setItem('structureResult', h);
+                // Оборачиваем в сворачиваемый блок
+                var summary = 'Результат генерации: ' + d.data_modules + ' МД';
+                if (hasErrors) summary += ' (есть ошибки)';
+                var wrapped = '<details open style="margin:8px 0"><summary style="cursor:pointer;font-weight:600;font-size:14px">' + summary + '</summary>' + h + '</details>';
+                res.innerHTML = wrapped; res.classList.add('visible');
+                sessionStorage.setItem('structureResult', wrapped);
                 showProgress(100, '<strong>Структура сгенерирована.</strong> Перезагрузка...');
-                setTimeout(function() { window.location.reload(); }, 2000);
+                setTimeout(function() { window.location.reload(); }, hasErrors ? 5000 : 2000);
                 return 'ok';
             }).catch(function(err) {
                 hideProgress();
@@ -779,6 +821,24 @@
         fetch('/api/ensure-tgweb', { method: 'POST' })
             .then(function() { window.open(href, 'tgweb_viewer'); })
             .catch(function() { window.open(href, 'tgweb_viewer'); });
+    });
+
+    // ── Open source document ──
+    document.addEventListener('click', function(e) {
+        var link = e.target.closest('a.source-doc-link');
+        if (!link) return;
+        e.preventDefault();
+        var path = link.getAttribute('data-path');
+        if (!path) return;
+        fetch('/api/open-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: path })
+        }).then(function(r) { return r.json(); })
+          .then(function(data) {
+              if (data.error) { alert('Не удалось открыть: ' + data.error); }
+          })
+          .catch(function(err) { alert('Ошибка: ' + err); });
     });
 
     // ── Settings ──

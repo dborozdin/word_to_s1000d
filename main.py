@@ -211,7 +211,7 @@ def _build_task(folder_path: str, folder_name: str,
 def collect_batch_tasks(input_dir: str) -> List[Dict]:
     """
     Scan input_dir for processable folders.
-    Supports both flat and hierarchical (subsystem/DM) structures.
+    Supports flat, 2-level (component/DM), and 3-level (subsystem/component/DM) structures.
 
     Returns list of task dicts:
         folder_path, folder_name, docx_path, dmc_info, skip_reason,
@@ -227,11 +227,21 @@ def collect_batch_tasks(input_dir: str) -> List[Dict]:
                 continue
             parts = l1_entry.split(' - ', 1)
             subsystem_name = parts[1].strip() if len(parts) == 2 else l1_entry
+
             for l2_entry in sorted(os.listdir(long_path(l1_path))):
                 l2_path = os.path.join(l1_path, l2_entry)
                 if not os.path.isdir(long_path(l2_path)):
                     continue
-                tasks.append(_build_task(l2_path, l2_entry, l1_entry, subsystem_name))
+
+                if l2_entry.startswith('['):
+                    # 2-уровневая: L1=компонент, L2=DMC
+                    tasks.append(_build_task(l2_path, l2_entry, l1_entry, subsystem_name))
+                else:
+                    # 3-уровневая: L1=подсистема, L2=компонент, L3=DMC
+                    for l3_entry in sorted(os.listdir(long_path(l2_path))):
+                        l3_path = os.path.join(l2_path, l3_entry)
+                        if os.path.isdir(long_path(l3_path)) and l3_entry.startswith('['):
+                            tasks.append(_build_task(l3_path, l3_entry, l1_entry, subsystem_name))
     else:
         for entry in entries:
             folder_path = os.path.join(input_dir, entry)

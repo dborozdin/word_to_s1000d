@@ -12,6 +12,28 @@ from app_paths import get_internal_root, long_path
 sys.path.insert(0, get_internal_root())
 
 from parsers.dmc_parser import parse_dmc_from_folder_name, dm_code_to_string
+import configparser as _cp
+from app_paths import get_config_path, get_app_root
+
+
+def _find_in_raw(filename: str) -> str:
+    """Ищет файл по имени в raw-папке. Возвращает полный путь или ''."""
+    try:
+        cfg = _cp.ConfigParser()
+        cfg.read(get_config_path(), encoding='utf-8')
+        raw_dir = cfg.get('raw_import', 'raw_input_dir', fallback='')
+        if not raw_dir:
+            return ''
+        project_root = get_app_root()
+        raw_abs = os.path.join(project_root, raw_dir) if not os.path.isabs(raw_dir) else raw_dir
+        if not os.path.isdir(raw_abs):
+            return ''
+        for root, _dirs, files in os.walk(raw_abs):
+            if filename in files:
+                return os.path.join(root, filename)
+    except Exception:
+        pass
+    return ''
 
 
 def find_docx_in_folder(folder_path: str) -> Optional[str]:
@@ -79,6 +101,15 @@ def _build_pair(entry: str, folder_path: str, output_dir: str,
         if doc_path:
             needs_conversion = True
 
+    # Исходный документ — .docx или .doc
+    source_path = docx_path or doc_path or ''
+    source_filename = os.path.basename(source_path) if source_path else ''
+
+    # Ищем оригинал в raw-папке (короткий путь для тултипа и открытия)
+    source_raw_path = source_path
+    if source_filename:
+        source_raw_path = _find_in_raw(source_filename) or source_path
+
     return {
         'folder_name': entry,
         'folder_path': folder_path,
@@ -94,6 +125,8 @@ def _build_pair(entry: str, folder_path: str, output_dir: str,
         'info_code': dm_code['infoCode'],
         'subsystem_group': subsystem_group,
         'subsystem_name': subsystem_name,
+        'source_filename': source_filename,
+        'source_path': source_raw_path,
     }
 
 
@@ -113,7 +146,7 @@ def get_comparison_pairs(input_dir: str, output_dir: str) -> List[Dict]:
         return pairs
 
     if _detect_hierarchical(input_dir):
-        # Двухуровневая структура: L1 (подсистемы) → L2 (DMC-папки)
+        # Поддержка 2- и 3-уровневых структур
         for l1_entry in sorted(os.listdir(long_path(input_dir))):
             l1_path = os.path.join(input_dir, l1_entry)
             if not os.path.isdir(long_path(l1_path)):
@@ -123,9 +156,19 @@ def get_comparison_pairs(input_dir: str, output_dir: str) -> List[Dict]:
                 l2_path = os.path.join(l1_path, l2_entry)
                 if not os.path.isdir(long_path(l2_path)):
                     continue
-                pair = _build_pair(l2_entry, l2_path, output_dir, l1_entry, subsystem_name)
-                if pair:
-                    pairs.append(pair)
+                if l2_entry.startswith('['):
+                    # 2-уровневая: L1=компонент, L2=DMC
+                    pair = _build_pair(l2_entry, l2_path, output_dir, l1_entry, subsystem_name)
+                    if pair:
+                        pairs.append(pair)
+                else:
+                    # 3-уровневая: L1=подсистема, L2=компонент, L3=DMC
+                    for l3_entry in sorted(os.listdir(long_path(l2_path))):
+                        l3_path = os.path.join(l2_path, l3_entry)
+                        if os.path.isdir(long_path(l3_path)) and l3_entry.startswith('['):
+                            pair = _build_pair(l3_entry, l3_path, output_dir, l1_entry, subsystem_name)
+                            if pair:
+                                pairs.append(pair)
     else:
         # Плоская структура (обратная совместимость)
         for entry in sorted(os.listdir(long_path(input_dir))):

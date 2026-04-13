@@ -460,7 +460,14 @@ def process_descriptive_document(doc_path: str, output_dir: str, llm_config: Dic
 
         # Use overrides for title if provided
         effective_tech_name = tech_name_override or document_title
-        effective_info_name = info_name_override or representative_section.get('info_name', 'Неопределен')
+        # Если info_name_override пустой, но tech_name уже описывает содержание
+        # (например, «Общие указания по осмотру самолёта»), не подставлять generic fallback
+        if info_name_override:
+            effective_info_name = info_name_override
+        elif not tech_name_override:
+            effective_info_name = representative_section.get('info_name', 'Неопределен')
+        else:
+            effective_info_name = representative_section.get('info_name', '')
 
         # Create DM config
         dm_config = create_data_module_config(

@@ -371,6 +371,7 @@ function splitElement(idx) {
     renumberRefElements();
     hideContextMenu();
     rebuildBadges(dom.docxPanel);
+    saveReference();
 }
 
 // ── Create element ──────────────────────────────────────────────────

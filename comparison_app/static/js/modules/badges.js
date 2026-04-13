@@ -176,15 +176,11 @@ export function rebuildBadges(panel) {
         var allAnno = panel.querySelectorAll('[data-anno-idx]');
 
         if (pdfMarkers.length > 0) {
-            // PDF mode: check if markers are pre-synced (procedural xml_matched)
-            var hasPreSynced = false;
-            for (var mi = 0; mi < pdfMarkers.length; mi++) {
-                if (pdfMarkers[mi].getAttribute('data-anno-source') === 'xml_derived') {
-                    hasPreSynced = true;
-                    break;
-                }
-            }
-            if (!hasPreSynced && _rebuildHooks.syncPdfMarkers) {
+            // PDF mode: always re-sync markers with the current reference data.
+            // This ensures edits (split, merge, delete, type change) are reflected
+            // in the marker assignments. The initial page-render sync is separate
+            // (handled in pdf-overlay.js createPdfOverlay).
+            if (_rebuildHooks.syncPdfMarkers) {
                 _rebuildHooks.syncPdfMarkers(pdfMarkers);
             }
         } else {

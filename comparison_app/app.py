@@ -1075,8 +1075,16 @@ if __name__ == '__main__':
             print(f'tg_web server started (PID {_tg_web_proc.pid})')
 
     print(f'Word to S1000D v{APP_VERSION}')
-    print(f'Comparison app starting on http://localhost:{port}')
     print(f'Input dir: {INPUT_DIR}')
     print(f'Output dir: {OUTPUT_DIR}')
+
+    if _is_port_in_use('127.0.0.1', port):
+        print(f'\n*** ОШИБКА: порт {port} уже занят другим приложением! ***')
+        print(f'Освободите порт или измените значение port в config.ini [comparison]')
+        print(f'Нажмите Enter для выхода...')
+        input()
+        sys.exit(1)
+
+    print(f'Comparison app starting on http://localhost:{port}')
     app.run(host='0.0.0.0', port=port, debug=debug, use_reloader=False)
 

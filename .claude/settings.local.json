@@ -58,7 +58,12 @@
       "Bash(taskkill /F /IM word_to_s1000d.exe)",
       "Bash(taskkill /F /IM tgwebserver.exe)",
       "Bash(tee /c/tmp/demo_recording.log)",
-      "Bash(where ffmpeg)"
+      "Bash(where ffmpeg)",
+      "Bash(cmd //c \"c:\\\\python_projects\\\\word_to_s1000d\\\\build.bat\")",
+      "Bash(tasklist //fi \"PID eq 91144\" //fo csv //nh)",
+      "Bash(tasklist //fi \"PID eq 23548\" //fo csv //nh)",
+      "Bash(taskkill //pid 91144 //f)",
+      "Bash(taskkill //pid 23548 //f)"
     ]
   }
 }

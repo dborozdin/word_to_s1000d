@@ -158,6 +158,17 @@ function _syncPdfMarkersBbox(sorted) {
 
     var referenceData = getReferenceData();
 
+    // Clear data-anno-source set by a previous sync pass so that
+    // unclaimed markers are properly marked unassigned at the end.
+    // Only 'xml_matched' (set at render time by procedural_pdf_matcher
+    // via pdf-overlay) is preserved — these markers bypass re-sync.
+    for (var ci = 0; ci < sorted.length; ci++) {
+        var src = sorted[ci].getAttribute('data-anno-source');
+        if (src && src !== 'xml_matched') {
+            sorted[ci].removeAttribute('data-anno-source');
+        }
+    }
+
     // Build flat info list with per-marker normalized text
     var allInfos = [];
     var byPage = {};
@@ -188,9 +199,10 @@ function _syncPdfMarkersBbox(sorted) {
         var refElem = refElems[r];
         var type = refElem.type;
 
-        if (type === '_skip') continue;
         if (type === '_unmatched_xml') continue;
         if (type === '_extra_pdf') continue;
+
+        var isSkip = (type === '_skip');
 
         var refNorm = normForMatch(refElem.text_start || '');
         var refLight = normForMatchLight(refElem.text_start || '');
@@ -262,6 +274,26 @@ function _syncPdfMarkersBbox(sorted) {
             }
             if (posBest && posDist < 5) bestInfo = posBest;
         }
+
+        // _skip elements: claim and hide matched markers, then move on
+        if (isSkip && bestInfo) {
+            bestInfo.used = true;
+            bestInfo.marker.style.display = 'none';
+            bestInfo.marker.removeAttribute('data-anno-idx');
+            var skipSpan = refElem.span || 1;
+            var skipClaimed = 1;
+            for (var ski = bestInfo.globalIdx + 1;
+                 ski < allInfos.length && skipClaimed < skipSpan; ski++) {
+                if (allInfos[ski].used) continue;
+                allInfos[ski].used = true;
+                allInfos[ski].marker.style.display = 'none';
+                allInfos[ski].marker.removeAttribute('data-anno-idx');
+                skipClaimed++;
+            }
+            log('pdf-sync', 'elem[' + r + '] _skip → hid ' + skipClaimed + ' marker(s)');
+            continue;
+        }
+        if (isSkip) continue;
 
         if (!bestInfo) {
             log('pdf-sync', 'elem[' + r + '] type=' + type + ' text="' + refNorm.substring(0, 30) + '" → NO MATCH');
@@ -385,14 +417,14 @@ function _syncPdfMarkersBbox(sorted) {
     }
 
     // Remaining unused markers -> unassigned (available for Create)
-    // Skip markers pre-matched by procedural_pdf_matcher (have data-anno-source="xml_derived")
+    // Skip markers pre-matched by procedural_pdf_matcher (have data-anno-source="xml_matched")
     var claimedCount = 0;
     var unassigned = 0;
     for (var ui = 0; ui < allInfos.length; ui++) {
         if (allInfos[ui].used) {
             claimedCount++;
-        } else if (allInfos[ui].marker.getAttribute('data-anno-source') === 'xml_derived') {
-            claimedCount++;  // Pre-matched, keep as-is
+        } else if (allInfos[ui].marker.getAttribute('data-anno-source') === 'xml_matched') {
+            claimedCount++;  // Pre-matched by procedural matcher, keep as-is
         } else {
             markUnassigned(allInfos[ui].marker);
             unassigned++;

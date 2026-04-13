@@ -317,10 +317,10 @@ export function createPdfOverlay(wrapper, textContent, viewport, startIdx, pageI
     var refData = state.getReferenceData();
     if (refData && refData.elements) {
         var allMarkers = dom.docxPanel.querySelectorAll('.anno-marker');
-        // Skip sync if markers are pre-synced (procedural xml_matched)
+        // Skip sync only for procedural xml_matched markers (set at render time)
         var hasPreSynced = false;
         for (var si = 0; si < allMarkers.length; si++) {
-            if (allMarkers[si].getAttribute('data-anno-source') === 'xml_derived') {
+            if (allMarkers[si].getAttribute('data-anno-source') === 'xml_matched') {
                 hasPreSynced = true;
                 break;
             }

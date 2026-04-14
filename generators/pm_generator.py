@@ -111,8 +111,10 @@ class PMGenerator:
     def _create_content_section(self, dm_refs: List[Dict], pm_title: str = "Руководство") -> ET.Element:
         """Create content section with dmRefs organized in pmEntries.
 
-        If dm_refs contain '_subsystem_group' tags, creates nested pmEntry
-        per subsystem. Otherwise falls back to flat structure.
+        Builds a 3-level hierarchy from dm_code fields:
+          Level 1: subsystem  (subSystemCode + subSubSystemCode)
+          Level 2: component  (assyCode, only when != "00")
+        DMs without dm_code go directly under the root pmEntry.
         """
         from collections import OrderedDict
 
@@ -121,36 +123,76 @@ class PMGenerator:
         main_pm_entry_title = ET.SubElement(main_pm_entry, "pmEntryTitle")
         main_pm_entry_title.text = pm_title
 
-        has_groups = any(ref.get('_subsystem_group') for ref in dm_refs)
+        # --- group dm_refs by subsystem → component ---
+        subsystems = OrderedDict()  # key: subsys_key ("00", "11", ...)
+        ungrouped = []
 
-        if has_groups:
-            groups = OrderedDict()
-            ungrouped = []
-            for ref in dm_refs:
-                group = ref.get('_subsystem_group')
-                if group:
-                    if group not in groups:
-                        groups[group] = {
-                            'name': ref.get('_subsystem_name', ''),
-                            'refs': []
-                        }
-                    groups[group]['refs'].append(ref)
-                else:
-                    ungrouped.append(ref)
+        for ref in dm_refs:
+            dc = ref.get('dm_code')
+            if not dc:
+                ungrouped.append(ref)
+                continue
 
-            for ref in ungrouped:
-                self._add_dm_ref(main_pm_entry, ref)
+            subsys_key = dc.get('subSystemCode', '0') + dc.get('subSubSystemCode', '0')
+            assy = dc.get('assyCode', '00')
+            sys_code = dc.get('systemCode', '00')
 
-            for group_key, group_data in groups.items():
-                sub_entry = ET.SubElement(main_pm_entry, "pmEntry")
-                sub_title = ET.SubElement(sub_entry, "pmEntryTitle")
-                code_part = group_key.split(' - ')[0] if ' - ' in group_key else group_key
-                sub_title.text = f"{code_part} {group_data['name']}"
-                for ref in group_data['refs']:
-                    self._add_dm_ref(sub_entry, ref)
-        else:
-            for ref in dm_refs:
-                self._add_dm_ref(main_pm_entry, ref)
+            if subsys_key not in subsystems:
+                subsystems[subsys_key] = {
+                    'system_code': sys_code,
+                    'name': '',
+                    'components': OrderedDict(),
+                    'direct_refs': [],  # assyCode == "00"
+                }
+
+            if assy == '00':
+                subsystems[subsys_key]['direct_refs'].append(ref)
+                if not subsystems[subsys_key]['name']:
+                    subsystems[subsys_key]['name'] = ref.get('techName', '')
+            else:
+                if assy not in subsystems[subsys_key]['components']:
+                    subsystems[subsys_key]['components'][assy] = {
+                        'name': ref.get('techName', ''),
+                        'refs': [],
+                    }
+                subsystems[subsys_key]['components'][assy]['refs'].append(ref)
+
+        # fallback: subsystem name from _subsystem_name tag
+        for ref in dm_refs:
+            dc = ref.get('dm_code')
+            if not dc:
+                continue
+            subsys_key = dc.get('subSystemCode', '0') + dc.get('subSubSystemCode', '0')
+            if subsys_key in subsystems and not subsystems[subsys_key]['name']:
+                name = ref.get('_subsystem_name', '')
+                if name:
+                    subsystems[subsys_key]['name'] = name
+
+        # --- ungrouped DMs first ---
+        for ref in ungrouped:
+            self._add_dm_ref(main_pm_entry, ref)
+
+        # --- build XML hierarchy (sorted by subsystem code) ---
+        for subsys_key, sdata in sorted(subsystems.items()):
+            sys_code = sdata['system_code']
+            has_components = bool(sdata['components'])
+
+            sub_entry = ET.SubElement(main_pm_entry, "pmEntry")
+            sub_title = ET.SubElement(sub_entry, "pmEntryTitle")
+            sub_title.text = f"{sys_code}-{subsys_key} {sdata['name']}".strip()
+
+            # direct DMs (assyCode == "00") go under subsystem pmEntry
+            for ref in sdata['direct_refs']:
+                self._add_dm_ref(sub_entry, ref)
+
+            # component sub-entries (assyCode != "00")
+            if has_components:
+                for comp_key, cdata in sdata['components'].items():
+                    comp_entry = ET.SubElement(sub_entry, "pmEntry")
+                    comp_title = ET.SubElement(comp_entry, "pmEntryTitle")
+                    comp_title.text = f"{sys_code}-{subsys_key}-{comp_key} {cdata['name']}".strip()
+                    for ref in cdata['refs']:
+                        self._add_dm_ref(comp_entry, ref)
 
         # Add BREX and ACIR refs
         self._add_brex_ref(main_pm_entry)

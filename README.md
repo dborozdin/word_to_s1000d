@@ -185,6 +185,12 @@ def process_descriptive_document(doc_path: str, output_dir: str):
 python main.py "docs/source_document.docx" "output_directory"
 ```
 
+## Building the Distribution
+
+To build the standalone PyInstaller distribution (incl. the bundled `tg_web`
+viewer), see [BUILD.md](BUILD.md). Note: binaries are stored in Git LFS — run
+`git lfs install && git lfs pull` after cloning.
+
 ## Generated Output
 
 - **XML Data Modules**: Properly formatted S1000D 4.1 XML files

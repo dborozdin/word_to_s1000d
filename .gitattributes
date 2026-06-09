@@ -1,0 +1,12 @@
+# Git LFS — бинарники встроенного вьюера tg_web хранятся в LFS,
+# текстовая статика (json/xml/css/svg/js) остаётся в обычном git.
+tg_web/**/*.dll  filter=lfs diff=lfs merge=lfs -text
+tg_web/**/*.exe  filter=lfs diff=lfs merge=lfs -text
+tg_web/**/*.zip  filter=lfs diff=lfs merge=lfs -text
+tg_web/**/*.jpg  filter=lfs diff=lfs merge=lfs -text
+tg_web/**/*.JPG  filter=lfs diff=lfs merge=lfs -text
+tg_web/**/*.png  filter=lfs diff=lfs merge=lfs -text
+tg_web/**/*.ico  filter=lfs diff=lfs merge=lfs -text
+tg_web/**/*.woff filter=lfs diff=lfs merge=lfs -text
+tg_web/**/*.ttf  filter=lfs diff=lfs merge=lfs -text
+tg_web/**/*.eot  filter=lfs diff=lfs merge=lfs -text

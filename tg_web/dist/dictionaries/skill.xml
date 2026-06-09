@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<objrule xsi:noNamespaceSchemaLocation="tgb_dictionary.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<objval valtype="single" val1="sk01">
+		<langvalue lang="ru">Базовый</langvalue>
+		<langvalue lang="en">Basic</langvalue>
+	</objval>
+	<objval valtype="single" val1="sk02">
+		<langvalue lang="ru">Средний</langvalue>
+		<langvalue lang="en">Intermediate</langvalue>
+	</objval>
+	<objval valtype="single" val1="sk03">
+		<langvalue lang="ru">Высокий</langvalue>
+		<langvalue lang="en">Advanced</langvalue>
+	</objval>
+	<objval valtype="single" val1="sk51"/>
+	<objval valtype="single" val1="sk52"/>
+	<objval valtype="single" val1="sk53"/>
+	<objval valtype="single" val1="sk54"/>
+	<objval valtype="single" val1="sk55"/>
+	<objval valtype="single" val1="sk56"/>
+	<objval valtype="single" val1="sk57"/>
+	<objval valtype="single" val1="sk58"/>
+	<objval valtype="single" val1="sk59"/>
+	<objval valtype="single" val1="sk60"/>
+	<objval valtype="single" val1="sk61"/>
+	<objval valtype="single" val1="sk62"/>
+	<objval valtype="single" val1="sk63"/>
+	<objval valtype="single" val1="sk64"/>
+	<objval valtype="single" val1="sk65"/>
+	<objval valtype="single" val1="sk66"/>
+	<objval valtype="single" val1="sk67"/>
+	<objval valtype="single" val1="sk68"/>
+	<objval valtype="single" val1="sk69"/>
+	<objval valtype="single" val1="sk70"/>
+	<objval valtype="single" val1="sk71"/>
+	<objval valtype="single" val1="sk72"/>
+	<objval valtype="single" val1="sk73"/>
+	<objval valtype="single" val1="sk74"/>
+	<objval valtype="single" val1="sk75"/>
+	<objval valtype="single" val1="sk76"/>
+	<objval valtype="single" val1="sk77"/>
+	<objval valtype="single" val1="sk78"/>
+	<objval valtype="single" val1="sk79"/>
+	<objval valtype="single" val1="sk80"/>
+	<objval valtype="single" val1="sk81"/>
+	<objval valtype="single" val1="sk82"/>
+	<objval valtype="single" val1="sk83"/>
+	<objval valtype="single" val1="sk84"/>
+	<objval valtype="single" val1="sk85"/>
+	<objval valtype="single" val1="sk86"/>
+	<objval valtype="single" val1="sk87"/>
+	<objval valtype="single" val1="sk88"/>
+	<objval valtype="single" val1="sk89"/>
+	<objval valtype="single" val1="sk90"/>
+	<objval valtype="single" val1="sk91"/>
+	<objval valtype="single" val1="sk92"/>
+	<objval valtype="single" val1="sk93"/>
+	<objval valtype="single" val1="sk94"/>
+	<objval valtype="single" val1="sk95"/>
+	<objval valtype="single" val1="sk96"/>
+	<objval valtype="single" val1="sk97"/>
+	<objval valtype="single" val1="sk98"/>
+	<objval valtype="single" val1="sk99"/>
+</objrule>

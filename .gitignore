@@ -31,6 +31,8 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# но spec основной сборки нужен в репозитории (его вызывает build.bat)
+!word_to_s1000d.spec
 
 # Installer logs
 pip-log.txt
@@ -209,7 +211,17 @@ __marimo__/
 /doc_source
 /tgb_export
 /output
-/tg_web
+# tg_web viewer — статику и бинарники коммитим (бинарники через Git LFS),
+# игнорируем только генерируемое/рантайм.
+# Глобальное правило `dist/` (выше) скрывает tg_web/dist — возвращаем его.
+!tg_web/dist/
+# suites/66935 — генерируемые DM; игнорируем содержимое, но храним пустой каталог
+/tg_web/suites/66935/*
+!/tg_web/suites/66935/.gitkeep
+/tg_web/cache/
+/tg_web/**/*.log
+# ручной снапшот всей папки tg_web — не коммитим
+/tg_web.zip
 /output_old
 docs/~$У_адаптированная.docx
 output.txt
@@ -233,6 +245,8 @@ numbered_headers_analysis_log.txt
 nul
 /last_version_generated
 index-*.js
+# но собранный бандл вьюера tg_web должен попасть в репозиторий
+!tg_web/dist/assets/index-*.js
 /examples
 /comparison_app/pdf_cache
 /comparison_app/_references
